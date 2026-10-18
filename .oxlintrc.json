@@ -1,0 +1,53 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/core/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "electron",
+                  "electron/*",
+                  "node:*",
+                  "../main/*",
+                  "../renderer/*",
+                  "../preload/*"
+                ],
+                "message": "src/core is platform-neutral: no Electron, Node or process-specific imports. Take what you need through an interface implemented in src/main."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/renderer/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "electron",
+                  "electron/*",
+                  "node:*",
+                  "../main/*",
+                  "../preload/*"
+                ],
+                "message": "The renderer is web content: reach main only through window.api, and import contracts from src/shared."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
