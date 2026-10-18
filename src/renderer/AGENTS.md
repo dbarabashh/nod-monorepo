@@ -37,8 +37,9 @@ something to put in them.
 - Read data only through the feature's `api.ts`, never by calling `window.api`
   from a view. Treat data from main like server state: cache it, refetch it, and
   handle loading, error and empty states.
-- Never import `electron`, `node:*`, `src/main` or `src/preload`. The linter
-  enforces this. Contracts come from `src/shared`.
+- Never import `electron`, Node built-ins, `src/main` or `src/preload`. The
+  linter enforces this. Tests may also import `node:test` and `node:assert`.
+  Contracts come from `src/shared`.
 - Once `components/` grows past ~7 files with clear seams, group them by domain
   with a `shared/` bucket. It's an internal reshuffle, because the barrel hides it.
 - Keep tests next to the code they cover (`*.test.ts`).

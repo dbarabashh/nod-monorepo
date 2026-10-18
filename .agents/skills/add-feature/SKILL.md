@@ -42,6 +42,8 @@ cat src/renderer/features/<feature>/index.ts
   skill, and add the call to the feature's `api.ts`.
 - New domain rules or data go in the matching `src/core/<domain>/`, not in the
   handler and not in the view.
+- Before changing logic, find the tests that cover it and follow "When logic
+  changes" in the `write-tests` skill.
 - Don't widen a barrel unless something outside genuinely imports the new export.
 - A schema or payload change is a contract change. See the contract rules in
   `src/core/AGENTS.md` and `src/shared/AGENTS.md`.
@@ -54,7 +56,8 @@ setting may need no core).
 
 1. **Core.** Create `src/core/<domain>/` with an `index.ts` barrel, its types,
    and the logic as plain functions. Anything platform-specific is an interface
-   here and an implementation in `src/main`. Add unit tests next to it.
+   here and an implementation in `src/main`. Add unit tests next to it
+   (`write-tests` skill).
 2. **Contract.** Declare the channels and payload types in `src/shared/ipc.ts`
    and extend `AppApi`. Follow `add-ipc` for the details.
 3. **Main.** Add `src/main/ipc/<domain>.ts` with handlers that validate input,
@@ -77,7 +80,7 @@ setting may need no core).
 - Run:
 
   ```sh
-  pnpm typecheck && pnpm lint
+  pnpm typecheck && pnpm lint && pnpm test
   pnpm start
   ```
 

@@ -3,6 +3,7 @@
   "productName": "Nod",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Nod desktop app for macOS",
   "keywords": [],
   "license": "MIT",
@@ -18,7 +19,8 @@
     "release": "electron-forge release",
     "lint": "oxlint && oxfmt --check",
     "lint:fix": "oxlint --fix && oxfmt --write",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "devEngines": {
     "packageManager": "pnpm@11.21.0"
@@ -38,10 +40,13 @@
     "electron": "^44.9.0",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.88.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.3.4"
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.1"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

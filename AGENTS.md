@@ -26,16 +26,18 @@ internal service IDs or paths that exist only on one machine.
   The format is in `README.md` there. **Read the relevant rule before editing
   matching files:**
   - `local-first.md` (always): user data stays on the device, encrypted, works offline, syncs end to end
-  - `commits.md` (always): lowercase, 4–5 words, no AI attribution trailer
+  - `commits.md` (always): signed commits only; lowercase, 4–5 words, no AI attribution trailer
   - `comments.md` (always): no narration comments; only a non-obvious WHY
+  - `testing.md` (always): tests must be able to fail; logic changes are checked against their tests
   - `loop-engineering.md` (always): independent review/fix loops before material work is ready
-  - `dependencies.md` (`package.json`, `pnpm-*.yaml`): every dependency is supply-chain risk to user data
+  - `dependencies.md` (`package.json`, `pnpm-*.yaml`, `.github/**`): every dependency is supply-chain risk to user data
   - `electron.md` (`src/**`, `forge.config.mts`, `index.html`): process boundaries, IPC, window security, fuses
   - `typescript.md` (`*.ts`, `*.mts`): strict types, no `any`, pnpm only
 - `.agents/skills/<name>/SKILL.md` uses the [Agent Skills](https://agentskills.io)
   format. Claude Code loads each skill through a symlink in `.claude/skills/`.
   - `add-feature`: add a feature or extend one across core, IPC, main and renderer
   - `add-ipc`: add a typed main ↔ renderer channel through the preload bridge
+  - `write-tests`: write or update node:test unit tests without false positives
   - `build-macos`: build the DMG and ZIP locally and verify them
 
   New skills go in `.agents/skills/<name>/` with a matching symlink.
@@ -50,12 +52,16 @@ internal service IDs or paths that exist only on one machine.
 pnpm install
 pnpm start       # dev mode with Vite HMR and DevTools open
 pnpm typecheck   # tsc --noEmit, strict
+pnpm test        # node:test over src/**/*.test.ts (Node >= 24)
 pnpm lint        # oxlint + oxfmt --check
 pnpm lint:fix    # oxlint --fix + oxfmt --write
 pnpm make        # installers for the host OS into out/make
 ```
 
-Run `pnpm typecheck && pnpm lint` before calling a change done.
+Run `pnpm typecheck && pnpm lint && pnpm test` before calling a change done.
+CI (`.github/workflows/ci.yml`) runs the same three on every push to `main` and
+every pull request. Dependabot (`.github/dependabot.yml`) proposes npm and
+GitHub Actions updates weekly; see `dependencies.md`.
 
 ## Structure
 
@@ -73,7 +79,9 @@ build/         packaging assets (icons, entitlements), once added
 Dependencies point one way: `renderer → shared ← preload ← main → core`.
 `core` stays free of Electron and Node so it can become its own package when a
 mobile client arrives. `renderer` is untrusted web content. `.oxlintrc.json`
-enforces both boundaries.
+enforces both boundaries for `import` statements, including nested relative
+paths and bare Node built-ins. It can't see `require()`, so don't use it in
+these layers.
 
 Each layer has its own `AGENTS.md` (with a `CLAUDE.md` symlink) holding its
 layout and rules. Read it before editing that layer. To add or extend a
