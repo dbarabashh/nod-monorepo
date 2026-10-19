@@ -21,6 +21,13 @@ stay out of the repo:
   and the `postMake` hook signs, notarizes and staples the DMG. With only the
   identity set, the app and DMG are signed but not notarized.
 
+The relay a build offers in onboarding and Settings → Sync comes from
+`NOD_RELAY_URL` at build time; nothing in the repo names one. Set it to the
+relay's `https://` address, or to an empty value for a build without a relay.
+A signed build refuses to start without it, so a release never ships without a
+relay by accident, and an address the app would refuse fails the build. When
+releases move to CI, keep the address in a repository variable, not in code.
+
 Without them the build is unsigned and for local testing only. Never hand an
 unsigned or unnotarized build to users, because macOS shows "developer cannot
 be verified" on every other machine. Notarization uploads the build to Apple
@@ -40,8 +47,8 @@ runtime macOS refuses to load the Electron framework without a team ID.
 ## Steps
 
 1. Clean old output: `rm -rf out`.
-2. Build: `pnpm make`, or for a release
-   `APPLE_SIGNING_IDENTITY="Developer ID Application" APPLE_NOTARY_PROFILE=<profile> pnpm make`. To build for the other architecture, use
+2. Build: `NOD_RELAY_URL=<relay address> pnpm make`, or for a release
+   `NOD_RELAY_URL=<relay address> APPLE_SIGNING_IDENTITY="Developer ID Application" APPLE_NOTARY_PROFILE=<profile> pnpm make`. To build for the other architecture, use
    `pnpm make --arch=x64` or `--arch=universal`.
 3. Check the artifacts exist:
 
@@ -60,6 +67,7 @@ runtime macOS refuses to load the Electron framework without a team ID.
 
    The window opens with **no** DevTools, because the app is packaged. If the
    window is blank, the renderer path or CSP is wrong. Check it before shipping.
+   With `NOD_RELAY_URL` set, Settings → Sync offers "Sync through <host>".
 
 5. Mount the DMG (`hdiutil attach <dmg>`) and confirm it contains the `.app`.
 

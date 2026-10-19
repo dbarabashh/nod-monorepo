@@ -17,6 +17,39 @@ const run = promisify(execFile);
 
 const signingIdentity = process.env.APPLE_SIGNING_IDENTITY;
 const notaryProfile = process.env.APPLE_NOTARY_PROFILE;
+const relayUrl = process.env.NOD_RELAY_URL;
+
+// The relay a build offers is baked in by Vite from NOD_RELAY_URL, so a
+// release must choose it on purpose: an address, or empty for no relay. An
+// address the app would refuse fails the build instead of quietly vanishing.
+function checkRelayUrl() {
+  if (relayUrl === undefined) {
+    if (signingIdentity) {
+      throw new Error(
+        'Set NOD_RELAY_URL for a release: the relay address, or empty for a build without one.',
+      );
+    }
+    console.warn(
+      'NOD_RELAY_URL is not set, so this build offers no relay; sync works only through a folder or a relay address the user types.',
+    );
+    return;
+  }
+  if (relayUrl === '') {
+    return;
+  }
+  const url = URL.parse(relayUrl);
+  if (
+    url?.protocol !== 'https:' ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      'NOD_RELAY_URL must be an https:// address without a login, query or #part',
+    );
+  }
+}
 
 async function signDmg(dmg: string, identity: string, profile?: string) {
   await run('codesign', ['--sign', identity, '--timestamp', dmg]);
@@ -113,6 +146,7 @@ const config: ForgeConfig = {
     new MakerRpm({ options: { icon: 'build/icon.png' } }),
   ],
   hooks: {
+    prePackage: async () => checkRelayUrl(),
     // Packaging edits Info.plist after Electron was signed, and macOS keeps an
     // app with a broken signature out of the keychain, so meetings could not
     // be encrypted. Builds without a signing identity get an ad-hoc signature.

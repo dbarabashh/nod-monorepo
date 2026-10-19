@@ -59,6 +59,7 @@ pnpm test        # node:test over src/**/*.test.ts (Node >= 24)
 pnpm lint        # oxlint + oxfmt --check + type-assertion check
 pnpm lint:fix    # oxlint --fix + oxfmt --write
 pnpm make        # installers for the host OS into out/make
+                 # NOD_RELAY_URL=<https address> offers that relay in the build
 ```
 
 Run `pnpm typecheck && pnpm lint && pnpm test` before calling a change done.
