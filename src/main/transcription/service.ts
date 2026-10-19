@@ -19,7 +19,10 @@ export type Transcriber = {
   start: (meetingId: string, offsetMs: number, setup: SpeechSetup) => void;
   audio: (speaker: Speaker, samples: Int16Array) => void;
   flush: () => Promise<void>;
-  summarize: (modelPath: string, transcript: string) => Promise<string>;
+  summarize: (
+    modelPath: string,
+    transcript: string,
+  ) => Promise<{ summary: string; title: string }>;
 };
 
 type Pending = {
@@ -132,7 +135,7 @@ export function createTranscriber(options: {
       if (event.type !== 'summary') {
         throw new Error(event.type === 'failed' ? event.message : 'No summary');
       }
-      return event.text;
+      return { summary: event.text, title: event.title };
     },
   };
 }

@@ -4,8 +4,10 @@ import {
   editTranscriptLine,
   extendMeeting,
   finishMeeting,
+  meetingName,
   meetingStartedAt,
   recordedMs,
+  renameMeeting,
   resumeMeeting,
   setSummary,
   startMeeting,
@@ -35,10 +37,11 @@ export type Recorder = {
   appendLines: (id: string, lines: TranscriptLine[]) => Promise<void>;
   setSummaryStatus: (id: string, status: SummaryStatus) => void;
   setProblem: (id: string, problem: string | null) => void;
-  saveSummary: (id: string, summary: string) => Promise<void>;
+  saveSummary: (id: string, summary: string, title: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
   editLine: (id: string, lineId: string, text: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  rename: (id: string, title: string) => Promise<void>;
   applyRemote: (state: DocumentState) => void;
 };
 
@@ -208,7 +211,7 @@ export function createRecorder(options: {
       .sort((a, b) => meetingStartedAt(b) - meetingStartedAt(a))
       .map((meeting) => ({
         id: meeting.id,
-        title: meeting.title,
+        title: meetingName(meeting),
         startedAt: meetingStartedAt(meeting),
         recordedMs: recordedMs(meeting),
         status:
@@ -259,10 +262,12 @@ export function createRecorder(options: {
       onChange();
     },
     // A summary the user corrected while a new one was being written wins.
-    saveSummary: (id, summary) =>
+    saveSummary: (id, summary, title) =>
       update(id, (meeting) =>
-        meeting.summaryEdited ? meeting : setSummary(meeting, summary),
+        meeting.summaryEdited ? meeting : setSummary(meeting, summary, title),
       ),
+    rename: (id, title) =>
+      update(id, (meeting) => renameMeeting(meeting, title)),
     editSummary: (id, markdown) =>
       update(id, (meeting) => editSummary(meeting, markdown)),
     editLine: (id, lineId, text) =>

@@ -66,6 +66,8 @@ describe('createRecorder', () => {
         transcript: [],
         summary: null,
         summaryEdited: false,
+        titleEdited: false,
+        generatedTitle: null,
       },
     ]);
   });
@@ -91,6 +93,8 @@ describe('createRecorder', () => {
       transcript: [],
       summary: null,
       summaryEdited: false,
+      titleEdited: false,
+      generatedTitle: null,
     };
     const { recorder, advance, saved } = setup([earlier]);
     await recorder.load();
@@ -126,6 +130,8 @@ describe('createRecorder', () => {
       transcript: [],
       summary: null,
       summaryEdited: false,
+      titleEdited: false,
+      generatedTitle: null,
     });
     assert.equal(recorder.summaries()[0]?.status, 'finished');
     await assert.rejects(recorder.resume(id), /cannot be resumed/);
@@ -219,7 +225,7 @@ describe('createRecorder', () => {
     });
     await recorder.load();
     const starting = recorder.start('B');
-    await recorder.saveSummary('a', 'We met.');
+    await recorder.saveSummary('a', 'We met.', '');
     failFirst(new Error('ENOSPC'));
     await assert.rejects(starting, /ENOSPC/);
     assert.deepEqual(
@@ -277,7 +283,7 @@ describe('createRecorder', () => {
       },
     ]);
     await recorder.finish(id);
-    await recorder.saveSummary(id, 'Met Jon.');
+    await recorder.saveSummary(id, 'Met Jon.', '');
     const before = recorder.summaries()[0]?.contentVersion;
 
     await recorder.editSummary(id, 'Met Ann.');
@@ -296,10 +302,10 @@ describe('createRecorder', () => {
     await recorder.load();
     const id = await recorder.start('A');
     await recorder.finish(id);
-    await recorder.saveSummary(id, 'Met Jon.');
+    await recorder.saveSummary(id, 'Met Jon.', '');
     await recorder.editSummary(id, 'Met John.');
 
-    await recorder.saveSummary(id, 'A newer summary from the model.');
+    await recorder.saveSummary(id, 'A newer summary from the model.', '');
 
     assert.equal(recorder.transcriptOf(id)?.summary, 'Met John.');
     assert.equal(recorder.transcriptOf(id)?.summaryEdited, true);
@@ -380,6 +386,17 @@ describe('createRecorder', () => {
     assert.deepEqual(recorder.summaries(), []);
   });
 
+  it('keeps a meeting renamed by hand when the summary names it later', async () => {
+    const { recorder, saved } = setup();
+    await recorder.load();
+    const id = await recorder.start('Meeting on Oct 19');
+    await recorder.finish(id);
+    await recorder.rename(id, 'Pricing call');
+    await recorder.saveSummary(id, 'We set prices.', 'Model name');
+    assert.equal(saved()[0]?.title, 'Pricing call');
+    assert.equal(recorder.summaries()[0]?.title, 'Pricing call');
+  });
+
   it('records one meeting at a time', async () => {
     const { recorder } = setup();
     await recorder.load();
@@ -418,6 +435,8 @@ describe('createRecorder', () => {
         transcript: [],
         summary: null,
         summaryEdited: false,
+        titleEdited: false,
+        generatedTitle: null,
       },
     ]);
     await recorder.load();

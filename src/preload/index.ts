@@ -32,6 +32,8 @@ const api: AppApi = {
     ipcRenderer.invoke(IpcChannel.editTranscriptLine, id, lineId, text),
   summarizeMeeting: (id) => ipcRenderer.invoke(IpcChannel.summarizeMeeting, id),
   deleteMeeting: (id) => ipcRenderer.invoke(IpcChannel.deleteMeeting, id),
+  renameMeeting: (id, title) =>
+    ipcRenderer.invoke(IpcChannel.renameMeeting, id, title),
   copyMeeting: (id, part) =>
     ipcRenderer.invoke(IpcChannel.copyMeeting, id, part),
   sendRecordingAudio: (speaker, samples) =>

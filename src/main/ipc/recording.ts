@@ -17,6 +17,7 @@ const maxIdLength = 64;
 const levelIntervalMs = 30;
 const maxSummaryChars = 100_000;
 const maxLineChars = 10_000;
+const maxTitleChars = 200;
 const tooLong = 'That text is too long to save';
 
 function text(value: unknown, fallback: string): string {
@@ -92,6 +93,12 @@ export function registerRecordingIpc(options: {
   handleFromApp(appUrl, IpcChannel.pauseRecording, session.pause);
   handleFromApp(appUrl, IpcChannel.finishMeeting, (id) =>
     session.finish(meetingId(id)),
+  );
+  handleFromApp(appUrl, IpcChannel.renameMeeting, (id, title) =>
+    recorder.rename(
+      meetingId(id),
+      boundedString(title, maxTitleChars, tooLong),
+    ),
   );
   handleFromApp(appUrl, IpcChannel.deleteMeeting, (id) =>
     recorder.remove(meetingId(id)),

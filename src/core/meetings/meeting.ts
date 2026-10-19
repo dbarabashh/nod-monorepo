@@ -21,6 +21,8 @@ export type Meeting = {
   transcript: TranscriptLine[];
   summary: string | null;
   summaryEdited: boolean;
+  titleEdited: boolean;
+  generatedTitle: string | null;
 };
 
 export function startMeeting(id: string, title: string, now: number): Meeting {
@@ -32,6 +34,8 @@ export function startMeeting(id: string, title: string, now: number): Meeting {
     transcript: [],
     summary: null,
     summaryEdited: false,
+    titleEdited: false,
+    generatedTitle: null,
   };
 }
 
@@ -85,8 +89,78 @@ export function appendTranscript(
   };
 }
 
-export function setSummary(meeting: Meeting, summary: string): Meeting {
-  return { ...meeting, summary: cleanSummary(summary), summaryEdited: false };
+const maxTitleLength = 80;
+
+// Control characters and direction overrides could hide or reorder what a
+// name shows, so they never get into one.
+function plainName(text: string): string {
+  return text
+    .replace(/[\p{Cc}\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function capped(name: string): string {
+  const characters = [...name];
+  return characters.length > maxTitleLength
+    ? `${characters
+        .slice(0, maxTitleLength - 1)
+        .join('')
+        .trimEnd()}…`
+    : name;
+}
+
+// Models wrap a title in quotes, a "Title:" label, Markdown or thinking
+// tags, and end it with a full stop; none of that belongs in a name.
+export function cleanTitle(raw: string): string | null {
+  const lines = raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(
+      (line) => line !== '' && !/^(?:meeting\s+)?title\s*:?$/i.test(line),
+    );
+  const quotes = /^["'“”‘’«»]+|["'“”‘’«»]+$/g;
+  const title = plainName(
+    (lines[0] ?? '')
+      .replace(/^#+\s*/, '')
+      .replace(/^\*{1,2}(.*?)\*{1,2}$/, '$1')
+      .replace(quotes, '')
+      .replace(/^(?:meeting\s+)?title\s*:\s*/i, '')
+      .replace(/[.。]+$/, '')
+      .replace(quotes, ''),
+  );
+  return title === '' ? null : capped(title);
+}
+
+// A name the user gave wins; then the one the summary model wrote; then the
+// one the meeting started with.
+export function meetingName(meeting: Meeting): string {
+  return meeting.titleEdited
+    ? meeting.title
+    : (meeting.generatedTitle ?? meeting.title);
+}
+
+export function setSummary(
+  meeting: Meeting,
+  summary: string,
+  title: string | null = null,
+): Meeting {
+  return {
+    ...meeting,
+    generatedTitle:
+      (title === null ? null : cleanTitle(title)) ?? meeting.generatedTitle,
+    summary: cleanSummary(summary),
+    summaryEdited: false,
+  };
+}
+
+export function renameMeeting(meeting: Meeting, title: string): Meeting {
+  const named = plainName(title);
+  if (named === '') {
+    throw new Error('A meeting needs a name');
+  }
+  return { ...meeting, title: capped(named), titleEdited: true };
 }
 
 export function editSummary(meeting: Meeting, markdown: string): Meeting {
@@ -244,6 +318,8 @@ export function parseMeeting(raw: unknown): Meeting | null {
   const transcript = field(raw, 'transcript') ?? [];
   const summary = field(raw, 'summary') ?? null;
   const summaryEdited = field(raw, 'summaryEdited') ?? false;
+  const titleEdited = field(raw, 'titleEdited') ?? false;
+  const generatedTitle = field(raw, 'generatedTitle') ?? null;
   if (
     typeof id !== 'string' ||
     typeof title !== 'string' ||
@@ -251,7 +327,9 @@ export function parseMeeting(raw: unknown): Meeting | null {
     !(finishedAt === null || typeof finishedAt === 'number') ||
     !Array.isArray(transcript) ||
     !(summary === null || typeof summary === 'string') ||
-    typeof summaryEdited !== 'boolean'
+    typeof summaryEdited !== 'boolean' ||
+    typeof titleEdited !== 'boolean' ||
+    !(generatedTitle === null || typeof generatedTitle === 'string')
   ) {
     return null;
   }
@@ -272,6 +350,8 @@ export function parseMeeting(raw: unknown): Meeting | null {
     transcript: lines.filter((line) => line !== null),
     summary,
     summaryEdited,
+    titleEdited,
+    generatedTitle,
   };
 }
 

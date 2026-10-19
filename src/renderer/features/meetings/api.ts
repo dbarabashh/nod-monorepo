@@ -55,3 +55,7 @@ export function editTranscriptLine(
 export function deleteMeeting(id: string): Promise<void> {
   return window.api.deleteMeeting(id);
 }
+
+export function renameMeeting(id: string, title: string): Promise<void> {
+  return window.api.renameMeeting(id, title);
+}

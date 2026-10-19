@@ -3,14 +3,17 @@ import { describe, it } from 'node:test';
 import {
   appendTranscript,
   cleanSummary,
+  cleanTitle,
   editSummary,
   editTranscriptLine,
   extendMeeting,
   finishMeeting,
+  meetingName,
   meetingStartedAt,
   meetingText,
   parseMeetings,
   recordedMs,
+  renameMeeting,
   resumeMeeting,
   serializeMeetings,
   setSummary,
@@ -73,6 +76,8 @@ describe('the stored meetings file', () => {
           transcript: [],
           summary: null,
           summaryEdited: false,
+          titleEdited: false,
+          generatedTitle: null,
         },
       ],
     );
@@ -105,6 +110,8 @@ describe('the stored meetings file', () => {
       transcript: [],
       summary: null,
       summaryEdited: false,
+      titleEdited: false,
+      generatedTitle: null,
     };
     assert.deepEqual(parseMeetings({ version: 1, meetings: [good] }), [good]);
     for (const damaged of [
@@ -205,6 +212,54 @@ describe('the transcript', () => {
       meetingText(meeting, 'transcript'),
       '[0:01] Me: Shall we start?\n[1:05] Others: Yes.\n[1:02:05] Me: Bye.',
     );
+  });
+
+  it('names the meeting from the summary model, without the model’s wrapping', () => {
+    const named = setSummary(
+      startMeeting('m1', 'Meeting on Oct 19, 2026, 2:19 PM', 0),
+      'We agreed to ship on Friday.',
+      '  "Title: Launch date for the onboarding flow."\nExtra line',
+    );
+    assert.equal(meetingName(named), 'Launch date for the onboarding flow');
+    assert.equal(named.title, 'Meeting on Oct 19, 2026, 2:19 PM');
+    assert.equal(cleanTitle('## **Запуск онбордингу**'), 'Запуск онбордингу');
+    assert.equal(cleanTitle('«Планування релізу»'), 'Планування релізу');
+    assert.equal(cleanTitle('x'.repeat(100))?.length, 80);
+  });
+
+  it('keeps a name the user gave over one the model writes later', () => {
+    const renamed = renameMeeting(
+      startMeeting('m1', 'Meeting on Oct 19', 0),
+      '  Pricing   call ',
+    );
+    assert.equal(renamed.title, 'Pricing call');
+    assert.equal(renamed.titleEdited, true);
+    assert.equal(
+      meetingName(setSummary(renamed, 'Text.', 'Model name')),
+      'Pricing call',
+    );
+    assert.throws(() => renameMeeting(renamed, '   '), /needs a name/);
+  });
+
+  it('cleans the odd shapes a model and a paste produce', () => {
+    assert.equal(cleanTitle('Title:\nLaunch plan'), 'Launch plan');
+    assert.equal(cleanTitle('*Launch plan*'), 'Launch plan');
+    assert.equal(cleanTitle('<think>hmm</think>Launch plan'), 'Launch plan');
+    assert.equal([...(cleanTitle('😀'.repeat(100)) ?? '')].length, 80);
+    assert.equal(
+      renameMeeting(startMeeting('m1', 'A', 0), 'Bad\u202enamegpj.exe\u0007')
+        .title,
+      'Bad namegpj.exe',
+    );
+  });
+
+  it('keeps the old name when the model gives no usable title', () => {
+    const meeting = startMeeting('m1', 'Weekly sync', 0);
+    assert.equal(
+      meetingName(setSummary(meeting, 'Text.', '  "" ')),
+      'Weekly sync',
+    );
+    assert.equal(meetingName(setSummary(meeting, 'Text.')), 'Weekly sync');
   });
 
   it('keeps a hand-edited summary and marks it so a new one won’t replace it unasked', () => {

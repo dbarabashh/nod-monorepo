@@ -17,6 +17,8 @@ import {
   editSummary,
   editTranscriptLine,
   finishMeeting,
+  meetingName,
+  renameMeeting,
   setSummary,
   startMeeting,
   type Meeting,
@@ -96,6 +98,8 @@ describe('meeting documents', () => {
       ...base,
       summary: 'John ships the onboarding on Friday. Anna writes the notes.',
       summaryEdited: true,
+      titleEdited: false,
+      generatedTitle: null,
       transcript: [
         {
           id: 'a',
@@ -231,6 +235,73 @@ describe('meeting documents', () => {
       meetingOf(mergeDocuments(cleared, extended)).summary,
       ' Plus a note.',
     );
+  });
+
+  it('keeps a rename and a generated name through saving and syncing', () => {
+    const named = renameMeeting(
+      setSummary(base, 'Text.', 'Generated'),
+      'Pricing',
+    );
+    const loaded = loadDocument(saveDocument(createDocument(named)));
+    assert.ok(loaded);
+    assert.deepEqual(meetingOf(loaded), named);
+  });
+
+  it('shows the user’s rename when the model names the meeting elsewhere at the same time', () => {
+    const shared = createDocument(base);
+    const recorded = updateDocument(
+      Automerge.clone(shared),
+      base,
+      setSummary(base, 'Text.', 'Launch date planning'),
+    );
+    const renamed = updateDocument(
+      Automerge.clone(shared),
+      base,
+      renameMeeting(base, 'Pricing call'),
+    );
+    for (const merged of [
+      mergeDocuments(recorded, renamed),
+      mergeDocuments(renamed, recorded),
+    ]) {
+      assert.equal(meetingName(meetingOf(merged)), 'Pricing call');
+    }
+  });
+
+  it('keeps one whole name when two devices rename at the same time', () => {
+    const shared = createDocument(base);
+    const laptop = updateDocument(
+      Automerge.clone(shared),
+      base,
+      renameMeeting(base, 'Launch date planning'),
+    );
+    const phone = updateDocument(
+      Automerge.clone(shared),
+      base,
+      renameMeeting(base, 'Pricing call'),
+    );
+    const name = meetingName(meetingOf(mergeDocuments(laptop, phone)));
+    assert.ok(['Launch date planning', 'Pricing call'].includes(name), name);
+    assert.equal(meetingName(meetingOf(mergeDocuments(phone, laptop))), name);
+  });
+
+  it('reads a document written before names were whole values', () => {
+    const older = Automerge.from({
+      schema: 1,
+      id: 'm1',
+      title: 'Typed as text',
+      segments: [{ startedAt: 1, endedAt: 2 }],
+      finishedAt: null,
+      lines: {},
+      summary: '',
+      summaryEdited: false,
+      deletedAt: null,
+    });
+    const loaded = loadDocument(Automerge.save(older));
+    assert.ok(loaded);
+    const meeting = meetingOf(loaded);
+    assert.equal(meeting.title, 'Typed as text');
+    assert.equal(meeting.titleEdited, false);
+    assert.equal(meeting.generatedTitle, null);
   });
 
   it('builds the same tombstone on every device, so it stops syncing', () => {

@@ -13,12 +13,14 @@ type LineFields = Omit<TranscriptLine, 'id'>;
 type MeetingFields = {
   schema: number;
   id: string;
-  title: string;
+  title: string | Automerge.ImmutableString;
   segments: Segment[];
   finishedAt: number | null;
   lines: Record<string, LineFields>;
   summary: string;
   summaryEdited: boolean;
+  titleEdited: boolean;
+  generatedTitle: Automerge.ImmutableString | null;
   deletedAt: number | null;
 };
 
@@ -27,6 +29,16 @@ export type MeetingDocument = Automerge.Doc<MeetingFields>;
 export type DocumentState =
   | { kind: 'meeting'; id: string; meeting: Meeting }
   | { kind: 'deleted'; id: string; deletedAt: number };
+
+// Names are whole values, not text: two devices naming a meeting at once
+// keep one of the names rather than a mix of the letters of both.
+function nameOf(value: string | null): Automerge.ImmutableString | null {
+  return value === null ? null : new Automerge.ImmutableString(value);
+}
+
+function plainValue(value: unknown): unknown {
+  return value instanceof Automerge.ImmutableString ? value.toString() : value;
+}
 
 function linesOf(meeting: Meeting): Record<string, LineFields> {
   return Object.fromEntries(
@@ -38,12 +50,14 @@ export function createDocument(meeting: Meeting): MeetingDocument {
   return Automerge.from<MeetingFields>({
     schema: documentSchema,
     id: meeting.id,
-    title: meeting.title,
+    title: new Automerge.ImmutableString(meeting.title),
     segments: meeting.segments.map((segment) => ({ ...segment })),
     finishedAt: meeting.finishedAt,
     lines: linesOf(meeting),
     summary: meeting.summary ?? '',
     summaryEdited: meeting.summaryEdited,
+    titleEdited: meeting.titleEdited,
+    generatedTitle: nameOf(meeting.generatedTitle),
     deletedAt: null,
   });
 }
@@ -70,12 +84,14 @@ export function tombstone(id: string, deletedAt: number): MeetingDocument {
     (fields) => {
       fields.schema = documentSchema;
       fields.id = id;
-      fields.title = '';
+      fields.title = new Automerge.ImmutableString('');
+      fields.generatedTitle = null;
       fields.segments = [];
       fields.finishedAt = null;
       fields.lines = {};
       fields.summary = '';
       fields.summaryEdited = false;
+      fields.titleEdited = false;
       fields.deletedAt = deletedAt;
     },
   );
@@ -122,7 +138,10 @@ function sameSegment(a: Segment | undefined, b: Segment | undefined) {
 // that merge with edits made elsewhere.
 function reconcile(fields: MeetingFields, previous: Meeting, next: Meeting) {
   if (previous.title !== next.title) {
-    Automerge.updateText(fields, ['title'], next.title);
+    fields.title = new Automerge.ImmutableString(next.title);
+  }
+  if (previous.generatedTitle !== next.generatedTitle) {
+    fields.generatedTitle = nameOf(next.generatedTitle);
   }
   next.segments.forEach((segment, index) => {
     if (sameSegment(previous.segments[index], segment)) {
@@ -147,6 +166,9 @@ function reconcile(fields: MeetingFields, previous: Meeting, next: Meeting) {
   }
   if (previous.summaryEdited !== next.summaryEdited) {
     fields.summaryEdited = next.summaryEdited;
+  }
+  if (previous.titleEdited !== next.titleEdited) {
+    fields.titleEdited = next.titleEdited;
   }
   const before = new Map(previous.transcript.map((line) => [line.id, line]));
   const kept = new Set(next.transcript.map((line) => line.id));
@@ -218,6 +240,8 @@ export function readDocument(document: MeetingDocument): DocumentState | null {
   const summary = field(raw, 'summary');
   const meeting = parseMeeting({
     ...raw,
+    title: plainValue(field(raw, 'title')),
+    generatedTitle: plainValue(field(raw, 'generatedTitle')),
     transcript,
     summary: summary === '' ? null : summary,
   });

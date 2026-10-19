@@ -140,13 +140,11 @@ export function createMeetingSession(options: {
         recorder.setSummaryStatus(id, 'idle');
         return;
       }
-      await recorder.saveSummary(
-        id,
-        await transcriber.summarize(
-          summaryModel.path(weights.name),
-          transcriptText(meeting),
-        ),
+      const { summary, title } = await transcriber.summarize(
+        summaryModel.path(weights.name),
+        transcriptText(meeting),
       );
+      await recorder.saveSummary(id, summary, title);
       recorder.setSummaryStatus(id, 'idle');
     } catch (error) {
       recorder.setSummaryStatus(id, 'failed');

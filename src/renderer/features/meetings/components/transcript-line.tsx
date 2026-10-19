@@ -21,6 +21,9 @@ function TranscriptLineView({ meetingId, line }: TranscriptLineProps) {
   const time = formatClock(line.startMs);
 
   function keys(event: KeyboardEvent<HTMLSpanElement>) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
     if (event.key === 'Enter') {
       event.preventDefault();
       event.currentTarget.blur();

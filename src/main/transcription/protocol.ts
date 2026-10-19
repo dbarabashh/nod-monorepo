@@ -24,7 +24,7 @@ export type WorkerRequest =
 export type WorkerEvent =
   | { type: 'lines'; meetingId: string; lines: TranscriptLine[] }
   | { type: 'flushed'; requestId: number }
-  | { type: 'summary'; requestId: number; text: string }
+  | { type: 'summary'; requestId: number; text: string; title: string }
   | { type: 'failed'; requestId: number | null; message: string };
 
 export { pcmSampleRate as sampleRate } from '../../shared/ipc.ts';

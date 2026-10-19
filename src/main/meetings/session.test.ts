@@ -10,7 +10,8 @@ function setup(captureGraceMs = 0) {
   let time = 1_000;
   let ids = 0;
   const calls: string[] = [];
-  let summaryResult = () => Promise.resolve('We agreed.');
+  let summaryResult = () =>
+    Promise.resolve({ summary: 'We agreed.', title: 'Shipping plan' });
   let flushResult = () => Promise.resolve();
   const recorder = createRecorder({
     store: {
@@ -126,6 +127,18 @@ describe('createMeetingSession', () => {
     await settle();
     assert.equal(calls.filter((call) => call === 'summarize').length, 1);
     assert.equal(recorder.transcriptOf('m1')?.summary, 'We agreed.');
+  });
+
+  it('names a finished meeting along with its summary', async () => {
+    const { recorder, session } = setup();
+    await recorder.load();
+    await session.start('Meeting on Oct 19, 2026, 2:19 PM');
+    await recorder.appendLines('m1', [
+      { id: 'l1', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+    ]);
+    await session.finish('m1');
+    await settle();
+    assert.equal(recorder.summaries()[0]?.title, 'Shipping plan');
   });
 
   it('marks a failed summary so it can be tried again', async () => {

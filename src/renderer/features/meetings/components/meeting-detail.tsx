@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react';
 import { formatDuration } from '../lib/format-duration.ts';
 import type { Meeting } from '../types.ts';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
+import { MeetingTitle } from './meeting-title.tsx';
 import { MeetingTranscript } from './meeting-transcript.tsx';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, {
@@ -20,9 +21,11 @@ export function MeetingDetail({ meeting, actions }: MeetingDetailProps) {
   return (
     <aside className="meeting-detail" aria-labelledby={titleId}>
       <div className="meeting-detail__heading">
-        <h2 id={titleId} className="meeting-detail__title">
-          {meeting.title}
-        </h2>
+        <MeetingTitle
+          id={titleId}
+          meetingId={meeting.id}
+          title={meeting.title}
+        />
         <MeetingStatusBadge status={meeting.status} />
       </div>
       <dl className="meeting-detail__facts">

@@ -128,6 +128,7 @@ export const IpcChannel = {
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
   deleteMeeting: 'meetings:delete',
+  renameMeeting: 'meetings:rename',
   summarizeMeeting: 'meetings:summarize',
   editSummary: 'meetings:edit-summary',
   editTranscriptLine: 'meetings:edit-line',
@@ -175,6 +176,7 @@ export type AppApi = {
   getMeeting: (id: string) => Promise<MeetingDetail>;
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
+  renameMeeting: (id: string, title: string) => Promise<void>;
   summarizeMeeting: (id: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
   editTranscriptLine: (

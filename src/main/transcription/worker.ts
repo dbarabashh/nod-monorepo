@@ -174,10 +174,18 @@ const summaryInstructions = [
   'Only use what the transcript says. If it is too short to summarize, say so in one sentence.',
 ].join(' ');
 
+const titleInstructions = [
+  'You name meetings from their summary.',
+  'Reply with only a title of three to seven words, in the language of the summary, naming what the meeting was mainly about.',
+  'No quotes, no label, no full stop at the end.',
+].join(' ');
+
+const titleReplyTokens = 32;
+
 async function summarize(
   modelPath: string,
   transcript: string,
-): Promise<string> {
+): Promise<{ summary: string; title: string }> {
   const llama = await loadModel({
     model: modelPath,
     n_ctx: summaryContextTokens,
@@ -199,7 +207,24 @@ async function summarize(
       n_predict: summaryReplyTokens,
       temperature: 0.3,
     });
-    return (result.content ?? result.text).trim();
+    const summary = (result.content ?? result.text).trim();
+    // The model is already loaded and the summary is far shorter than the
+    // transcript, so naming the meeting costs little; if naming fails, the
+    // summary is kept and the meeting keeps its name.
+    const title = await llama
+      .completion({
+        messages: [
+          { role: 'system', content: titleInstructions },
+          { role: 'user', content: summary },
+        ],
+        n_predict: titleReplyTokens,
+        temperature: 0.2,
+      })
+      .then(
+        (named) => (named.content ?? named.text).trim(),
+        () => '',
+      );
+    return { summary, title };
   } finally {
     await llama.release();
   }
@@ -271,7 +296,13 @@ function handle(request: WorkerRequest) {
       void transcription(() =>
         summarize(request.modelPath, request.transcript),
       ).then(
-        (text) => post({ type: 'summary', requestId: request.requestId, text }),
+        ({ summary, title }) =>
+          post({
+            type: 'summary',
+            requestId: request.requestId,
+            text: summary,
+            title,
+          }),
         (error: unknown) => post(failure(request.requestId, error)),
       );
       break;
