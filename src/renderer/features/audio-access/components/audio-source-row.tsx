@@ -59,7 +59,7 @@ export function AudioSourceRow({
 
   function release() {
     run.current = null;
-    monitor.current?.stop();
+    void monitor.current?.stop();
     monitor.current = null;
   }
 
@@ -89,7 +89,7 @@ export function AudioSourceRow({
         },
       });
       if (run.current !== current) {
-        started.stop();
+        void started.stop();
         return;
       }
       monitor.current = started;

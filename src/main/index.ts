@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { modelCatalog } from '../core/models/index.ts';
 import { createAppStateStore } from './app-state/store.ts';
+import { ignoreClosedOutput } from './closed-output.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
@@ -27,6 +28,8 @@ import { IpcEvent } from '../shared/ipc.ts';
 import { createMainWindow } from './windows/main-window.ts';
 import { openRecordingWidget } from './windows/recording-widget.ts';
 
+ignoreClosedOutput();
+
 // A second process would load and rewrite the same meetings file, so every
 // launch after the first hands over to the running app.
 if (started || !app.requestSingleInstanceLock()) {
@@ -40,6 +43,7 @@ const appUrl =
   ).href;
 
 const heartbeatMs = 5_000;
+const quitFlushMs = 10_000;
 
 let mainWindow: BrowserWindow | null = null;
 let widget: BrowserWindow | null = null;
@@ -49,8 +53,14 @@ let pauseRecording = () => recorder.pause();
 const meetingStore = createMeetingStore(
   path.join(app.getPath('userData'), 'meetings.bin'),
   {
-    encrypt: (plain) => safeStorage.encryptString(plain),
-    decrypt: (data) => safeStorage.decryptString(data),
+    encrypt: (plain) => {
+      requireSecureStorage();
+      return safeStorage.encryptString(plain);
+    },
+    decrypt: (data) => {
+      requireSecureStorage();
+      return safeStorage.decryptString(data);
+    },
   },
 );
 
@@ -68,6 +78,20 @@ const recorder = createRecorder({
   },
 });
 
+// Without a keyring, Linux falls back to a key built into Chromium, which would
+// leave meetings readable by anyone who copies the file. Elsewhere safeStorage
+// throws by itself when the keychain can't be used.
+function requireSecureStorage() {
+  if (
+    process.platform === 'linux' &&
+    safeStorage.getSelectedStorageBackend() === 'basic_text'
+  ) {
+    throw new Error(
+      'Meetings can’t be saved securely because no system keyring is available.',
+    );
+  }
+}
+
 function recording(): boolean {
   return recorder.state().status === 'recording';
 }
@@ -77,6 +101,9 @@ function syncWidget() {
     widget = openRecordingWidget(appUrl);
     widget.on('closed', () => {
       widget = null;
+      if (recording() && !quitting) {
+        showMainWindow();
+      }
     });
   } else if (!recording() && widget) {
     widget.destroy();
@@ -122,11 +149,15 @@ app.whenReady().then(async () => {
     onLines: (meetingId, lines) => {
       recorder.appendLines(meetingId, lines).catch(() => undefined);
     },
+    onFailure: (message, stopped) =>
+      meetingSession.transcriptionFailed(message, stopped),
   });
   const meetingSession = createMeetingSession({
     recorder,
     models,
     transcriber,
+    now: Date.now,
+    captureGraceMs: 1_000,
   });
   pauseRecording = meetingSession.pause;
   registerRecordingIpc({
@@ -154,7 +185,10 @@ app.on('before-quit', (event) => {
   quitting = true;
   // Everything is on disk by then; exit() avoids a second quit request,
   // which Electron ignores after a quit started by a signal was cancelled.
-  void pauseRecording()
+  void Promise.race([
+    pauseRecording(),
+    new Promise((resolve) => setTimeout(resolve, quitFlushMs)),
+  ])
     .catch(() => undefined)
     .then(() => meetingStore.flush())
     .finally(() => app.exit());

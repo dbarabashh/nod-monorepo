@@ -5,12 +5,15 @@ import {
   pcmSampleRate,
   type MeetingPart,
 } from '../../shared/ipc.ts';
+import { createAudioBudget } from '../meetings/audio-budget.ts';
 import type { Recorder } from '../meetings/recorder.ts';
 import type { MeetingSession } from '../meetings/session.ts';
 import { broadcast, handleFromApp, listenFromApp } from '../security/sender.ts';
 import type { Transcriber } from '../transcription/service.ts';
 
 const maxAudioSamples = pcmSampleRate;
+const maxIdLength = 64;
+const levelIntervalMs = 30;
 
 function text(value: unknown, fallback: string): string {
   if (typeof value !== 'string') {
@@ -21,7 +24,7 @@ function text(value: unknown, fallback: string): string {
 }
 
 function meetingId(value: unknown): string {
-  if (typeof value !== 'string') {
+  if (typeof value !== 'string' || value.length > maxIdLength) {
     throw new Error('Unknown meeting');
   }
   return value;
@@ -78,18 +81,42 @@ export function registerRecordingIpc(options: {
   handleFromApp(appUrl, IpcChannel.finishMeeting, (id) =>
     session.finish(meetingId(id)),
   );
+  handleFromApp(appUrl, IpcChannel.summarizeMeeting, (id) =>
+    session.summarize(meetingId(id)),
+  );
   handleFromApp(appUrl, IpcChannel.showMainWindow, showMainWindow);
+  let levelSentAt = -Infinity;
   listenFromApp(appUrl, IpcChannel.sendRecordingLevel, (level) => {
-    if (typeof level === 'number' && level >= 0 && level <= 1) {
+    const now = performance.now();
+    if (
+      typeof level === 'number' &&
+      level >= 0 &&
+      level <= 1 &&
+      now - levelSentAt >= levelIntervalMs
+    ) {
+      levelSentAt = now;
       sendLevel(level);
     }
   });
+  // Headroom over real time lets a renderer catch up after a stall.
+  listenFromApp(appUrl, IpcChannel.sendCaptureStopped, session.captureStopped);
+  const budget = () =>
+    createAudioBudget({
+      now: () => performance.now(),
+      samplesPerSecond: pcmSampleRate * 1.5,
+      burstSeconds: 20,
+    });
+  const budgets = { me: budget(), others: budget() };
   listenFromApp(appUrl, IpcChannel.sendRecordingAudio, (speaker, samples) => {
+    // A small view over a huge buffer would carry the whole buffer along.
     if (
-      recorder.state().status === 'recording' &&
+      session.acceptsAudio() &&
       (speaker === 'me' || speaker === 'others') &&
       samples instanceof Int16Array &&
-      samples.length <= maxAudioSamples
+      samples.length <= maxAudioSamples &&
+      samples.byteOffset === 0 &&
+      samples.buffer.byteLength === samples.byteLength &&
+      budgets[speaker].admit(samples.length)
     ) {
       transcriber.audio(speaker, samples);
     }

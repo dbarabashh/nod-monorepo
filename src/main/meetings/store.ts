@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { open, readFile, rename } from 'node:fs/promises';
 import {
   parseMeetings,
   serializeMeetings,
@@ -18,7 +18,6 @@ export type MeetingStore = {
 
 export function createMeetingStore(file: string, cipher: Cipher): MeetingStore {
   let pending: Promise<unknown> = Promise.resolve();
-  let latest: Meeting[] | null = null;
 
   async function load(): Promise<Meeting[]> {
     let data: Buffer;
@@ -37,24 +36,40 @@ export function createMeetingStore(file: string, cipher: Cipher): MeetingStore {
     return parseMeetings(JSON.parse(cipher.decrypt(data)));
   }
 
+  // Without the sync, a power cut right after the rename can leave an empty
+  // file in place of every meeting on some filesystems.
   async function write(meetings: Meeting[]): Promise<void> {
     const temporary = `${file}.tmp`;
-    await writeFile(
-      temporary,
-      cipher.encrypt(JSON.stringify(serializeMeetings(meetings))),
-    );
+    const handle = await open(temporary, 'w');
+    try {
+      await handle.writeFile(
+        cipher.encrypt(JSON.stringify(serializeMeetings(meetings))),
+      );
+      await handle.datasync();
+    } finally {
+      await handle.close();
+    }
     await rename(temporary, file);
   }
 
-  // A save that a newer one has already replaced is skipped, so a slow disk
-  // never builds a backlog of whole-file writes.
+  type Queued = { meetings: Meeting[]; written: Promise<void> };
+  let queued: Queued | null = null;
+
+  // Saves that arrive while a write is running share the next write, so a
+  // slow disk never builds a backlog and each save reports that write's result.
   function save(meetings: Meeting[]): Promise<void> {
-    latest = meetings;
-    const result = pending.then(() =>
-      latest === meetings ? write(meetings) : undefined,
-    );
-    pending = result.catch(() => undefined);
-    return result;
+    if (queued) {
+      queued.meetings = meetings;
+      return queued.written;
+    }
+    const entry: Queued = { meetings, written: Promise.resolve() };
+    entry.written = pending.then(() => {
+      queued = null;
+      return write(entry.meetings);
+    });
+    queued = entry;
+    pending = entry.written.catch(() => undefined);
+    return entry.written;
   }
 
   return {

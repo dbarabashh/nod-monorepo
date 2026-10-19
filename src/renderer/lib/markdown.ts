@@ -15,7 +15,8 @@ const wholeLineBold = /^\s*\*\*(.+?)\*\*:?\s*$/;
 
 export function parseInline(text: string): Inline[] {
   const inlines: Inline[] = [];
-  const pattern = /\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_/g;
+  const pattern =
+    /\*\*(.+?)\*\*|\*(?=\S)(.+?)(?<=\S)\*|(?<!\w)_(?=\S)(.+?)(?<=\S)_(?!\w)/g;
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     if (match.index > last) {

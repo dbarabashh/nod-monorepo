@@ -14,6 +14,8 @@ declare module '@fugood/llama.node' {
       n_predict?: number;
       temperature?: number;
     }): Promise<CompletionResult>;
+    tokenize(text: string): Promise<{ tokens: Int32Array }>;
+    detokenize(tokens: number[]): Promise<string>;
     stopCompletion(): void;
     release(): Promise<void>;
   };

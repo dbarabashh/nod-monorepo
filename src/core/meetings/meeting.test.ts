@@ -160,6 +160,21 @@ describe('the transcript', () => {
     );
   });
 
+  it('drops lines without a real time, which the file could not store', () => {
+    const meeting = appendTranscript(startMeeting('m1', 'A', 0), [
+      { speaker: 'me', startMs: Number.NaN, endMs: 1_000, text: 'Lost.' },
+      { speaker: 'me', startMs: 0, endMs: Infinity, text: 'Lost too.' },
+      { speaker: 'others', startMs: 2_000, endMs: 3_000, text: 'Kept.' },
+    ]);
+    assert.deepEqual(meeting.transcript, [
+      { speaker: 'others', startMs: 2_000, endMs: 3_000, text: 'Kept.' },
+    ]);
+    assert.deepEqual(
+      parseMeetings(JSON.parse(JSON.stringify(serializeMeetings([meeting])))),
+      [meeting],
+    );
+  });
+
   it('copies the summary as written, or nothing before there is one', () => {
     const meeting = startMeeting('m1', 'A', 0);
     assert.equal(meetingText(meeting, 'summary'), '');

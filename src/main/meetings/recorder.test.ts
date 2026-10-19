@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import type { Meeting } from '../../core/meetings/index.ts';
+import { startMeeting, type Meeting } from '../../core/meetings/index.ts';
 import { createRecorder } from './recorder.ts';
 import type { MeetingStore } from './store.ts';
 
@@ -149,6 +149,112 @@ describe('createRecorder', () => {
     assert.deepEqual(recorder.state(), { status: 'idle' });
     assert.deepEqual(recorder.summaries(), []);
     assert.ok(changes > 0);
+  });
+
+  it('starts no heartbeat when the meeting was paused while it was being saved', async () => {
+    const saves: Array<() => void> = [];
+    let ticking = false;
+    const recorder = createRecorder({
+      store: {
+        load: async () => [],
+        save: () =>
+          new Promise<void>((resolve) => {
+            saves.push(resolve);
+          }),
+        flush: async () => {},
+      },
+      now: () => 0,
+      newId: () => 'x',
+      every: () => {
+        ticking = true;
+        return () => {
+          ticking = false;
+        };
+      },
+      onChange: () => {},
+    });
+    await recorder.load();
+    const starting = recorder.start('A');
+    const pausing = recorder.pause();
+    for (const finish of saves) {
+      finish();
+    }
+    await starting;
+    await pausing;
+    assert.deepEqual(recorder.state(), { status: 'idle' });
+    assert.equal(ticking, false);
+  });
+
+  it('keeps changes to other meetings when a start fails to save', async () => {
+    const earlier: Meeting = {
+      ...startMeeting('a', 'A', 0),
+      finishedAt: 10,
+      transcript: [{ speaker: 'me', startMs: 0, endMs: 1, text: 'Hi.' }],
+    };
+    let failFirst: (error: Error) => void = () => {};
+    let saves = 0;
+    const recorder = createRecorder({
+      store: {
+        load: async () => [earlier],
+        save: () => {
+          saves += 1;
+          return saves === 1
+            ? new Promise<void>((_resolve, reject) => {
+                failFirst = reject;
+              })
+            : Promise.resolve();
+        },
+        flush: async () => {},
+      },
+      now: () => 100,
+      newId: () => 'b',
+      every: () => () => {},
+      onChange: () => {},
+    });
+    await recorder.load();
+    const starting = recorder.start('B');
+    await recorder.saveSummary('a', 'We met.');
+    failFirst(new Error('ENOSPC'));
+    await assert.rejects(starting, /ENOSPC/);
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => meeting.id),
+      ['a'],
+    );
+    assert.equal(recorder.transcriptOf('a')?.summary, 'We met.');
+  });
+
+  it('tells the user while recent recording can’t be saved, and clears it once it can', async () => {
+    let failing = false;
+    let tick = () => {};
+    const recorder = createRecorder({
+      store: {
+        load: async () => [],
+        save: async () => {
+          if (failing) {
+            throw new Error('ENOSPC');
+          }
+        },
+        flush: async () => {},
+      },
+      now: () => 0,
+      newId: () => 'x',
+      every: (callback) => {
+        tick = callback;
+        return () => {};
+      },
+      onChange: () => {},
+    });
+    await recorder.load();
+    await recorder.start('A');
+    assert.equal(recorder.detail('x').problem, null);
+    failing = true;
+    tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.match(recorder.detail('x').problem ?? '', /couldn’t be saved/);
+    failing = false;
+    tick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(recorder.detail('x').problem, null);
   });
 
   it('records one meeting at a time', async () => {

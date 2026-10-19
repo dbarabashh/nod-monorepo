@@ -17,9 +17,20 @@ export const defaultChunkOptions: ChunkOptions = {
   maxChunkMs: 28_000,
 };
 
+function split(span: Span, maxChunkMs: number): Span[] {
+  const parts: Span[] = [];
+  for (let start = span.startMs; start < span.endMs; start += maxChunkMs) {
+    parts.push({
+      startMs: start,
+      endMs: Math.min(start + maxChunkMs, span.endMs),
+    });
+  }
+  return parts;
+}
+
 function group(speech: Span[], maxChunkMs: number): Span[] {
   const chunks: Span[] = [];
-  for (const span of speech) {
+  for (const span of speech.flatMap((part) => split(part, maxChunkMs))) {
     const last = chunks.at(-1);
     if (last && span.endMs - last.startMs <= maxChunkMs) {
       last.endMs = span.endMs;

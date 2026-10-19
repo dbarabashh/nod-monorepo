@@ -35,3 +35,7 @@ export function getMeeting(id: string): Promise<MeetingDetail> {
 export function copyMeeting(id: string, part: MeetingPart): Promise<void> {
   return window.api.copyMeeting(id, part);
 }
+
+export function summarizeMeeting(id: string): Promise<void> {
+  return window.api.summarizeMeeting(id);
+}

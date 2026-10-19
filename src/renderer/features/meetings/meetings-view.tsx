@@ -134,6 +134,7 @@ export function MeetingsView({
         </div>
         {selected && (
           <MeetingDetail
+            key={selected.id}
             meeting={selected}
             actions={meetingActions(selected)}
           />

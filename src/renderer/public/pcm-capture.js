@@ -5,6 +5,15 @@ class PcmCapture extends AudioWorkletProcessor {
     super();
     this.batch = new Int16Array(batchSamples);
     this.filled = 0;
+    this.port.onmessage = (event) => {
+      if (event.data === 'flush') {
+        if (this.filled > 0) {
+          this.port.postMessage(this.batch.slice(0, this.filled));
+          this.filled = 0;
+        }
+        this.port.postMessage('flushed');
+      }
+    };
   }
 
   process(inputs) {

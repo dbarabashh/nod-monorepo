@@ -36,10 +36,7 @@ export function MeetingDetail({ meeting, actions }: MeetingDetailProps) {
         <dd>{formatDuration(meeting.durationSeconds)}</dd>
       </dl>
       <div className="meeting-detail__actions">{actions}</div>
-      <MeetingTranscript
-        meetingId={meeting.id}
-        recording={meeting.status === 'recording'}
-      />
+      <MeetingTranscript meetingId={meeting.id} status={meeting.status} />
     </aside>
   );
 }

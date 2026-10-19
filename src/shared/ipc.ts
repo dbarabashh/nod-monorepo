@@ -61,8 +61,11 @@ export type MeetingDetail = {
     text: string;
   }>;
   summary: string | null;
-  summarizing: boolean;
+  summaryStatus: SummaryStatus;
+  problem: string | null;
 };
+
+export type SummaryStatus = 'idle' | 'writing' | 'failed';
 
 export type RecordingState =
   | { status: 'idle' }
@@ -98,6 +101,7 @@ export const IpcChannel = {
   listMeetings: 'meetings:list',
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
+  summarizeMeeting: 'meetings:summarize',
   sendRecordingAudio: 'recording:send-audio',
   getRecording: 'recording:get',
   startRecording: 'recording:start',
@@ -105,6 +109,7 @@ export const IpcChannel = {
   pauseRecording: 'recording:pause',
   finishMeeting: 'meetings:finish',
   sendRecordingLevel: 'recording:send-level',
+  sendCaptureStopped: 'recording:capture-stopped',
   showMainWindow: 'app:show-main-window',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
@@ -127,6 +132,7 @@ export type AppApi = {
   listMeetings: () => Promise<MeetingSummary[]>;
   getMeeting: (id: string) => Promise<MeetingDetail>;
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
+  summarizeMeeting: (id: string) => Promise<void>;
   sendRecordingAudio: (speaker: Speaker, samples: Int16Array) => void;
   getRecording: () => Promise<RecordingState>;
   startRecording: (title: string) => Promise<void>;
@@ -134,6 +140,7 @@ export type AppApi = {
   pauseRecording: () => Promise<void>;
   finishMeeting: (id: string) => Promise<void>;
   sendRecordingLevel: (level: number) => void;
+  sendCaptureStopped: () => void;
   showMainWindow: () => Promise<void>;
   onMeetingsChanged: (
     callback: (meetings: MeetingSummary[]) => void,

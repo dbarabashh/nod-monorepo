@@ -1,6 +1,13 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import type { Speaker, TranscriptLine } from '../../core/meetings/index.ts';
-import type { SpeechEngine, WorkerEvent, WorkerRequest } from './protocol.ts';
+import {
+  sampleRate,
+  type SpeechEngine,
+  type WorkerEvent,
+  type WorkerRequest,
+} from './protocol.ts';
+
+const maxEarlySamples = 10 * sampleRate;
 
 export type SpeechSetup = {
   engine: SpeechEngine;
@@ -23,9 +30,13 @@ type Pending = {
 export function createTranscriber(options: {
   workerPath: string;
   onLines: (meetingId: string, lines: TranscriptLine[]) => void;
+  onFailure: (message: string, stopped: boolean) => void;
 }): Transcriber {
-  const { workerPath, onLines } = options;
+  const { workerPath, onLines, onFailure } = options;
   let worker: UtilityProcess | null = null;
+  let listening = false;
+  let early: Array<{ speaker: Speaker; samples: Int16Array }> = [];
+  let earlySamples = 0;
   let nextRequest = 1;
   const pending = new Map<number, Pending>();
 
@@ -42,6 +53,9 @@ export function createTranscriber(options: {
         return;
       }
       if (event.requestId === null) {
+        if (event.type === 'failed' && listening) {
+          onFailure(event.message, false);
+        }
         return;
       }
       pending.get(event.requestId)?.resolve(event);
@@ -53,13 +67,13 @@ export function createTranscriber(options: {
         request.reject(new Error('Transcription stopped unexpectedly'));
       }
       pending.clear();
+      if (listening) {
+        listening = false;
+        onFailure('Transcription stopped unexpectedly', true);
+      }
     });
     worker = child;
     return child;
-  }
-
-  function send(request: WorkerRequest) {
-    spawn().postMessage(request);
   }
 
   function ask(
@@ -68,22 +82,41 @@ export function createTranscriber(options: {
     const requestId = nextRequest++;
     return new Promise((resolve, reject) => {
       pending.set(requestId, { resolve, reject });
-      send(build(requestId));
+      spawn().postMessage(build(requestId));
     });
   }
 
+  function forgetEarly() {
+    early = [];
+    earlySamples = 0;
+  }
+
   return {
-    start: (meetingId, offsetMs, setup) =>
-      send({ type: 'start', meetingId, offsetMs, ...setup }),
+    start: (meetingId, offsetMs, setup) => {
+      const child = spawn();
+      child.postMessage({ type: 'start', meetingId, offsetMs, ...setup });
+      for (const { speaker, samples } of early) {
+        child.postMessage({ type: 'audio', speaker, samples });
+      }
+      forgetEarly();
+      listening = true;
+    },
+    // Audio that arrives while the model is being picked is kept for a few
+    // seconds, so the first words of a meeting aren't lost.
     audio: (speaker, samples) => {
-      if (worker) {
+      if (listening && worker) {
         worker.postMessage({ type: 'audio', speaker, samples });
+      } else if (earlySamples + samples.length <= maxEarlySamples) {
+        early.push({ speaker, samples });
+        earlySamples += samples.length;
       }
     },
     flush: async () => {
-      if (!worker) {
+      forgetEarly();
+      if (!listening || !worker) {
         return;
       }
+      listening = false;
       const event = await ask((requestId) => ({ type: 'flush', requestId }));
       if (event.type === 'failed') {
         throw new Error(event.message);

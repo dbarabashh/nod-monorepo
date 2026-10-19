@@ -8,7 +8,15 @@ import {
   type WhisperVadContext,
 } from '@fugood/whisper.node';
 import type { Speaker, TranscriptLine } from '../../core/meetings/index.ts';
+import {
+  append,
+  consume,
+  emptyBuffer,
+  snapshot,
+  type AudioBuffer,
+} from './audio-buffer.ts';
 import { planChunks } from '../../core/transcription/index.ts';
+import { ignoreClosedOutput } from '../closed-output.ts';
 import {
   sampleRate,
   type SpeechEngine,
@@ -16,8 +24,13 @@ import {
   type WorkerRequest,
 } from './protocol.ts';
 
+ignoreClosedOutput();
+
 const samplesPerMs = sampleRate / 1000;
 const processEveryMs = 2_000;
+const summaryContextTokens = 16_384;
+const summaryReplyTokens = 1_024;
+const summaryPromptTokens = 512;
 
 type Engine = {
   key: string;
@@ -27,39 +40,43 @@ type Engine = {
 };
 
 type Stream = {
-  pending: Int16Array[];
-  pendingSamples: number;
-  baseMs: number;
+  meetingId: string;
+  speaker: Speaker;
+  buffer: AudioBuffer;
   unprocessedMs: number;
 };
 
 let engine: Engine | null = null;
-let meetingId = '';
-const streams = new Map<Speaker, Stream>();
-let queue: Promise<unknown> = Promise.resolve();
+let streams = new Map<Speaker, Stream>();
 const speakers: Speaker[] = ['me', 'others'];
+
+function serial() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(job: () => Promise<T>): Promise<T> => {
+    const result = tail.then(job);
+    tail = result.catch(() => undefined);
+    return result;
+  };
+}
+
+// Summaries share the queue with transcription: a summary model loaded next
+// to a live meeting's speech model can run out of memory or fall behind.
+const transcription = serial();
 
 function post(event: WorkerEvent) {
   process.parentPort.postMessage(event);
-}
-
-function enqueue<T>(job: () => Promise<T>): Promise<T> {
-  const result = queue.then(job);
-  queue = result.catch(() => undefined);
-  return result;
 }
 
 async function loadEngine(
   kind: SpeechEngine,
   modelPath: string,
   vadPath: string,
-): Promise<Engine> {
+): Promise<void> {
   const key = `${kind}:${modelPath}`;
   if (engine?.key === key) {
-    return engine;
+    return;
   }
-  await engine?.release();
-  engine = null;
+  await releaseEngine();
   // Silero is tiny and its GPU path crashes on Metal; the CPU is fast enough.
   const vad = await initWhisperVad({
     filePath: vadPath,
@@ -68,16 +85,25 @@ async function loadEngine(
   });
   let model: WhisperContext | ParakeetContext;
   let transcribe: Engine['transcribe'];
-  if (kind === 'whisper') {
-    const whisper = await initWhisper({ filePath: modelPath, useGpu: true });
-    model = whisper;
-    transcribe = async (pcm) =>
-      (await whisper.transcribeData(pcm, { language: 'auto' }).promise).result;
-  } else {
-    const parakeet = await initParakeet({ filePath: modelPath, useGpu: true });
-    model = parakeet;
-    transcribe = async (pcm) =>
-      (await parakeet.transcribeData(pcm).promise).result;
+  try {
+    if (kind === 'whisper') {
+      const whisper = await initWhisper({ filePath: modelPath, useGpu: true });
+      model = whisper;
+      transcribe = async (pcm) =>
+        (await whisper.transcribeData(pcm, { language: 'auto' }).promise)
+          .result;
+    } else {
+      const parakeet = await initParakeet({
+        filePath: modelPath,
+        useGpu: true,
+      });
+      model = parakeet;
+      transcribe = async (pcm) =>
+        (await parakeet.transcribeData(pcm).promise).result;
+    }
+  } catch (error) {
+    await vad.release();
+    throw error;
   }
   engine = {
     key,
@@ -88,54 +114,53 @@ async function loadEngine(
       await vad.release();
     },
   };
-  return engine;
 }
 
-function joined(stream: Stream): Int16Array<ArrayBuffer> {
-  const all = new Int16Array(new ArrayBuffer(stream.pendingSamples * 2));
-  let offset = 0;
-  for (const part of stream.pending) {
-    all.set(part, offset);
-    offset += part.length;
-  }
-  return all;
+async function releaseEngine(): Promise<void> {
+  const current = engine;
+  engine = null;
+  await current?.release();
 }
 
-function toArrayBuffer(samples: Int16Array): ArrayBuffer {
-  return samples.slice().buffer;
-}
-
-async function drain(speaker: Speaker, final: boolean): Promise<void> {
-  const stream = streams.get(speaker);
-  if (!engine || !stream || stream.pendingSamples === 0) {
+async function drain(stream: Stream, final: boolean): Promise<void> {
+  if (stream.buffer.samples === 0) {
     return;
   }
-  const audio = joined(stream);
+  const taken = snapshot(stream.buffer);
+  const { audio } = taken;
   const bufferMs = audio.length / samplesPerMs;
-  const speech = (await engine.vad.detectSpeechData(audio.buffer)).map(
-    (segment) => ({ startMs: segment.t0 * 10, endMs: segment.t1 * 10 }),
-  );
-  const plan = planChunks(speech, bufferMs, final);
-  const lines: TranscriptLine[] = [];
-  for (const chunk of plan.chunks) {
-    const pcm = audio.subarray(
-      Math.floor(chunk.startMs * samplesPerMs),
-      Math.ceil(chunk.endMs * samplesPerMs),
-    );
-    const text = await engine.transcribe(toArrayBuffer(pcm));
-    lines.push({
-      speaker,
-      startMs: Math.round(stream.baseMs + chunk.startMs),
-      endMs: Math.round(stream.baseMs + chunk.endMs),
-      text,
-    });
+  // Audio no engine could hear is dropped, so a failed model can't hold
+  // the whole meeting in memory.
+  if (!engine) {
+    consume(stream.buffer, taken, bufferMs, samplesPerMs);
+    return;
   }
-  const rest = audio.subarray(Math.floor(plan.consumeMs * samplesPerMs));
-  stream.pending = rest.length > 0 ? [rest.slice()] : [];
-  stream.pendingSamples = rest.length;
-  stream.baseMs += plan.consumeMs;
-  if (lines.length > 0) {
-    post({ type: 'lines', meetingId, lines });
+  try {
+    const speech = (await engine.vad.detectSpeechData(audio.buffer)).map(
+      (segment) => ({ startMs: segment.t0 * 10, endMs: segment.t1 * 10 }),
+    );
+    const plan = planChunks(speech, bufferMs, final);
+    const baseMs = stream.buffer.baseMs;
+    const lines: TranscriptLine[] = [];
+    for (const chunk of plan.chunks) {
+      const pcm = audio.slice(
+        Math.floor(chunk.startMs * samplesPerMs),
+        Math.ceil(chunk.endMs * samplesPerMs),
+      );
+      lines.push({
+        speaker: stream.speaker,
+        startMs: Math.round(baseMs + chunk.startMs),
+        endMs: Math.round(baseMs + chunk.endMs),
+        text: await engine.transcribe(pcm.buffer),
+      });
+    }
+    consume(stream.buffer, taken, plan.consumeMs, samplesPerMs);
+    if (lines.length > 0) {
+      post({ type: 'lines', meetingId: stream.meetingId, lines });
+    }
+  } catch (error) {
+    consume(stream.buffer, taken, bufferMs, samplesPerMs);
+    throw error;
   }
 }
 
@@ -153,16 +178,23 @@ async function summarize(
 ): Promise<string> {
   const llama = await loadModel({
     model: modelPath,
-    n_ctx: 16_384,
+    n_ctx: summaryContextTokens,
     n_gpu_layers: 99,
   });
   try {
+    const budget =
+      summaryContextTokens - summaryReplyTokens - summaryPromptTokens;
+    const { tokens } = await llama.tokenize(transcript);
+    const fitted =
+      tokens.length > budget
+        ? await llama.detokenize(Array.from(tokens.subarray(-budget)))
+        : transcript;
     const result = await llama.completion({
       messages: [
         { role: 'system', content: summaryInstructions },
-        { role: 'user', content: transcript },
+        { role: 'user', content: fitted },
       ],
-      n_predict: 1_024,
+      n_predict: summaryReplyTokens,
       temperature: 0.3,
     });
     return (result.content ?? result.text).trim();
@@ -181,49 +213,62 @@ function failure(requestId: number | null, error: unknown): WorkerEvent {
 
 function handle(request: WorkerRequest) {
   switch (request.type) {
-    case 'start':
-      void enqueue(async () => {
-        meetingId = request.meetingId;
-        streams.clear();
-        for (const speaker of speakers) {
-          streams.set(speaker, {
-            pending: [],
-            pendingSamples: 0,
-            baseMs: request.offsetMs,
+    case 'start': {
+      streams = new Map(
+        speakers.map((speaker) => [
+          speaker,
+          {
+            meetingId: request.meetingId,
+            speaker,
+            buffer: emptyBuffer(request.offsetMs),
             unprocessedMs: 0,
-          });
-        }
-        await loadEngine(request.engine, request.modelPath, request.vadPath);
-      }).catch((error: unknown) => post(failure(null, error)));
+          },
+        ]),
+      );
+      void transcription(() =>
+        loadEngine(request.engine, request.modelPath, request.vadPath),
+      ).catch((error: unknown) => post(failure(null, error)));
       break;
+    }
     case 'audio': {
       const stream = streams.get(request.speaker);
       if (!stream) {
         return;
       }
-      stream.pending.push(request.samples);
-      stream.pendingSamples += request.samples.length;
+      append(stream.buffer, request.samples);
       stream.unprocessedMs += request.samples.length / samplesPerMs;
       if (stream.unprocessedMs >= processEveryMs) {
         stream.unprocessedMs = 0;
-        void enqueue(() => drain(request.speaker, false)).catch(
-          (error: unknown) => post(failure(null, error)),
+        void transcription(() => drain(stream, false)).catch((error: unknown) =>
+          post(failure(null, error)),
         );
       }
       break;
     }
-    case 'flush':
-      void enqueue(async () => {
-        for (const speaker of speakers) {
-          await drain(speaker, true);
+    case 'flush': {
+      const current = [...streams.values()];
+      streams = new Map();
+      void transcription(async () => {
+        const errors: unknown[] = [];
+        for (const stream of current) {
+          await drain(stream, true).catch((error: unknown) => {
+            errors.push(error);
+          });
+        }
+        await releaseEngine();
+        if (errors.length > 0) {
+          throw errors[0];
         }
       }).then(
         () => post({ type: 'flushed', requestId: request.requestId }),
         (error: unknown) => post(failure(request.requestId, error)),
       );
       break;
+    }
     case 'summarize':
-      void enqueue(() => summarize(request.modelPath, request.transcript)).then(
+      void transcription(() =>
+        summarize(request.modelPath, request.transcript),
+      ).then(
         (text) => post({ type: 'summary', requestId: request.requestId, text }),
         (error: unknown) => post(failure(request.requestId, error)),
       );

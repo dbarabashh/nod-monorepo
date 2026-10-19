@@ -65,7 +65,12 @@ export function appendTranscript(
 ): Meeting {
   const cleaned = lines
     .map((line) => ({ ...line, text: line.text.trim() }))
-    .filter((line) => line.text !== '');
+    .filter(
+      (line) =>
+        line.text !== '' &&
+        Number.isFinite(line.startMs) &&
+        Number.isFinite(line.endMs),
+    );
   if (cleaned.length === 0) {
     return meeting;
   }

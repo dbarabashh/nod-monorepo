@@ -22,6 +22,10 @@ export function pauseRecording(): Promise<void> {
   return window.api.pauseRecording();
 }
 
+export function sendCaptureStopped(): void {
+  window.api.sendCaptureStopped();
+}
+
 export function sendRecordingLevel(level: number): void {
   window.api.sendRecordingLevel(level);
 }

@@ -77,15 +77,54 @@ describe('createMeetingStore', () => {
     );
   });
 
-  it('writes overlapping saves one after another', async () => {
-    const store = createMeetingStore(file(), reversing);
-    await Promise.all([
-      store.save([startMeeting('a', 'A', 1)]),
-      store.save([startMeeting('b', 'B', 2)]),
-    ]);
+  it('writes a save that arrives during a write once that write is done', async () => {
+    const written: string[] = [];
+    let second: Promise<void> = Promise.resolve();
+    let store = createMeetingStore(file(), reversing);
+    const cipher: Cipher = {
+      ...reversing,
+      encrypt: (plain) => {
+        written.push(plain);
+        if (written.length === 1) {
+          second = store.save([startMeeting('b', 'B', 2)]);
+        }
+        return reversing.encrypt(plain);
+      },
+    };
+    store = createMeetingStore(file(), cipher);
+    await store.save([startMeeting('a', 'A', 1)]);
+    await second;
+    assert.equal(written.length, 2);
     assert.deepEqual(
       (await store.load()).map((meeting) => meeting.id),
       ['b'],
     );
+  });
+
+  it('fails the saves that were waiting for a write that failed, but not earlier ones', async () => {
+    let writes = 0;
+    let waiting: Array<Promise<void>> = [];
+    let store = createMeetingStore(file(), reversing);
+    const cipher: Cipher = {
+      ...reversing,
+      encrypt: (plain) => {
+        writes += 1;
+        if (writes === 1) {
+          waiting = [
+            store.save([startMeeting('b', 'B', 2)]),
+            store.save([startMeeting('c', 'C', 3)]),
+          ];
+        } else {
+          throw new Error('disk full');
+        }
+        return reversing.encrypt(plain);
+      },
+    };
+    store = createMeetingStore(file(), cipher);
+    await store.save([startMeeting('a', 'A', 1)]);
+    const [skipped, last] = waiting;
+    await assert.rejects(skipped ?? Promise.resolve(), /disk full/);
+    await assert.rejects(last ?? Promise.resolve(), /disk full/);
+    assert.equal(writes, 2);
   });
 });

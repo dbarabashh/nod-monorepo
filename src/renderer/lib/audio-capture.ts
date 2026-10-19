@@ -74,7 +74,7 @@ async function openStream(
 }
 
 export type LevelMonitor = {
-  stop: () => void;
+  stop: () => Promise<void>;
 };
 
 export type MonitorOptions = {
@@ -86,6 +86,7 @@ export type MonitorOptions = {
 };
 
 const levelIntervalMs = 33;
+const flushTimeoutMs = 300;
 
 export async function monitorLevel(
   options: MonitorOptions,
@@ -100,6 +101,7 @@ export async function monitorLevel(
 
   let context: AudioContext | undefined;
   let analyser: AnalyserNode;
+  let flushPcm = () => Promise.resolve();
   try {
     context = new AudioContext(onPcm ? { sampleRate: pcmSampleRate } : {});
     await context.resume();
@@ -118,11 +120,22 @@ export async function monitorLevel(
         channelCountMode: 'explicit',
         channelInterpretation: 'speakers',
       });
+      let flushed = () => {};
       pcm.port.onmessage = (event: MessageEvent<unknown>) => {
         if (event.data instanceof Int16Array) {
           onPcm(event.data);
+        } else if (event.data === 'flushed') {
+          flushed();
         }
       };
+      // The worklet sends audio in half-second batches, so the last part of
+      // one would be lost when capture stops.
+      flushPcm = () =>
+        new Promise((resolve) => {
+          flushed = resolve;
+          setTimeout(resolve, flushTimeoutMs);
+          pcm.port.postMessage('flush');
+        });
       input.connect(pcm);
     }
   } catch {
@@ -142,27 +155,28 @@ export async function monitorLevel(
     onLevel(levelFromSamples(samples));
   }, levelIntervalMs);
 
-  const stop = () => {
+  const stop = async () => {
     if (stopped) {
       return;
     }
     stopped = true;
     clearInterval(timer);
     stopTracks(stream);
-    void audioContext.close();
+    await flushPcm();
+    await audioContext.close().catch(() => undefined);
   };
 
   const tracks = stream.getAudioTracks();
   for (const track of tracks) {
     track.addEventListener('ended', () => {
       if (!stopped) {
-        stop();
+        void stop();
         onInterrupted();
       }
     });
   }
   if (tracks.every((track) => track.readyState === 'ended')) {
-    stop();
+    await stop();
     throw new CaptureError('interrupted');
   }
 

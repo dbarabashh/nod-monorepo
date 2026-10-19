@@ -56,8 +56,24 @@ describe('planChunks', () => {
     assert.deepEqual(
       planChunks([{ startMs: 100, endMs: 31_000 }], 30_000, false),
       {
-        chunks: [{ startMs: 100, endMs: 30_000 }],
+        chunks: [
+          { startMs: 100, endMs: 28_100 },
+          { startMs: 28_100, endMs: 30_000 },
+        ],
         consumeMs: 30_000,
+      },
+    );
+  });
+
+  it('cuts one phrase longer than the model window into pieces that fit', () => {
+    assert.deepEqual(
+      planChunks([{ startMs: 0, endMs: 31_000 }], 31_000, false),
+      {
+        chunks: [
+          { startMs: 0, endMs: 28_000 },
+          { startMs: 28_000, endMs: 31_000 },
+        ],
+        consumeMs: 31_000,
       },
     );
   });

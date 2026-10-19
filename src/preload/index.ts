@@ -26,6 +26,7 @@ const api: AppApi = {
   onModelsChanged: (callback) => subscribe(IpcEvent.onModelsChanged, callback),
   listMeetings: () => ipcRenderer.invoke(IpcChannel.listMeetings),
   getMeeting: (id) => ipcRenderer.invoke(IpcChannel.getMeeting, id),
+  summarizeMeeting: (id) => ipcRenderer.invoke(IpcChannel.summarizeMeeting, id),
   copyMeeting: (id, part) =>
     ipcRenderer.invoke(IpcChannel.copyMeeting, id, part),
   sendRecordingAudio: (speaker, samples) =>
@@ -38,6 +39,7 @@ const api: AppApi = {
   finishMeeting: (id) => ipcRenderer.invoke(IpcChannel.finishMeeting, id),
   sendRecordingLevel: (level) =>
     ipcRenderer.send(IpcChannel.sendRecordingLevel, level),
+  sendCaptureStopped: () => ipcRenderer.send(IpcChannel.sendCaptureStopped),
   showMainWindow: () => ipcRenderer.invoke(IpcChannel.showMainWindow),
   onMeetingsChanged: (callback) =>
     subscribe(IpcEvent.onMeetingsChanged, callback),

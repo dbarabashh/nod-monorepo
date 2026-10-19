@@ -8,6 +8,7 @@ import {
   expectSystemAudioCapture,
   onRecordingChanged,
   pauseRecording,
+  sendCaptureStopped,
   sendRecordingAudio,
   sendRecordingLevel,
 } from './api.ts';
@@ -82,30 +83,31 @@ async function capture(begin: () => Promise<void>): Promise<StartResult> {
       onPcm: (samples) => sendRecordingAudio('me', samples),
     });
   } catch (error) {
-    system?.stop();
+    void system?.stop();
     throw new StartError(
       error instanceof CaptureError ? error.failure : 'failed',
     );
   }
 
-  const stopAll = () => {
-    microphone.stop();
-    system?.stop();
+  const stopAll = async () => {
+    await Promise.all([microphone.stop(), system?.stop()]);
     sendRecordingLevel(0);
   };
 
   try {
     await begin();
   } catch (error) {
-    stopAll();
+    await stopAll();
     throw error;
   }
 
   const unsubscribe = onRecordingChanged((state) => {
     if (state.status === 'idle') {
       unsubscribe();
-      stopAll();
-      busy = false;
+      void stopAll().then(() => {
+        sendCaptureStopped();
+        busy = false;
+      });
     }
   });
   return { systemAudio: system !== null };

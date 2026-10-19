@@ -14,6 +14,7 @@ import type {
   MeetingDetail,
   MeetingSummary,
   RecordingState,
+  SummaryStatus,
 } from '../../shared/ipc.ts';
 import type { MeetingStore } from './store.ts';
 
@@ -29,7 +30,8 @@ export type Recorder = {
   detail: (id: string) => MeetingDetail;
   transcriptOf: (id: string) => Meeting | undefined;
   appendLines: (id: string, lines: TranscriptLine[]) => Promise<void>;
-  setSummarizing: (id: string, summarizing: boolean) => void;
+  setSummaryStatus: (id: string, status: SummaryStatus) => void;
+  setProblem: (id: string, problem: string | null) => void;
   saveSummary: (id: string, summary: string) => Promise<void>;
 };
 
@@ -46,7 +48,9 @@ export function createRecorder(options: {
   let meetings: Meeting[] | null = null;
   let active: Active | null = null;
   let stopHeartbeat = () => {};
-  const summarizing = new Set<string>();
+  const summaryStatus = new Map<string, SummaryStatus>();
+  const problems = new Map<string, string>();
+  let saveFailed = false;
 
   async function load() {
     meetings = await store.load();
@@ -78,8 +82,29 @@ export function createRecorder(options: {
     );
   }
 
-  function save(): Promise<void> {
-    return store.save(loadedMeetings());
+  async function save(): Promise<void> {
+    try {
+      await store.save(loadedMeetings());
+    } catch (error) {
+      if (!saveFailed) {
+        saveFailed = true;
+        onChange();
+      }
+      throw error;
+    }
+    if (saveFailed) {
+      saveFailed = false;
+      onChange();
+    }
+  }
+
+  function problemOf(id: string): string | null {
+    return (
+      problems.get(id) ??
+      (saveFailed && active?.id === id
+        ? 'The latest part of this meeting couldn’t be saved. Check that there is free disk space.'
+        : null)
+    );
   }
 
   async function persist() {
@@ -100,12 +125,12 @@ export function createRecorder(options: {
     if (active) {
       throw new Error('A meeting is already being recorded');
     }
-    const previous = loadedMeetings();
-    meetings = lookup(meeting.id)
-      ? previous.map((candidate) =>
+    const before = lookup(meeting.id);
+    meetings = before
+      ? loadedMeetings().map((candidate) =>
           candidate.id === meeting.id ? meeting : candidate,
         )
-      : [...previous, meeting];
+      : [...loadedMeetings(), meeting];
     active = {
       id: meeting.id,
       previousMs: recordedMs(meeting),
@@ -114,11 +139,21 @@ export function createRecorder(options: {
     try {
       await persist();
     } catch (error) {
-      active = null;
-      meetings = previous;
+      if (active?.id === meeting.id) {
+        active = null;
+      }
+      meetings = before
+        ? loadedMeetings().map((candidate) =>
+            candidate.id === meeting.id ? before : candidate,
+          )
+        : loadedMeetings().filter((candidate) => candidate.id !== meeting.id);
       onChange();
       throw error;
     }
+    if (active?.id !== meeting.id) {
+      return;
+    }
+    stopHeartbeat();
     // Only the end of the current segment moves; the renderer works out the
     // elapsed time itself, so this saves without telling every window.
     stopHeartbeat = every(() => {
@@ -132,6 +167,7 @@ export function createRecorder(options: {
       return;
     }
     stopHeartbeat();
+    stopHeartbeat = () => {};
     extendActive();
     active = null;
     await persist();
@@ -151,7 +187,12 @@ export function createRecorder(options: {
             : meeting.finishedAt === null
               ? 'paused'
               : 'finished',
-        contentVersion: `${meeting.transcript.length}:${meeting.summary?.length ?? 0}:${summarizing.has(meeting.id)}`,
+        contentVersion: [
+          meeting.transcript.length,
+          meeting.summary?.length ?? 0,
+          summaryStatus.get(meeting.id) ?? 'idle',
+          problemOf(meeting.id) ?? '',
+        ].join(':'),
       }));
   }
 
@@ -163,7 +204,8 @@ export function createRecorder(options: {
         id,
         transcript: meeting.transcript,
         summary: meeting.summary,
-        summarizing: summarizing.has(id),
+        summaryStatus: summaryStatus.get(id) ?? 'idle',
+        problem: problemOf(id),
       };
     },
     transcriptOf: lookup,
@@ -174,11 +216,19 @@ export function createRecorder(options: {
         await persist();
       }
     },
-    setSummarizing: (id, value) => {
-      if (value) {
-        summarizing.add(id);
+    setSummaryStatus: (id, status) => {
+      if (status === 'idle') {
+        summaryStatus.delete(id);
       } else {
-        summarizing.delete(id);
+        summaryStatus.set(id, status);
+      }
+      onChange();
+    },
+    setProblem: (id, problem) => {
+      if (problem === null) {
+        problems.delete(id);
+      } else {
+        problems.set(id, problem);
       }
       onChange();
     },

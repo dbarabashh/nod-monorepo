@@ -56,6 +56,17 @@ describe('parseInline', () => {
     ]);
   });
 
+  it('keeps underscores in names and stars in arithmetic as text', () => {
+    assert.deepEqual(parseInline('Rename user_id_map and check 2 * 3 * 4'), [
+      plain('Rename user_id_map and check 2 * 3 * 4'),
+    ]);
+    assert.deepEqual(parseInline('a _real_ word'), [
+      plain('a '),
+      { text: 'real', bold: false, italic: true },
+      plain(' word'),
+    ]);
+  });
+
   it('leaves text without marks alone', () => {
     assert.deepEqual(parseInline('5 * 3 = 15'), [plain('5 * 3 = 15')]);
   });

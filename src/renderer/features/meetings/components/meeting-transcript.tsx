@@ -1,17 +1,18 @@
 import { useCallback, useState } from 'react';
 import type { MeetingDetail } from '../../../../shared/ipc.ts';
-import { Prose, Tabs } from '../../../components/ui/index.ts';
+import { Button, Prose, Tabs } from '../../../components/ui/index.ts';
 import { formatClock } from '../../../lib/format-clock.ts';
 import { useAsync } from '../../../lib/use-async.ts';
-import { getMeeting, onMeetingsChanged } from '../api.ts';
+import { getMeeting, onMeetingsChanged, summarizeMeeting } from '../api.ts';
+import type { MeetingStatus } from '../types.ts';
 import { CopyButton } from './copy-button.tsx';
 
 export function MeetingTranscript({
   meetingId,
-  recording,
+  status,
 }: {
   meetingId: string;
-  recording: boolean;
+  status: MeetingStatus;
 }) {
   const load = useCallback(() => getMeeting(meetingId), [meetingId]);
   const subscribe = useCallback(
@@ -38,7 +39,11 @@ export function MeetingTranscript({
   const detail = state.value;
 
   const selected =
-    tab ?? (detail.summary || detail.summarizing ? 'summary' : 'transcript');
+    tab ??
+    (detail.summary || detail.summaryStatus !== 'idle'
+      ? 'summary'
+      : 'transcript');
+  const retry = () => void summarizeMeeting(meetingId).catch(() => undefined);
 
   return (
     <Tabs
@@ -51,21 +56,37 @@ export function MeetingTranscript({
           label: 'Summary',
           content: (
             <section className="meeting-detail__section">
-              {detail.summarizing && (
+              {detail.summaryStatus === 'writing' ? (
                 <p className="meeting-detail__note">Writing the summary…</p>
-              )}
-              {detail.summary ? (
+              ) : detail.summaryStatus === 'failed' ? (
+                <>
+                  <p className="meeting-detail__note" role="alert">
+                    The summary couldn’t be written.
+                  </p>
+                  <Button size="sm" onClick={retry}>
+                    Try again
+                  </Button>
+                </>
+              ) : detail.summary ? (
                 <>
                   <CopyButton meetingId={meetingId} part="summary" />
                   <Prose markdown={detail.summary} data-selectable />
                 </>
-              ) : (
-                !detail.summarizing && (
+              ) : status === 'finished' && detail.transcript.length > 0 ? (
+                <>
                   <p className="meeting-detail__note">
-                    A summary is written on this device when the meeting is
-                    finished.
+                    No summary yet. Summaries need a summary model from
+                    Settings.
                   </p>
-                )
+                  <Button size="sm" onClick={retry}>
+                    Write summary
+                  </Button>
+                </>
+              ) : (
+                <p className="meeting-detail__note">
+                  A summary is written on this device when the meeting is
+                  finished.
+                </p>
               )}
             </section>
           ),
@@ -75,9 +96,14 @@ export function MeetingTranscript({
           label: 'Transcript',
           content: (
             <section className="meeting-detail__section">
+              {detail.problem && (
+                <p className="meeting-detail__note" role="alert">
+                  {detail.problem}
+                </p>
+              )}
               {detail.transcript.length === 0 ? (
                 <p className="meeting-detail__note">
-                  {recording
+                  {status === 'recording'
                     ? 'Listening… lines appear a few seconds after they are spoken.'
                     : 'Nothing was transcribed. Download a speech model in Settings to get transcripts.'}
                 </p>
