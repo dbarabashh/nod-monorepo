@@ -4,6 +4,7 @@ import {
   type SyncController,
   vaultCodeOf,
 } from './controller.ts';
+import { phraseWords } from '../../core/crypto/index.ts';
 import { relayBase } from './relay-transport.ts';
 
 export type Question = {
@@ -42,7 +43,7 @@ function relayUrl(value: unknown): string {
 }
 
 function wordList(phrase: string): string {
-  const words = phrase.trim().toLowerCase().split(/\s+/);
+  const words = phraseWords(phrase);
   const rows: string[] = [];
   for (let index = 0; index < words.length; index += 3) {
     rows.push(

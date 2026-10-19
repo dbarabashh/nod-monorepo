@@ -10,4 +10,8 @@ export {
   vaultIdOf,
   type PairingKeys,
 } from './pairing.ts';
-export { keyFromRecoveryPhrase, recoveryPhrase } from './recovery.ts';
+export {
+  keyFromRecoveryPhrase,
+  phraseWords,
+  recoveryPhrase,
+} from './recovery.ts';

@@ -47,3 +47,7 @@ export function Field({ label, hint, error, children }: FieldProps) {
 export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cx('ui-input', className)} {...props} />;
 }
+
+export function Textarea({ className, ...props }: ComponentProps<'textarea'>) {
+  return <textarea className={cx('ui-input', className)} {...props} />;
+}

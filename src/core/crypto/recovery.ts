@@ -15,8 +15,14 @@ export function recoveryPhrase(key: Uint8Array): string {
   return entropyToMnemonic(key, wordlist);
 }
 
+// Every word in the list is plain a–z, so numbering, commas, line breaks and
+// capitals that come with a phrase copied from paper or a note are dropped.
+export function phraseWords(phrase: string): string[] {
+  return phrase.toLowerCase().match(/[a-z]+/g) ?? [];
+}
+
 export function keyFromRecoveryPhrase(phrase: string): Uint8Array {
-  const words = phrase.trim().toLowerCase().split(/\s+/).join(' ');
+  const words = phraseWords(phrase).join(' ');
   if (!validateMnemonic(words, wordlist)) {
     throw new Error('That recovery phrase is not right. Check each word.');
   }

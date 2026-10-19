@@ -38,6 +38,13 @@
     color: var(--color-text-muted);
   }
 
+  &:is(textarea) {
+    block-size: auto;
+    padding-block: var(--space-2);
+    line-height: var(--leading-md);
+    resize: vertical;
+  }
+
   &:hover:not(:disabled),
   &:focus-visible {
     background-color: var(--color-field-hover);
