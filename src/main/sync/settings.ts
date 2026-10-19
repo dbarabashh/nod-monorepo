@@ -1,7 +1,7 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isSyncId } from '../../core/sync/index.ts';
-import { keyLength } from '../../core/crypto/index.ts';
+import { keyLength, vaultIdOf } from '../../core/crypto/index.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 
 export type TransportSettings =
@@ -12,7 +12,7 @@ export type Vault = {
   id: string;
   key: Uint8Array;
   deviceId: string;
-  transport: TransportSettings;
+  transport: TransportSettings | null;
   recoveryConfirmed: boolean;
 };
 
@@ -52,7 +52,7 @@ export function createSyncSettings(options: {
   keychain: KeyWrap;
 }) {
   const settingsFile = path.join(options.directory, 'sync.json');
-  const keyFile = path.join(options.directory, 'keys', 'vault.key');
+  let writing: Promise<void> = Promise.resolve();
 
   return {
     load: async (): Promise<Vault | null> => {
@@ -68,53 +68,57 @@ export function createSyncSettings(options: {
       if (typeof raw !== 'object' || raw === null) {
         throw new Error('Sync settings are damaged');
       }
-      const id = field(raw, 'vaultId');
       const deviceId = field(raw, 'deviceId');
-      const transport = parseTransport(field(raw, 'transport'));
+      const storedTransport = field(raw, 'transport');
+      const transport = parseTransport(storedTransport);
       if (
-        typeof id !== 'string' ||
         typeof deviceId !== 'string' ||
-        !isSyncId(id) ||
         !isSyncId(deviceId) ||
-        !transport
+        (storedTransport !== null && !transport)
       ) {
         throw new Error('Sync settings are damaged');
       }
+      const wrapped = field(raw, 'key');
+      if (typeof wrapped !== 'string') {
+        throw new Error('Sync settings are damaged');
+      }
       const key = Buffer.from(
-        options.keychain.unwrap(await readFile(keyFile)),
+        options.keychain.unwrap(Buffer.from(wrapped, 'base64')),
         'base64',
       );
       if (key.length !== keyLength) {
         throw new Error('The sync key is damaged');
       }
       return {
-        id,
+        id: vaultIdOf(key),
         key,
         deviceId,
         transport,
         recoveryConfirmed: field(raw, 'recoveryConfirmed') === true,
       };
     },
-    save: async (vault: Vault) => {
-      await writeAtomically(
-        keyFile,
-        options.keychain.wrap(Buffer.from(vault.key).toString('base64')),
-      );
-      await writeAtomically(
-        settingsFile,
-        JSON.stringify({
-          vaultId: vault.id,
-          deviceId: vault.deviceId,
-          transport: vault.transport,
-          recoveryConfirmed: vault.recoveryConfirmed,
-        }),
-      );
-    },
-    clear: async () => {
-      await rm(settingsFile, { force: true });
-      await rm(keyFile, { force: true });
+    // One file holds the wrapped key and everything tied to it, so a failed
+    // write can never pair a new key with another vault's settings.
+    save: (vault: Vault) => {
+      const write = writing.then(() => persist(vault));
+      writing = write.catch(() => undefined);
+      return write;
     },
   };
+
+  async function persist(vault: Vault) {
+    await writeAtomically(
+      settingsFile,
+      JSON.stringify({
+        key: Buffer.from(
+          options.keychain.wrap(Buffer.from(vault.key).toString('base64')),
+        ).toString('base64'),
+        deviceId: vault.deviceId,
+        transport: vault.transport,
+        recoveryConfirmed: vault.recoveryConfirmed,
+      }),
+    );
+  }
 }
 
 export type SyncSettings = ReturnType<typeof createSyncSettings>;

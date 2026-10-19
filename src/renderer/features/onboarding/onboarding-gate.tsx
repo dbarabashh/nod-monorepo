@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { Button, EmptyState } from '../../components/ui/index.ts';
 import { completeOnboarding, getAppState } from './api.ts';
 import { OnboardingView } from './onboarding-view.tsx';
@@ -11,6 +11,7 @@ type GateState =
   | { status: 'done' };
 
 type OnboardingGateProps = {
+  RecoveryKey: ComponentType<{ onDone: () => void }>;
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
@@ -18,6 +19,7 @@ type OnboardingGateProps = {
 };
 
 export function OnboardingGate({
+  RecoveryKey,
   audio,
   speechModels,
   summaryModels,
@@ -76,6 +78,7 @@ export function OnboardingGate({
     case 'onboarding':
       return (
         <OnboardingView
+          RecoveryKey={RecoveryKey}
           audio={audio}
           speechModels={speechModels}
           summaryModels={summaryModels}

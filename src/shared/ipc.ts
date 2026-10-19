@@ -83,21 +83,17 @@ export type SyncTransportInfo =
   | { kind: 'relay'; url: string };
 
 export type SyncState =
-  | { status: 'off'; error: string | null }
+  | { status: 'none'; error: string | null }
+  | { status: 'unavailable'; error: string }
   | {
-      status: 'joining';
-      transport: SyncTransportInfo;
-      code: string | null;
-      confirmed: boolean;
-    }
-  | {
-      status: 'on';
-      transport: SyncTransportInfo;
+      status: 'ready';
       vaultId: string;
+      transport: SyncTransportInfo | null;
+      defaultRelay: string | null;
+      connected: boolean;
       devices: number;
       lastSyncedAt: number | null;
       error: string | null;
-      requests: Array<{ requestId: string; code: string }>;
       recoveryConfirmed: boolean;
     };
 
@@ -142,18 +138,13 @@ export const IpcChannel = {
   sendCaptureStopped: 'recording:capture-stopped',
   showMainWindow: 'app:show-main-window',
   getSyncState: 'sync:get',
+  createRecoveryPhrase: 'sync:create-recovery-phrase',
+  enterRecoveryPhrase: 'sync:enter-recovery-phrase',
+  showRecoveryPhrase: 'sync:show-recovery-phrase',
   chooseSyncFolder: 'sync:choose-folder',
   connectSyncRelay: 'sync:connect-relay',
-  approveSyncDevice: 'sync:approve-device',
-  confirmSyncJoin: 'sync:confirm-join',
-  rejectSyncDevice: 'sync:reject-device',
-  cancelSyncJoin: 'sync:cancel-join',
-  stopSync: 'sync:stop',
+  disconnectSync: 'sync:disconnect',
   syncNow: 'sync:now',
-  getRecoveryPhrase: 'sync:recovery-phrase',
-  confirmRecoveryPhrase: 'sync:confirm-recovery-phrase',
-  restoreSyncFromFolder: 'sync:restore-folder',
-  restoreSyncFromRelay: 'sync:restore-relay',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
   string
@@ -199,21 +190,12 @@ export type AppApi = {
   onRecordingChanged: (callback: (state: RecordingState) => void) => () => void;
   onRecordingLevel: (callback: (level: number) => void) => () => void;
   getSyncState: () => Promise<SyncState>;
+  createRecoveryPhrase: () => Promise<void>;
+  enterRecoveryPhrase: (phrase: string) => Promise<boolean>;
+  showRecoveryPhrase: () => Promise<boolean>;
   chooseSyncFolder: () => Promise<void>;
-  connectSyncRelay: (url: string, vaultId: string) => Promise<void>;
-  approveSyncDevice: (requestId: string, code: string) => Promise<void>;
-  confirmSyncJoin: (code: string) => Promise<void>;
-  rejectSyncDevice: (requestId: string) => Promise<void>;
-  cancelSyncJoin: () => Promise<void>;
-  stopSync: () => Promise<void>;
+  connectSyncRelay: (url: string) => Promise<void>;
+  disconnectSync: () => Promise<void>;
   syncNow: () => Promise<void>;
-  getRecoveryPhrase: () => Promise<string>;
-  confirmRecoveryPhrase: () => Promise<void>;
-  restoreSyncFromFolder: (phrase: string) => Promise<void>;
-  restoreSyncFromRelay: (
-    url: string,
-    vaultId: string,
-    phrase: string,
-  ) => Promise<void>;
   onSyncChanged: (callback: (state: SyncState) => void) => () => void;
 };

@@ -1,32 +1,49 @@
+import { useState } from 'react';
+import { Button } from '../../components/ui/index.ts';
 import { useAsync } from '../../lib/use-async.ts';
 import { getSyncState, onSyncChanged } from './api.ts';
+import { KeySetup } from './components/key-setup.tsx';
+import { PhraseForm } from './components/phrase-form.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
-import { RestoreForm } from './components/restore-form.tsx';
+import { Unavailable } from './components/unavailable.tsx';
 import './sync.css';
 
 export function RecoveryPanel() {
   const { state } = useAsync(getSyncState, onSyncChanged);
+  const [switching, setSwitching] = useState(false);
   if (state.status !== 'ready') {
     return null;
   }
   const sync = state.value;
-  if (sync.status === 'on') {
-    return <RecoveryPhrase confirming={!sync.recoveryConfirmed} />;
+  if (sync.status === 'none') {
+    return <KeySetup />;
   }
-  if (sync.status === 'joining') {
-    return (
-      <p className="sync__note">
-        Finish joining first. The phrase is the same on every device of a vault.
-      </p>
-    );
+  if (sync.status === 'unavailable') {
+    return <Unavailable error={sync.error} />;
   }
   return (
     <div className="sync">
-      <p className="sync__note">
-        This device doesn’t sync yet. If you lost the devices that did, enter
-        their recovery phrase to bring your meetings back.
-      </p>
-      <RestoreForm />
+      <RecoveryPhrase key={sync.vaultId} confirming={!sync.recoveryConfirmed} />
+      <section className="sync__choice" aria-label="Use another phrase">
+        <h3 className="sync__choice-title">Use a different phrase</h3>
+        <p className="sync__note">
+          If your other devices show different words, enter theirs here. This
+          device then syncs with them, and the meetings on it move along.
+        </p>
+        {switching ? (
+          <PhraseForm
+            submitLabel="Switch to this phrase"
+            onDone={() => setSwitching(false)}
+            onCancel={() => setSwitching(false)}
+          />
+        ) : (
+          <div className="sync__actions">
+            <Button onClick={() => setSwitching(true)}>
+              Enter another phrase
+            </Button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

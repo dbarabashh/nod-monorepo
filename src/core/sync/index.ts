@@ -7,9 +7,6 @@ export {
   pairingPrefix,
   parseMeetingPath,
   parsePairingPath,
-  vaultCheckContext,
-  vaultCheckFile,
-  vaultFile,
   type PairingStep,
 } from './layout.ts';
 export {

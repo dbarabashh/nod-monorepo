@@ -18,6 +18,7 @@ import {
   commitmentOf,
   createPairingKeys,
   relayToken,
+  vaultIdOf,
 } from '../../core/crypto/index.ts';
 import { createRelayTransport, relayBase } from './relay-transport.ts';
 
@@ -38,7 +39,11 @@ describe('relay transport', () => {
 
   afterEach(() => close());
 
-  const transport = (token: string | null, vaultId = 'vault-1') =>
+  const ownerKey = randomBytes(32);
+  const ownerToken = relayToken(ownerKey);
+  const vault = vaultIdOf(ownerKey);
+
+  const transport = (token: string | null, vaultId = vault) =>
     createRelayTransport({
       url,
       vaultId,
@@ -48,8 +53,7 @@ describe('relay transport', () => {
 
   it('keeps a vault to the devices that hold its key', async () => {
     await startRelay();
-    const key = randomBytes(32);
-    const owner = transport(relayToken(key));
+    const owner = transport(ownerToken);
     await owner.register();
     await owner.write('devices/a/meetings/m1.bin', Buffer.from('sealed'));
 
@@ -79,7 +83,7 @@ describe('relay transport', () => {
 
   it('lets a new device post only its request and reveal, once each, without the key', async () => {
     await startRelay();
-    const owner = transport(relayToken(randomBytes(32)));
+    const owner = transport(ownerToken);
     await owner.register();
     const stranger = transport(null);
     await stranger.write(
@@ -128,7 +132,7 @@ describe('relay transport', () => {
 
   it('takes a reveal only from the device that made the request', async () => {
     await startRelay();
-    await transport(relayToken(randomBytes(32))).register();
+    await transport(ownerToken).register();
     const stranger = transport(null);
     const joining = createPairingKeys();
     await stranger.write(
@@ -185,7 +189,7 @@ describe('relay transport', () => {
 
   it('caps how many requests can wait at once', async () => {
     await startRelay();
-    await transport(relayToken(randomBytes(32))).register();
+    await transport(ownerToken).register();
     const stranger = transport(null);
     for (let index = 0; index < 16; index += 1) {
       await stranger.write(`pairing/r${index}/request.json`, Buffer.from('{}'));
@@ -194,6 +198,15 @@ describe('relay transport', () => {
       stranger.write('pairing/r16/request.json', Buffer.from('{}')),
       /429/,
     );
+  });
+
+  it('registers a vault only for the holder of the key it is named after', async () => {
+    await startRelay();
+    const stranger = relayToken(randomBytes(32));
+    await assert.rejects(transport(stranger).register(), /403/);
+    await transport(ownerToken).register();
+    await transport(ownerToken).register();
+    await assert.rejects(transport(stranger).register(), /403/);
   });
 
   it('reports a write the relay did not take instead of treating it as done', async () => {
@@ -209,7 +222,7 @@ describe('relay transport', () => {
 
   it('refuses a file larger than the caller allows', async () => {
     await startRelay();
-    const owner = transport(relayToken(randomBytes(32)));
+    const owner = transport(ownerToken);
     await owner.register();
     await owner.write('devices/a/meetings/m1.bin', randomBytes(2_000));
     await assert.rejects(
@@ -220,9 +233,9 @@ describe('relay transport', () => {
 
   it('refuses paths that climb out of the vault', async () => {
     await startRelay();
-    await transport(relayToken(randomBytes(32))).register();
+    await transport(ownerToken).register();
     const response = await fetch(
-      `${url}/v1/vaults/vault-1/files/pairing/..%2f..%2ftoken`,
+      `${url}/v1/vaults/${vault}/files/pairing/..%2f..%2ftoken`,
     );
     assert.equal(response.status, 400);
     await assert.rejects(
@@ -235,12 +248,23 @@ describe('relay transport', () => {
     assert.throws(() => relayBase('http://relay.example.com'), /https/);
     assert.equal(relayBase('https://relay.example.com').protocol, 'https:');
     assert.equal(relayBase('http://localhost:8787').hostname, 'localhost');
+    assert.equal(
+      relayBase('https://relay.example.com/nod/').href,
+      'https://relay.example.com/nod/',
+    );
+    for (const address of [
+      'https://relay.example.com/?words=secret',
+      'https://relay.example.com/#secret',
+      'https://user:secret@relay.example.com/',
+    ]) {
+      assert.throws(() => relayBase(address), /without a login/);
+    }
   });
 
   it('syncs two devices through it', async () => {
     await startRelay();
-    const key = randomBytes(32);
-    await transport(relayToken(key)).register();
+    const key = ownerKey;
+    await transport(ownerToken).register();
     const devices = await Promise.all(
       ['laptop', 'phone'].map(async (name) => {
         const store = createMeetingStore({
@@ -254,7 +278,7 @@ describe('relay transport', () => {
         const received: DocumentState[] = [];
         const engine = createSyncEngine({
           transport: transport(relayToken(key)),
-          vault: { id: 'vault-1', key, deviceId: name },
+          vault: { id: vault, key, deviceId: name },
           store,
           onRemote: (state) => received.push(state),
           now: () => 1,

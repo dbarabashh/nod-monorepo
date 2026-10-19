@@ -36,20 +36,18 @@
     gap: var(--space-3);
   }
 
-  .sync__code {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    line-height: var(--leading-xl);
-    letter-spacing: var(--tracking-xl);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .sync__request {
+  .sync__choice {
     display: grid;
     gap: var(--space-2);
-    padding: var(--space-3);
-    border: var(--border-width) solid var(--color-border-strong);
+    padding: var(--space-4);
+    border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
+  }
+
+  .sync__choice-title {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-md);
   }
 
   .sync__facts {
@@ -84,14 +82,5 @@
     font-size: var(--text-md);
     font-weight: var(--weight-bold);
     line-height: var(--leading-md);
-  }
-
-  .sync__words {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    list-style: decimal;
-    gap: var(--space-1) var(--space-6);
-    padding-inline-start: var(--space-6);
-    font-variant-numeric: tabular-nums;
   }
 }

@@ -2,6 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  define: {
+    __DEFAULT_RELAY_URL__: JSON.stringify(process.env.NOD_RELAY_URL ?? ''),
+  },
   resolve: {
     alias: [
       {

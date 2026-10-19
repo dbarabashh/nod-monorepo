@@ -1,4 +1,10 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import {
+  useId,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 import { flushSync } from 'react-dom';
 import { Button } from '../../components/ui/index.ts';
 
@@ -8,6 +14,11 @@ type Step = {
 };
 
 const steps: Step[] = [
+  {
+    title: 'Your recovery phrase',
+    description:
+      'Your meetings stay on your devices, encrypted. Twenty-four words are the key to them: enter the same words on each of your devices to sync them, or on a new one if you lose this one.',
+  },
   {
     title: 'Allow audio access',
     description:
@@ -21,6 +32,7 @@ const steps: Step[] = [
 ];
 
 type OnboardingViewProps = {
+  RecoveryKey: ComponentType<{ onDone: () => void }>;
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
@@ -29,6 +41,7 @@ type OnboardingViewProps = {
 };
 
 export function OnboardingView({
+  RecoveryKey,
   audio,
   speechModels,
   summaryModels,
@@ -80,6 +93,8 @@ export function OnboardingView({
 
         <div className="onboarding__body">
           {index === 0 ? (
+            <RecoveryKey onDone={() => go(1)} />
+          ) : index === 1 ? (
             audio
           ) : (
             <>
@@ -98,7 +113,7 @@ export function OnboardingView({
         )}
 
         <footer className="onboarding__footer">
-          {index > 0 ? (
+          {index > 1 ? (
             <Button variant="ghost" onClick={() => go(index - 1)}>
               Back
             </Button>
@@ -107,7 +122,7 @@ export function OnboardingView({
               You can change this later in Settings.
             </span>
           )}
-          {last ? (
+          {index === 0 ? null : last ? (
             <Button
               key="finish"
               variant="primary"

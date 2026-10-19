@@ -19,6 +19,7 @@ import {
   pairingCode,
   relayToken,
   seal,
+  vaultIdOf,
 } from '../../core/crypto/index.ts';
 
 // The same format built on OpenSSL through node:crypto, an independent
@@ -96,6 +97,15 @@ describe('compatibility with the OpenSSL version', () => {
     assert.equal(
       relayToken(key),
       createHmac('sha256', key).update('nod:relay-token').digest('hex'),
+    );
+    assert.equal(
+      vaultIdOf(key),
+      createHash('sha256')
+        .update(
+          createHmac('sha256', key).update('nod:relay-token').digest('hex'),
+        )
+        .digest('hex')
+        .slice(0, 32),
     );
   });
 });

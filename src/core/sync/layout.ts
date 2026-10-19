@@ -1,12 +1,5 @@
 export type PairingStep = 'request' | 'offer' | 'reveal' | 'grant';
 
-export const vaultFile = 'vault.json';
-export const vaultCheckFile = 'vault-check.bin';
-
-export function vaultCheckContext(vaultId: string): string {
-  return `nod:vault-check:${vaultId}`;
-}
-
 const idPattern = '[A-Za-z0-9_-]{1,64}';
 const meetingFile = new RegExp(
   `^devices/(${idPattern})/meetings/(${idPattern})\\.bin$`,

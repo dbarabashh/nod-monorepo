@@ -17,6 +17,14 @@ export function relayBase(url: string): URL {
   if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && local)) {
     throw new Error('Use an https:// relay address');
   }
+  // Only the host and a short path name a relay; anything else in the address
+  // is sent with every request and could carry data off to whoever reads it.
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error('Use a relay address without a login, query or #part');
+  }
+  if (!/^\/[a-z0-9-/]{0,63}$/.test(parsed.pathname)) {
+    throw new Error('Use a relay address with a short, plain path');
+  }
   return parsed;
 }
 

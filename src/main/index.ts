@@ -6,6 +6,7 @@ import {
   net,
   safeStorage,
   session,
+  type MessageBoxOptions,
   type OpenDialogOptions,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,7 @@ import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
 import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
 import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
+import { createSyncHandlers } from './sync/handlers.ts';
 import { createRecorder } from './meetings/recorder.ts';
 import { createMeetingSession } from './meetings/session.ts';
 import { createTranscriber } from './transcription/service.ts';
@@ -35,6 +37,7 @@ import { createMainWindow } from './windows/main-window.ts';
 import { openRecordingWidget } from './windows/recording-widget.ts';
 import { createSyncController } from './sync/controller.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
+import { relayBase } from './sync/relay-transport.ts';
 import { createSyncSettings } from './sync/settings.ts';
 
 ignoreClosedOutput();
@@ -101,6 +104,18 @@ const meetingStore = createMeetingStore({
   onWrite: () => syncScheduler.soon(),
 });
 
+// Set when the app is built, so a fork can offer its own relay without
+// anything in the source naming one. It is offered, never used unasked.
+const defaultRelay = offeredRelay(__DEFAULT_RELAY_URL__);
+
+function offeredRelay(url: string): string | null {
+  try {
+    return url ? relayBase(url).href : null;
+  } catch {
+    return null;
+  }
+}
+
 const syncController = createSyncController({
   settings: createSyncSettings({
     directory: app.getPath('userData'),
@@ -112,17 +127,12 @@ const syncController = createSyncController({
   newId: randomUUID,
   now: Date.now,
   onChange: () => broadcastSync(syncController),
+  defaultRelay,
 });
 
 const syncScheduler = createSyncScheduler({
   refresh: syncController.refresh,
-  idleDelayMs: () => {
-    const state = syncController.state();
-    return state.status === 'joining' ||
-      (state.status === 'on' && state.requests.length > 0)
-      ? 2_000
-      : 15_000;
-  },
+  idleDelayMs: () => 15_000,
 });
 
 const recorder = createRecorder({
@@ -231,21 +241,38 @@ app.whenReady().then(async () => {
       widget?.webContents.send(IpcEvent.onRecordingLevel, level),
     copyText: (text) => clipboard.writeText(text),
   });
-  registerSyncIpc({
+  registerSyncIpc(
     appUrl,
-    controller: syncController,
-    chooseFolder: async () => {
-      const options: OpenDialogOptions = {
-        title: 'Choose a folder to sync meetings through',
-        properties: ['openDirectory', 'createDirectory'],
-      };
-      const result = mainWindow
-        ? await dialog.showOpenDialog(mainWindow, options)
-        : await dialog.showOpenDialog(options);
-      return result.canceled ? null : (result.filePaths[0] ?? null);
-    },
-    syncSoon: () => syncScheduler.soon(),
-  });
+    createSyncHandlers({
+      controller: syncController,
+      chooseFolder: async () => {
+        const options: OpenDialogOptions = {
+          title: 'Choose a folder to sync meetings through',
+          properties: ['openDirectory', 'createDirectory'],
+        };
+        const result = mainWindow
+          ? await dialog.showOpenDialog(mainWindow, options)
+          : await dialog.showOpenDialog(options);
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
+      confirm: async ({ message, detail, confirmLabel, cancelLabel }) => {
+        const options: MessageBoxOptions = {
+          type: 'warning',
+          message,
+          detail,
+          buttons: cancelLabel ? [confirmLabel, cancelLabel] : [confirmLabel],
+          defaultId: cancelLabel ? 1 : 0,
+          cancelId: cancelLabel ? 1 : 0,
+        };
+        const { response } = mainWindow
+          ? await dialog.showMessageBox(mainWindow, options)
+          : await dialog.showMessageBox(options);
+        return response === 0;
+      },
+      syncSoon: () => syncScheduler.soon(),
+      now: Date.now,
+    }),
+  );
   // Sync only starts on top of meetings that were read, so a failed load can
   // never be overwritten by copies from other devices.
   const loaded = await recorder.load().then(

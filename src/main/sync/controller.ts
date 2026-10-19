@@ -1,57 +1,53 @@
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DocumentState } from '../../core/meetings/index.ts';
 import {
-  devicesPrefix,
-  isSyncId,
-  meetingContext,
-  meetingPath,
-  parseMeetingPath,
-  vaultCheckContext,
-  vaultCheckFile,
-  vaultFile,
-} from '../../core/sync/index.ts';
-import type { SyncState } from '../../shared/ipc.ts';
-import type { MeetingStore } from '../meetings/store.ts';
-import {
-  bytesOf,
   keyFromRecoveryPhrase,
-  open,
   randomKey,
   recoveryPhrase,
   relayToken,
-  seal,
+  vaultIdOf,
 } from '../../core/crypto/index.ts';
-import { createSyncEngine, type SyncEngine } from '../../core/sync/index.ts';
-import { createFolderTransport } from './folder-transport.ts';
 import {
-  createApprover,
-  createJoin,
-  pairingMaxBytes,
-  type Approver,
-  type Join,
+  createSyncEngine,
+  devicesPrefix,
+  meetingPath,
+  parseMeetingPath,
+  type SyncEngine,
+  type Transport,
 } from '../../core/sync/index.ts';
+import type { SyncState } from '../../shared/ipc.ts';
+import type { MeetingStore } from '../meetings/store.ts';
+import { createFolderTransport } from './folder-transport.ts';
 import { createRelayTransport, type Fetch } from './relay-transport.ts';
 import type { SyncSettings, TransportSettings, Vault } from './settings.ts';
-import type { Transport } from '../../core/sync/index.ts';
 
 const folderName = 'nod-sync';
-const maxSampleBytes = 64 * 1024 * 1024;
 
-type Running = {
-  vault: Vault;
+type Connection = {
   transport: Transport;
   engine: SyncEngine;
-  approver: Approver;
-  requests: Array<{ requestId: string; code: string }>;
 };
 
-type Joining = {
-  transport: Transport;
-  settings: TransportSettings;
-  join: Join;
-  code: string | null;
-  confirmed: boolean;
+export type PhrasePreview = {
+  vaultCode: string;
+  switching: boolean;
+  replacing: boolean;
+  reachable: boolean;
+  devices: number | null;
 };
+
+export class UnreachableError extends Error {}
+
+// 64 bits of the vault id, short enough to compare by eye across devices and
+// far too many to find another key that gives the same code.
+export function vaultCodeOf(vaultId: string): string {
+  return vaultId.slice(0, 16).toUpperCase().match(/.{4}/g)?.join('-') ?? '';
+}
+
+function messageOf(failure: unknown): string {
+  return failure instanceof Error ? failure.message : String(failure);
+}
 
 export type SyncController = ReturnType<typeof createSyncController>;
 
@@ -63,386 +59,314 @@ export function createSyncController(options: {
   newId: () => string;
   now: () => number;
   onChange: () => void;
+  defaultRelay: string | null;
 }) {
   const { settings, store, onRemote, fetch, newId, now, onChange } = options;
-  let running: Running | null = null;
-  let joining: Joining | null = null;
+  let vault: Vault | null = null;
+  let unreadable: string | null = null;
+  let connection: Connection | null = null;
   let error: string | null = null;
   let inFlight: Promise<void> = Promise.resolve();
-  let stopping = false;
-  let starting = false;
+  let busy = false;
+  // Bumped by every change, so a connection that finishes opening after the
+  // user changed the vault or the place is dropped instead of used.
+  let generation = 0;
 
-  function transportFor(
+  // Each vault gets its own subfolder, so vaults sharing one folder never mix.
+  async function transportFor(
+    target: Vault,
     transport: TransportSettings,
-    vaultId: string,
-    key: Uint8Array | null,
-  ): Transport & { register?: () => Promise<void> } {
-    return transport.kind === 'folder'
-      ? createFolderTransport(path.join(transport.folder, folderName))
-      : createRelayTransport({
-          url: transport.url,
-          vaultId,
-          token: key ? relayToken(key) : null,
-          fetch,
-        });
-  }
-
-  function run(vault: Vault) {
-    const transport = transportFor(vault.transport, vault.id, vault.key);
-    running = {
-      vault,
-      transport,
-      engine: createSyncEngine({ transport, vault, store, onRemote, now }),
-      approver: createApprover(transport, vault),
-      requests: [],
-    };
-  }
-
-  async function readVaultId(transport: Transport): Promise<string | null> {
-    const data = await transport.read(vaultFile, pairingMaxBytes);
-    if (!data) {
-      return null;
+  ): Promise<Transport & { register?: () => Promise<void> }> {
+    if (transport.kind === 'relay') {
+      return createRelayTransport({
+        url: transport.url,
+        vaultId: target.id,
+        token: relayToken(target.key),
+        fetch,
+      });
     }
-    const parsed: unknown = JSON.parse(Buffer.from(data).toString('utf8'));
-    const id =
-      typeof parsed === 'object' && parsed !== null
-        ? Reflect.get(parsed, 'vaultId')
-        : null;
-    if (typeof id !== 'string' || !isSyncId(id)) {
-      throw new Error('This folder holds sync data the app cannot use');
-    }
-    return id;
+    // An unmounted drive looks like an empty folder; removing from it would
+    // seem to work while the files stay where the drive is.
+    await stat(transport.folder).catch(() => {
+      throw new Error('The sync folder can’t be found');
+    });
+    return createFolderTransport(
+      path.join(transport.folder, folderName, target.id),
+    );
   }
 
-  async function create(transport: TransportSettings, vaultId: string) {
-    const vault: Vault = {
-      id: vaultId,
-      key: randomKey(),
-      deviceId: newId(),
-      transport,
-      recoveryConfirmed: false,
-    };
-    const target = transportFor(transport, vault.id, vault.key);
+  async function connectionFor(
+    next: Vault,
+    transport: TransportSettings,
+  ): Promise<Connection> {
+    const target = await transportFor(next, transport);
     await target.register?.();
-    await target.write(
-      vaultFile,
-      Buffer.from(JSON.stringify({ vaultId: vault.id })),
-    );
-    await target.write(
-      vaultCheckFile,
-      seal(vault.key, bytesOf(vaultCheckFile), vaultCheckContext(vault.id)),
-    );
-    await settings.save(vault);
-    run(vault);
+    return {
+      transport: target,
+      engine: createSyncEngine({
+        transport: target,
+        vault: next,
+        store,
+        onRemote,
+        now,
+      }),
+    };
   }
 
-  // Opening anything sealed with the vault key proves the phrase is this
-  // vault's; the check file exists from the start, before any meeting is.
-  async function opensWithKey(target: Transport, id: string, key: Uint8Array) {
-    const check = await target.read(vaultCheckFile, pairingMaxBytes);
-    if (check) {
-      open(key, check, vaultCheckContext(id));
+  // Offline is normal: the vault is kept, and every sync round tries to
+  // reach the folder or relay again until it works.
+  async function connect() {
+    const current = vault;
+    const round = generation;
+    if (connection || !current?.transport) {
       return;
     }
-    const sample = (await target.list(devicesPrefix()))
-      .map((file) => ({ file, parsed: parseMeetingPath(file.path) }))
-      .find(({ parsed }) => parsed !== null);
-    if (!sample?.parsed) {
+    try {
+      const next = await connectionFor(current, current.transport);
+      if (round === generation) {
+        connection = next;
+        error = null;
+      }
+    } catch (failure) {
+      if (round === generation) {
+        error = messageOf(failure);
+      }
+    }
+  }
+
+  // Removes what this device published, so the shared folder or relay doesn't
+  // keep a copy of meetings nobody syncs any more. Deletions stay, so devices
+  // that haven't seen one yet still get them. A place that can't be reached is
+  // only left behind when the user agreed to that.
+  async function leave(current: Vault, leaveCopies: boolean) {
+    connection = null;
+    await inFlight;
+    let from: Connection | null = null;
+    if (current.transport) {
+      try {
+        from = await connectionFor(current, current.transport);
+      } catch (failure) {
+        if (!leaveCopies) {
+          throw new UnreachableError(messageOf(failure));
+        }
+      }
+    }
+    for (const id of store.ids().filter((id) => !store.isDeleted(id))) {
+      await from?.transport.remove(meetingPath(current.deviceId, id));
+    }
+  }
+
+  async function adopt(next: Vault) {
+    await settings.save(next);
+    vault = next;
+    connection = null;
+    await connect();
+  }
+
+  function requireVault(): Vault {
+    if (!vault) {
+      throw new Error('This device has no recovery phrase yet');
+    }
+    return vault;
+  }
+
+  function assertReplaceable(replaceUnreadable: boolean) {
+    if (unreadable && !replaceUnreadable) {
       throw new Error(
-        'There is nothing in this vault to check the phrase against.',
+        'The recovery key saved on this device couldn’t be read, so it isn’t replaced. Unlock the system keyring and restart Nod.',
       );
     }
-    const sealed = await target.read(sample.file.path, maxSampleBytes);
-    open(
-      key,
-      sealed ?? new Uint8Array(),
-      meetingContext(id, sample.parsed.deviceId, sample.parsed.meetingId),
-    );
   }
 
-  // A phrase passes its own checksum even when it belongs to another vault,
-  // so it is tried against the vault itself before anything is saved.
-  async function restore(
-    transport: TransportSettings,
-    vaultId: string | null,
-    phrase: string,
-  ) {
-    const key = keyFromRecoveryPhrase(phrase);
-    const wrongPhrase = 'That recovery phrase belongs to a different vault.';
-    let id = vaultId;
-    if (transport.kind === 'folder') {
-      id = await readVaultId(transportFor(transport, 'unused', null));
-      if (!id) {
-        throw new Error('This folder has no synced meetings to restore.');
-      }
-    }
-    if (!id) {
-      throw new Error('Enter the vault ID to restore.');
-    }
-    const target = transportFor(transport, id, key);
+  // Every change awaits the transport; holding the controller for the whole
+  // change keeps a second one from starting in that gap.
+  async function change(action: () => Promise<void>) {
     try {
-      if (
-        transport.kind === 'relay' &&
-        !(await target.read(vaultFile, pairingMaxBytes))
-      ) {
-        throw new Error('This relay has no vault with that ID.');
+      if (busy) {
+        throw new Error('Sync is busy, try again in a moment');
       }
-      await opensWithKey(target, id, key);
+      busy = true;
+      generation += 1;
+      error = null;
+      try {
+        await action();
+      } finally {
+        busy = false;
+      }
     } catch (failure) {
-      const refused =
-        failure instanceof Error &&
-        (/\b401\b/.test(failure.message) ||
-          /could not be opened/.test(failure.message));
-      throw refused ? new Error(wrongPhrase) : failure;
-    }
-    const vault: Vault = {
-      id,
-      key,
-      deviceId: newId(),
-      transport,
-      recoveryConfirmed: true,
-    };
-    await settings.save(vault);
-    run(vault);
-  }
-
-  async function beginJoin(transport: TransportSettings, vaultId: string) {
-    const target = transportFor(transport, vaultId, null);
-    const join = createJoin(target, newId());
-    await join.begin();
-    joining = {
-      transport: target,
-      settings: transport,
-      join,
-      code: null,
-      confirmed: false,
-    };
-  }
-
-  async function guarded(action: () => Promise<void>) {
-    error = null;
-    try {
-      await action();
-    } catch (failure) {
-      error = failure instanceof Error ? failure.message : String(failure);
+      error = messageOf(failure);
       throw failure;
     } finally {
       onChange();
     }
   }
 
-  // Setting up awaits the transport; claiming the controller first keeps a
-  // second setup from starting in that gap.
-  function setUp(action: () => Promise<void>) {
-    return guarded(async () => {
-      assertIdle();
-      starting = true;
-      try {
-        await action();
-      } finally {
-        starting = false;
-      }
-    });
+  async function attach(transport: TransportSettings) {
+    const current = requireVault();
+    if (current.transport) {
+      throw new Error('Stop syncing before choosing another place');
+    }
+    const next = { ...current, transport };
+    const opened = await connectionFor(next, transport);
+    await settings.save(next);
+    vault = next;
+    connection = opened;
   }
 
-  function assertIdle() {
-    if (running || joining || stopping || starting) {
-      throw new Error('Sync is already set up on this device');
-    }
+  async function devicesIn(target: Vault, transport: TransportSettings) {
+    const probe = await transportFor(target, transport);
+    const files = await probe.list(devicesPrefix());
+    return new Set(
+      files.flatMap((file) => parseMeetingPath(file.path)?.deviceId ?? []),
+    ).size;
+  }
+
+  function vaultOf(
+    key: Uint8Array,
+    transport: TransportSettings | null,
+    recoveryConfirmed: boolean,
+  ): Vault {
+    return {
+      id: vaultIdOf(key),
+      key,
+      deviceId: newId(),
+      transport,
+      recoveryConfirmed,
+    };
   }
 
   return {
     load: async () => {
-      const vault = await settings.load().catch((failure: unknown) => {
-        error = failure instanceof Error ? failure.message : String(failure);
-        return null;
-      });
-      if (vault) {
-        run(vault);
+      try {
+        vault = await settings.load();
+        unreadable = null;
+      } catch (failure) {
+        unreadable = messageOf(failure);
       }
     },
     state: (): SyncState => {
-      if (joining) {
-        return {
-          status: 'joining',
-          transport: joining.settings,
-          code: joining.code,
-          confirmed: joining.confirmed,
-        };
+      if (!vault) {
+        return unreadable
+          ? { status: 'unavailable', error: unreadable }
+          : { status: 'none', error };
       }
-      if (!running) {
-        return { status: 'off', error };
-      }
-      const status = running.engine.status();
+      const status = connection?.engine.status();
       return {
-        status: 'on',
-        transport: running.vault.transport,
-        vaultId: running.vault.id,
-        devices: status.devices,
-        lastSyncedAt: status.lastSyncedAt,
-        error: error ?? status.error,
-        requests: running.requests,
-        recoveryConfirmed: running.vault.recoveryConfirmed,
+        status: 'ready',
+        vaultId: vault.id,
+        transport: vault.transport,
+        defaultRelay: options.defaultRelay,
+        connected: connection !== null,
+        devices: status?.devices ?? 0,
+        lastSyncedAt: status?.lastSyncedAt ?? null,
+        error: error ?? status?.error ?? null,
+        recoveryConfirmed: vault.recoveryConfirmed,
       };
     },
-    useFolder: (folder: string) =>
-      setUp(async () => {
-        const transport: TransportSettings = { kind: 'folder', folder };
-        const existing = await readVaultId(
-          transportFor(transport, 'unused', null),
-        );
-        if (existing) {
-          await beginJoin(transport, existing);
-        } else {
-          await create(transport, newId());
+    create: () =>
+      change(async () => {
+        assertReplaceable(false);
+        if (vault) {
+          throw new Error('This device already has a recovery phrase');
         }
+        await adopt(vaultOf(randomKey(), null, false));
       }),
-    useRelay: (url: string, vaultId: string | null) =>
-      setUp(async () => {
-        const transport: TransportSettings = { kind: 'relay', url };
-        if (vaultId) {
-          await beginJoin(transport, vaultId);
-        } else {
-          await create(transport, newId());
-        }
-      }),
-    approve: (requestId: string, code: string) =>
-      guarded(async () => {
-        await running?.approver.approve(requestId, code);
-        if (running) {
-          running.requests = running.requests.filter(
-            (request) => request.requestId !== requestId,
-          );
-        }
-      }),
-    reject: (requestId: string) =>
-      guarded(async () => {
-        await running?.approver.reject(requestId);
-        if (running) {
-          running.requests = running.requests.filter(
-            (request) => request.requestId !== requestId,
-          );
-        }
-      }),
-    recoveryPhrase: (): string => {
-      if (!running) {
-        throw new Error('Sync is not set up on this device');
+    // What entering these words would do, so the user can confirm it first:
+    // whether this device leaves another vault, and whether any device syncs
+    // with them yet. A mistyped word that still passes the checksum shows up
+    // as a vault no device uses.
+    preview: async (phrase: string): Promise<PhrasePreview> => {
+      const key = keyFromRecoveryPhrase(phrase);
+      const current = vault;
+      if (current && vaultIdOf(key) === current.id) {
+        throw new Error('This device already uses that recovery phrase');
       }
-      return recoveryPhrase(running.vault.key);
+      const replacing = unreadable !== null;
+      const vaultCode = vaultCodeOf(vaultIdOf(key));
+      if (!current?.transport) {
+        return {
+          vaultCode,
+          switching: current !== null,
+          replacing,
+          reachable: true,
+          devices: null,
+        };
+      }
+      try {
+        return {
+          vaultCode,
+          switching: true,
+          replacing,
+          reachable: true,
+          devices: await devicesIn(
+            vaultOf(key, current.transport, true),
+            current.transport,
+          ),
+        };
+      } catch {
+        return {
+          vaultCode,
+          switching: true,
+          replacing,
+          reachable: false,
+          devices: null,
+        };
+      }
     },
-    confirmRecoveryPhrase: () =>
-      guarded(async () => {
-        if (!running) {
-          throw new Error('Sync is not set up on this device');
+    // Words that belong to another vault switch this device over to it,
+    // through the same folder or relay, and its meetings join that vault.
+    enterPhrase: (
+      phrase: string,
+      choices: { leaveCopies: boolean; replaceUnreadable: boolean },
+    ) =>
+      change(async () => {
+        assertReplaceable(choices.replaceUnreadable);
+        const key = keyFromRecoveryPhrase(phrase);
+        const current = vault;
+        if (current && vaultIdOf(key) === current.id) {
+          throw new Error('This device already uses that recovery phrase');
         }
-        const vault = { ...running.vault, recoveryConfirmed: true };
+        if (current) {
+          await leave(current, choices.leaveCopies);
+        }
+        await adopt(vaultOf(key, current?.transport ?? null, true));
+        unreadable = null;
+      }),
+    useFolder: (folder: string) =>
+      change(() => attach({ kind: 'folder', folder })),
+    useRelay: (url: string) => change(() => attach({ kind: 'relay', url })),
+    disconnect: (leaveCopies: boolean) =>
+      change(async () => {
+        const current = requireVault();
+        await leave(current, leaveCopies);
+        connection = null;
+        vault = { ...current, transport: null };
         await settings.save(vault);
-        running.vault = vault;
       }),
-    restoreFromFolder: (folder: string, phrase: string) =>
-      setUp(async () => {
-        await restore({ kind: 'folder', folder }, null, phrase);
-      }),
-    restoreFromRelay: (url: string, vaultId: string, phrase: string) =>
-      setUp(async () => {
-        await restore({ kind: 'relay', url }, vaultId, phrase);
-      }),
-    confirmJoin: (code: string) =>
-      guarded(async () => {
-        if (!joining) {
-          throw new Error('Nothing is waiting to join');
-        }
-        joining.join.confirm(code);
-        joining.confirmed = true;
-      }),
-    cancelJoin: () =>
-      guarded(async () => {
-        const current = joining;
-        joining = null;
-        await current?.join.cancel();
-      }),
-    // Leaving removes what this device published, so the shared folder or
-    // relay doesn't keep a copy of meetings nobody syncs any more. Deletions
-    // stay, so devices that haven't seen one yet still get it. The key is only
-    // forgotten once that worked, since nothing could remove the files later.
-    stop: () =>
-      guarded(async () => {
-        if (joining) {
-          throw new Error('Cancel joining before turning sync off');
-        }
-        const current = running;
-        running = null;
-        stopping = true;
-        try {
-          await inFlight;
-          if (current) {
-            try {
-              for (const id of store
-                .ids()
-                .filter((id) => !store.isDeleted(id))) {
-                await current.transport.remove(
-                  meetingPath(current.vault.deviceId, id),
-                );
-              }
-            } catch (failure) {
-              running = current;
-              throw failure;
-            }
-          }
-          await settings.clear();
-        } finally {
-          stopping = false;
-        }
+    recoveryPhrase: (): string => recoveryPhrase(requireVault().key),
+    confirmRecoveryPhrase: () =>
+      change(async () => {
+        const next = { ...requireVault(), recoveryConfirmed: true };
+        await settings.save(next);
+        vault = next;
       }),
     refresh: () => {
-      const round = inFlight.then(refreshOnce);
+      const round = inFlight.then(async () => {
+        if (busy) {
+          return;
+        }
+        await connect();
+        const current = connection;
+        if (current) {
+          await current.engine.sync();
+          if (current === connection) {
+            error = null;
+          }
+        }
+        onChange();
+      });
       inFlight = round.catch(() => undefined);
       return round;
     },
   };
-
-  async function refreshOnce() {
-    if (joining) {
-      const current = joining;
-      let progress;
-      try {
-        progress = await current.join.poll();
-      } catch (failure) {
-        joining = null;
-        error = failure instanceof Error ? failure.message : String(failure);
-        await current.join.cancel();
-        onChange();
-        return;
-      }
-      const code =
-        progress.step === 'confirm' || progress.step === 'approving'
-          ? progress.code
-          : null;
-      if (code !== current.code) {
-        current.code = code;
-        onChange();
-      }
-      if (progress.step === 'joined') {
-        const vault: Vault = {
-          id: progress.vaultId,
-          key: progress.key,
-          deviceId: newId(),
-          transport: current.settings,
-          recoveryConfirmed: true,
-        };
-        await settings.save(vault);
-        joining = null;
-        run(vault);
-        onChange();
-      }
-    }
-    if (running) {
-      const current = running;
-      await current.engine.sync();
-      current.requests = await current.approver
-        .pending()
-        .catch(() => current.requests);
-      onChange();
-    }
-  }
 }

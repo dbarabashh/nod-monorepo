@@ -167,6 +167,11 @@ export function createRelay(
       if (!header.startsWith('Bearer ') || header.length < 40) {
         return { status: 400 };
       }
+      // A vault is named after a hash of its token, so only the holder of the
+      // key can register it and nobody can claim a vault id they have seen.
+      if (hashOf(header.slice(7)).slice(0, 32) !== vault) {
+        return { status: 403 };
+      }
       await mkdir(vaultDir(vault), { recursive: true });
       await writeFile(
         path.join(vaultDir(vault), 'token'),

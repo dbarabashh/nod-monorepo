@@ -6,6 +6,7 @@ import {
   grantKey,
   matchesCommitment,
   pairingCode,
+  vaultIdOf,
 } from './pairing.ts';
 
 describe('pairing crypto', () => {
@@ -57,6 +58,19 @@ describe('pairing crypto', () => {
     assert.notDeepEqual(
       grantKey(joining, approving.publicKey, 'r1'),
       grantKey(joining, approving.publicKey, 'r2'),
+    );
+  });
+});
+
+describe('vault id', () => {
+  it('is the same for the same key on every device, and differs between keys', () => {
+    assert.equal(
+      vaultIdOf(new Uint8Array(32)),
+      '32e2308c839159d85348a2cdb1c021f3',
+    );
+    assert.notEqual(
+      vaultIdOf(new Uint8Array(32).fill(1)),
+      vaultIdOf(new Uint8Array(32)),
     );
   });
 });

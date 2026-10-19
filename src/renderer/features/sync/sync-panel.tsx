@@ -1,46 +1,76 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type SubmitEvent } from 'react';
 import type { SyncState } from '../../../shared/ipc.ts';
 import { Button, Field, Input } from '../../components/ui/index.ts';
 import { useAsync } from '../../lib/use-async.ts';
 import {
-  approveSyncDevice,
-  cancelSyncJoin,
   chooseSyncFolder,
-  confirmSyncJoin,
   connectSyncRelay,
+  disconnectSync,
   getSyncState,
   onSyncChanged,
-  rejectSyncDevice,
-  stopSync,
   syncNow,
 } from './api.ts';
+import { KeySetup } from './components/key-setup.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
-import { formatCode } from './lib/format-code.ts';
+import { Unavailable } from './components/unavailable.tsx';
 import { useAction } from './lib/use-action.ts';
 import './sync.css';
 
+type Ready = Extract<SyncState, { status: 'ready' }>;
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
 
-function Off({ state }: { state: Extract<SyncState, { status: 'off' }> }) {
+function ChoosePlace({ state }: { state: Ready }) {
   const { busy, error, run } = useAction();
   const [url, setUrl] = useState('');
-  const [vaultId, setVaultId] = useState('');
 
-  function connect(event: FormEvent) {
+  function connect(event: SubmitEvent) {
     event.preventDefault();
-    run(() => connectSyncRelay(url, vaultId.trim()));
+    run(() => connectSyncRelay(url));
   }
 
   return (
     <div className="sync">
+      {state.defaultRelay && (
+        <>
+          <p className="sync__note">
+            Meetings travel through {hostOf(state.defaultRelay)} encrypted with
+            your recovery phrase, so the relay can’t read them. Turn it on here
+            and on each of your devices.
+          </p>
+          <div className="sync__actions">
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => {
+                const relay = state.defaultRelay;
+                if (relay) {
+                  run(() => connectSyncRelay(relay));
+                }
+              }}
+            >
+              Sync through {hostOf(state.defaultRelay)}
+            </Button>
+          </div>
+        </>
+      )}
       <p className="sync__note">
-        Choose a folder your devices already share, such as iCloud Drive,
-        Dropbox or Syncthing. Meetings travel through it encrypted, and the
-        service that holds the folder can't read them.
+        {state.defaultRelay ? 'Or choose' : 'Choose'} a folder your devices
+        already share, such as iCloud Drive, Dropbox or Syncthing, and choose
+        the same one on each device. Meetings travel through it encrypted, and
+        the service that holds the folder can’t read them.
       </p>
       <div className="sync__actions">
         <Button
-          variant="primary"
+          variant={state.defaultRelay ? 'default' : 'primary'}
           disabled={busy}
           onClick={() => run(chooseSyncFolder)}
         >
@@ -52,7 +82,7 @@ function Off({ state }: { state: Extract<SyncState, { status: 'off' }> }) {
         <form className="sync__form" onSubmit={connect}>
           <Field
             label="Relay address"
-            hint="An https:// address you run or trust."
+            hint="An https:// address you run or trust. Use the same one on each device."
           >
             {(control) => (
               <Input
@@ -65,28 +95,13 @@ function Off({ state }: { state: Extract<SyncState, { status: 'off' }> }) {
               />
             )}
           </Field>
-          <Field
-            label="Vault ID"
-            hint="Leave empty to start syncing here; enter the ID another device shows to join it."
-          >
-            {(control) => (
-              <Input
-                {...control}
-                value={vaultId}
-                onChange={(event) => setVaultId(event.target.value)}
-              />
-            )}
-          </Field>
           <div className="sync__actions">
             <Button type="submit" disabled={busy || url === ''}>
-              {vaultId.trim() === '' ? 'Start syncing' : 'Join'}
+              Connect
             </Button>
           </div>
         </form>
       </details>
-      <p className="sync__note">
-        Lost the devices that synced? Restore them under Recovery phrase.
-      </p>
       {(error ?? state.error) && (
         <p className="sync__note" role="alert">
           {error ?? state.error}
@@ -96,124 +111,40 @@ function Off({ state }: { state: Extract<SyncState, { status: 'off' }> }) {
   );
 }
 
-function Joining({
+function Connected({
   state,
+  transport,
 }: {
-  state: Extract<SyncState, { status: 'joining' }>;
+  state: Ready;
+  transport: NonNullable<Ready['transport']>;
 }) {
   const { busy, error, run } = useAction();
-  const code = state.code;
-  return (
-    <div className="sync">
-      {code === null ? (
-        <output className="sync__note">
-          Asking your other devices to let this one in. Keep the app open on one
-          of them.
-        </output>
-      ) : state.confirmed ? (
-        <>
-          <p className="sync__code" data-selectable>
-            {formatCode(code)}
-          </p>
-          <output className="sync__note">
-            Waiting for the other device to allow this one.
-          </output>
-        </>
-      ) : (
-        <>
-          <p className="sync__note">
-            On a device that already syncs, open Settings. Continue only if it
-            shows the same code, then allow this device there.
-          </p>
-          <p className="sync__code" data-selectable>
-            {formatCode(code)}
-          </p>
-        </>
-      )}
-      {error && (
-        <p className="sync__note" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="sync__actions">
-        {code !== null && !state.confirmed && (
-          <Button
-            variant="primary"
-            disabled={busy}
-            onClick={() => run(() => confirmSyncJoin(code))}
-          >
-            Codes match
-          </Button>
-        )}
-        <Button disabled={busy} onClick={() => run(cancelSyncJoin)}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function On({ state }: { state: Extract<SyncState, { status: 'on' }> }) {
-  const { busy, error, run } = useAction();
-  const where =
-    state.transport.kind === 'folder'
-      ? state.transport.folder
-      : state.transport.url;
   const devices =
     state.devices === 1 ? '1 other device' : `${state.devices} other devices`;
 
   return (
     <div className="sync">
-      {!state.recoveryConfirmed && <RecoveryPhrase confirming />}
       <dl className="sync__facts">
         <dt>Through</dt>
-        <dd data-selectable>{where}</dd>
+        <dd data-selectable>
+          {transport.kind === 'folder' ? transport.folder : transport.url}
+        </dd>
         <dt>Devices</dt>
-        <dd>{devices}</dd>
+        <dd>{state.connected ? devices : 'Not reachable right now'}</dd>
         <dt>Last synced</dt>
         <dd>
           {state.lastSyncedAt === null
             ? 'Not yet'
             : timeFormat.format(new Date(state.lastSyncedAt))}
         </dd>
-        {state.transport.kind === 'relay' && (
-          <>
-            <dt>Vault ID</dt>
-            <dd data-selectable>{state.vaultId}</dd>
-          </>
-        )}
       </dl>
-      {state.requests.map((request) => (
-        <section
-          key={request.requestId}
-          className="sync__request"
-          aria-label="Device asking to join"
-        >
-          <p className="sync__note">
-            A device is asking to join. Allow it only if it shows this code:
-          </p>
-          <p className="sync__code" data-selectable>
-            {formatCode(request.code)}
-          </p>
-          <div className="sync__actions">
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() =>
-                run(() => approveSyncDevice(request.requestId, request.code))
-              }
-            >
-              Codes match, allow
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => run(() => rejectSyncDevice(request.requestId))}
-            >
-              Don’t allow
-            </Button>
-          </div>
-        </section>
-      ))}
+      {state.connected && state.devices === 0 && (
+        <p className="sync__note">
+          To add a device, install Nod there, choose “Already use Nod” and enter
+          your recovery phrase, then choose this same{' '}
+          {transport.kind === 'folder' ? 'folder' : 'relay'}.
+        </p>
+      )}
       {(error ?? state.error) && (
         <p className="sync__note" role="alert">
           {error ?? state.error}
@@ -223,7 +154,11 @@ function On({ state }: { state: Extract<SyncState, { status: 'on' }> }) {
         <Button disabled={busy} onClick={() => run(syncNow)}>
           Sync now
         </Button>
-        <Button variant="ghost" disabled={busy} onClick={() => run(stopSync)}>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => run(disconnectSync)}
+        >
           Stop syncing on this device
         </Button>
       </div>
@@ -244,12 +179,29 @@ export function SyncPanel() {
     );
   }
   const sync = state.value;
-  switch (sync.status) {
-    case 'off':
-      return <Off state={sync} />;
-    case 'joining':
-      return <Joining state={sync} />;
-    case 'on':
-      return <On state={sync} />;
+  if (sync.status === 'unavailable') {
+    return <Unavailable error={sync.error} />;
   }
+  if (sync.status === 'none') {
+    return (
+      <div className="sync">
+        <p className="sync__note">
+          Your devices sync through a recovery phrase. Set one up first.
+        </p>
+        <KeySetup />
+      </div>
+    );
+  }
+  return (
+    <div className="sync">
+      {!sync.recoveryConfirmed && (
+        <RecoveryPhrase key={sync.vaultId} confirming />
+      )}
+      {sync.transport ? (
+        <Connected state={sync} transport={sync.transport} />
+      ) : (
+        <ChoosePlace state={sync} />
+      )}
+    </div>
+  );
 }
