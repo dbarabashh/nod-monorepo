@@ -11,11 +11,10 @@ import {
   meetingName,
   meetingStartedAt,
   meetingText,
-  parseMeetings,
+  parseMeeting,
   recordedMs,
   renameMeeting,
   resumeMeeting,
-  serializeMeetings,
   setSummary,
   startMeeting,
   transcriptText,
@@ -58,62 +57,40 @@ describe('finishing a meeting', () => {
   });
 });
 
-describe('the stored meetings file', () => {
-  it('reads files written before meetings could be finished', () => {
+describe('reading a stored meeting', () => {
+  it('reads a meeting saved before later fields existed, with their defaults', () => {
     assert.deepEqual(
-      parseMeetings({
-        version: 1,
-        meetings: [
-          { id: 'old', title: 'Old', segments: [{ startedAt: 1, endedAt: 2 }] },
-        ],
+      parseMeeting({
+        id: 'old',
+        title: 'Old',
+        segments: [{ startedAt: 1, endedAt: 2 }],
       }),
-      [
-        {
-          id: 'old',
-          title: 'Old',
-          segments: [{ startedAt: 1, endedAt: 2 }],
-          finishedAt: null,
-          transcript: [],
-          summary: null,
-          summaryEdited: false,
-          titleEdited: false,
-          generatedTitle: null,
-        },
-      ],
+      {
+        id: 'old',
+        title: 'Old',
+        segments: [{ startedAt: 1, endedAt: 2 }],
+        finishedAt: null,
+        transcript: [],
+        summary: null,
+        summaryEdited: false,
+        titleEdited: false,
+        generatedTitle: null,
+      },
     );
   });
 
   it('reads back what it wrote', () => {
-    const meetings = [
-      extendMeeting(startMeeting('m1', 'Design review', 1_000), 2_000),
-    ];
+    const meeting = extendMeeting(
+      startMeeting('m1', 'Design review', 1_000),
+      2_000,
+    );
     assert.deepEqual(
-      parseMeetings(JSON.parse(JSON.stringify(serializeMeetings(meetings)))),
-      meetings,
+      parseMeeting(JSON.parse(JSON.stringify(meeting))),
+      meeting,
     );
   });
 
-  it('refuses a file from an unknown version instead of guessing', () => {
-    assert.throws(
-      () => parseMeetings({ version: 2, meetings: [] }),
-      /Unsupported meetings file version 2/,
-    );
-    assert.throws(() => parseMeetings(null), /not an object/);
-  });
-
-  it('refuses a file with a damaged meeting, so saving never erases it', () => {
-    const good = {
-      id: 'ok',
-      title: 'Kept',
-      segments: [{ startedAt: 1, endedAt: 2 }],
-      finishedAt: 7,
-      transcript: [],
-      summary: null,
-      summaryEdited: false,
-      titleEdited: false,
-      generatedTitle: null,
-    };
-    assert.deepEqual(parseMeetings({ version: 1, meetings: [good] }), [good]);
+  it('refuses a damaged meeting instead of guessing', () => {
     for (const damaged of [
       { id: 'no-segments', title: 'x', segments: [] },
       { id: 'backwards', title: 'x', segments: [{ startedAt: 5, endedAt: 1 }] },
@@ -125,11 +102,9 @@ describe('the stored meetings file', () => {
         finishedAt: 'yes',
       },
       'garbage',
+      null,
     ]) {
-      assert.throws(
-        () => parseMeetings({ version: 1, meetings: [good, damaged] }),
-        /Meeting 2 in the meetings file is damaged/,
-      );
+      assert.equal(parseMeeting(damaged), null);
     }
   });
 });
@@ -268,10 +243,7 @@ describe('the transcript', () => {
     assert.equal(edited.summary, 'We met **John Smith**.');
     assert.equal(edited.summaryEdited, true);
     assert.equal(setSummary(edited, 'Rewritten.').summaryEdited, false);
-    assert.deepEqual(
-      parseMeetings(JSON.parse(JSON.stringify(serializeMeetings([edited])))),
-      [edited],
-    );
+    assert.deepEqual(parseMeeting(JSON.parse(JSON.stringify(edited))), edited);
   });
 
   it('treats a summary cleared by hand as no summary', () => {
@@ -364,8 +336,8 @@ describe('the transcript', () => {
       },
     ]);
     assert.deepEqual(
-      parseMeetings(JSON.parse(JSON.stringify(serializeMeetings([meeting])))),
-      [meeting],
+      parseMeeting(JSON.parse(JSON.stringify(meeting))),
+      meeting,
     );
   });
 
@@ -378,23 +350,15 @@ describe('the transcript', () => {
     );
   });
 
-  it('refuses a file whose transcript is damaged', () => {
-    assert.throws(
-      () =>
-        parseMeetings({
-          version: 1,
-          meetings: [
-            {
-              id: 'm',
-              title: 't',
-              segments: [{ startedAt: 1, endedAt: 2 }],
-              transcript: [
-                { speaker: 'robot', startMs: 0, endMs: 1, text: 'x' },
-              ],
-            },
-          ],
-        }),
-      /damaged/,
+  it('refuses a meeting whose transcript is damaged', () => {
+    assert.equal(
+      parseMeeting({
+        id: 'm',
+        title: 't',
+        segments: [{ startedAt: 1, endedAt: 2 }],
+        transcript: [{ speaker: 'robot', startMs: 0, endMs: 1, text: 'x' }],
+      }),
+      null,
     );
   });
 });

@@ -1,10 +1,9 @@
-import { mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import {
   createDocument,
   loadDocument,
   mergeDocuments,
-  parseMeetings,
   readDocument,
   sameDocument,
   saveDocument,
@@ -19,11 +18,6 @@ import type { Merged } from '../../core/sync/index.ts';
 export type Cipher = {
   encrypt: (plain: Uint8Array, context: string) => Uint8Array;
   decrypt: (data: Uint8Array, context: string) => Uint8Array;
-};
-
-export type LegacyFile = {
-  file: string;
-  decrypt: (data: Buffer) => string;
 };
 
 export type MeetingStore = {
@@ -51,10 +45,9 @@ function isMissing(error: unknown): boolean {
 export function createMeetingStore(options: {
   directory: string;
   cipher: (hasStoredMeetings: boolean) => Promise<Cipher>;
-  legacy?: LegacyFile;
   onWrite?: (id: string) => void;
 }): MeetingStore {
-  const { directory, legacy, onWrite } = options;
+  const { directory, onWrite } = options;
   const documents = new Map<string, MeetingDocument>();
   const damaged = new Set<string>();
   const deleted = new Set<string>();
@@ -140,45 +133,6 @@ export function createMeetingStore(options: {
     }
   }
 
-  async function migrate(existing: Set<string>): Promise<void> {
-    if (!legacy) {
-      return;
-    }
-    let data: Buffer;
-    try {
-      data = await readFile(legacy.file);
-    } catch (error) {
-      if (isMissing(error)) {
-        return;
-      }
-      throw error;
-    }
-    const meetings = parseMeetings(JSON.parse(legacy.decrypt(data))).filter(
-      (meeting) => isMeetingId(meeting.id),
-    );
-    for (const meeting of meetings) {
-      if (damaged.has(meeting.id)) {
-        await setAside(meeting.id);
-      } else if (existing.has(meeting.id)) {
-        continue;
-      }
-      documents.set(meeting.id, createDocument(meeting));
-      await persist(meeting.id);
-    }
-    // The old file goes only once every meeting in it reads back from its
-    // own file, so a deleted meeting doesn't live on in it. If it can't be
-    // removed it is renamed, so it is never read again.
-    for (const meeting of meetings) {
-      await readStored(meeting.id);
-      if (!persisted.has(meeting.id)) {
-        throw new Error('Meetings could not be moved to the new format');
-      }
-    }
-    await rm(legacy.file).catch(() =>
-      rename(legacy.file, `${legacy.file}.migrated`).catch(() => undefined),
-    );
-  }
-
   async function readStored(id: string): Promise<void> {
     try {
       const document = loadDocument(
@@ -234,7 +188,6 @@ export function createMeetingStore(options: {
       for (const id of existing) {
         await readStored(id);
       }
-      await migrate(existing);
       loaded = true;
       return [...bases.values()];
     },

@@ -97,10 +97,6 @@ const meetingStore = createMeetingStore({
       decrypt: (data, context) => open(key, data, context),
     };
   },
-  legacy: {
-    file: path.join(app.getPath('userData'), 'meetings.bin'),
-    decrypt: keychain.unwrap,
-  },
   onWrite: () => syncScheduler.soon(),
 });
 

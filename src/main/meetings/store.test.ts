@@ -6,7 +6,6 @@ import {
   appendTranscript,
   createDocument,
   editSummary,
-  serializeMeetings,
   setSummary,
   startMeeting,
   updateDocument,
@@ -46,10 +45,6 @@ describe('createMeetingStore', () => {
     createMeetingStore({
       directory: join(dir(), 'meetings'),
       cipher: async () => cipher,
-      legacy: {
-        file: join(dir(), 'meetings.bin'),
-        decrypt: (data) => Buffer.from(data).reverse().toString(),
-      },
       onWrite: (id) => written.push(id),
     });
 
@@ -126,24 +121,6 @@ describe('createMeetingStore', () => {
     await assert.rejects(skipped ?? Promise.resolve(), /disk full/);
     await assert.rejects(last ?? Promise.resolve(), /disk full/);
     assert.equal(writes, 2);
-  });
-
-  it('moves meetings from the old single file once, then removes it', async () => {
-    const legacyJson = JSON.stringify(
-      serializeMeetings([meeting, startMeeting('m2', 'Other', 2_000)]),
-    );
-    await writeFile(
-      join(dir(), 'meetings.bin'),
-      Buffer.from(legacyJson).reverse(),
-    );
-
-    const loaded = await store().load();
-    assert.deepEqual(loaded.map((saved) => saved.id).sort(), ['m1', 'm2']);
-    assert.deepEqual(await readdir(dir()), ['meetings']);
-    assert.deepEqual(
-      (await store().load()).find((saved) => saved.id === 'm1'),
-      meeting,
-    );
   });
 
   it('keeps a file it cannot read, refuses to overwrite it, and still loads the rest', async () => {
@@ -246,21 +223,6 @@ describe('createMeetingStore', () => {
     assert.equal(retried.state, null);
     await retried.written;
     assert.equal((await store().load())[0]?.summary, 'Not saved yet.');
-  });
-
-  it('restores a migrated meeting whose new file is damaged from the old file', async () => {
-    await writeFile(
-      join(dir(), 'meetings.bin'),
-      Buffer.from(JSON.stringify(serializeMeetings([meeting]))).reverse(),
-    );
-    await store().load();
-    await writeFile(join(dir(), 'meetings', 'm1.bin'), 'not a meeting');
-    await writeFile(
-      join(dir(), 'meetings.bin'),
-      Buffer.from(JSON.stringify(serializeMeetings([meeting]))).reverse(),
-    );
-
-    assert.deepEqual(await store().load(), [meeting]);
   });
 
   it('only accepts meeting ids that are safe as file names', () => {

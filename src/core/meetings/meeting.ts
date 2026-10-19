@@ -247,17 +247,6 @@ export function recordedMs(meeting: Meeting): number {
   );
 }
 
-const fileVersion = 1;
-
-export type MeetingsFile = {
-  version: number;
-  meetings: Meeting[];
-};
-
-export function serializeMeetings(meetings: Meeting[]): MeetingsFile {
-  return { version: fileVersion, meetings };
-}
-
 function field(value: object, key: string): unknown {
   return Reflect.get(value, key);
 }
@@ -353,24 +342,4 @@ export function parseMeeting(raw: unknown): Meeting | null {
     titleEdited,
     generatedTitle,
   };
-}
-
-export function parseMeetings(raw: unknown): Meeting[] {
-  if (typeof raw !== 'object' || raw === null) {
-    throw new Error('Meetings file is not an object');
-  }
-  const version = field(raw, 'version');
-  const meetings = field(raw, 'meetings');
-  if (version !== fileVersion || !Array.isArray(meetings)) {
-    throw new Error(`Unsupported meetings file version ${String(version)}`);
-  }
-  // Refusing the whole file keeps a damaged entry on disk; dropping it here
-  // would erase it on the next save.
-  return meetings.map((raw, index) => {
-    const meeting = parseMeeting(raw);
-    if (!meeting) {
-      throw new Error(`Meeting ${index + 1} in the meetings file is damaged`);
-    }
-    return meeting;
-  });
 }
