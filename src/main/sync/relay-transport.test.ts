@@ -14,12 +14,7 @@ import {
 import { createMeetingStore } from '../meetings/store.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncEngine } from '../../core/sync/index.ts';
-import {
-  commitmentOf,
-  createPairingKeys,
-  relayToken,
-  vaultIdOf,
-} from '../../core/crypto/index.ts';
+import { relayToken, vaultIdOf } from '../../core/crypto/index.ts';
 import { createRelayTransport, relayBase } from './relay-transport.ts';
 
 describe('relay transport', () => {
@@ -81,78 +76,34 @@ describe('relay transport', () => {
     );
   });
 
-  it('lets a new device post only its request and reveal, once each, without the key', async () => {
+  it('needs the key for every path, including the old pairing area', async () => {
     await startRelay();
     const owner = transport(ownerToken);
     await owner.register();
+    await owner.write('pairing/r1/offer.json', Buffer.from('{}'));
     const stranger = transport(null);
-    await stranger.write(
-      'pairing/r1/request.json',
-      Buffer.from('{"commitment":"x"}'),
-    );
-    assert.deepEqual(
-      (await stranger.list('pairing/')).map((file) => file.path),
-      ['pairing/r1/request.json'],
+    await assert.rejects(stranger.list('pairing/'), /401/);
+    await assert.rejects(
+      stranger.read('pairing/r1/offer.json', 1_000_000),
+      /401/,
     );
     await assert.rejects(
       stranger.write('pairing/r1/request.json', Buffer.from('{}')),
-      /409/,
-    );
-    await assert.rejects(
-      stranger.write('pairing/r1/offer.json', Buffer.from('{}')),
       /401/,
     );
     await assert.rejects(
-      stranger.write('pairing/r1/grant.json', Buffer.from('{}')),
+      stranger.write('pairing/r1/reveal.json', Buffer.from('{}')),
       /401/,
     );
-    await assert.rejects(stranger.remove('pairing/r1/request.json'), /401/);
-    await assert.rejects(
-      stranger.write('pairing/r1/reveal.json', randomBytes(8 * 1024)),
-      /413/,
-    );
-    await assert.rejects(
-      stranger.write('pairing/r1/other.json', Buffer.from('{}')),
-      /400/,
-    );
+    await assert.rejects(stranger.remove('pairing/r1/offer.json'), /401/);
     await assert.rejects(
       stranger.write('devices/x/meetings/m.bin', Buffer.from('x')),
       /401/,
     );
-    await owner.write(
-      'pairing/r1/offer.json',
-      Buffer.from('{"publicKey":"y"}'),
-    );
-    await assert.rejects(
-      owner.write('pairing/r1/offer.json', Buffer.from('{}')),
-      /409/,
-    );
-    assert.deepEqual(await transport(null, 'unknown').list('pairing/'), []);
-  });
-
-  it('takes a reveal only from the device that made the request', async () => {
-    await startRelay();
-    await transport(ownerToken).register();
-    const stranger = transport(null);
-    const joining = createPairingKeys();
-    await stranger.write(
-      'pairing/r1/request.json',
-      Buffer.from(
-        JSON.stringify({ commitment: commitmentOf(joining.publicKey) }),
-      ),
-    );
-    await assert.rejects(
-      stranger.write(
-        'pairing/r1/reveal.json',
-        Buffer.from(
-          JSON.stringify({ publicKey: createPairingKeys().publicKey }),
-        ),
-      ),
-      /400/,
-    );
-    await stranger.write(
-      'pairing/r1/reveal.json',
-      Buffer.from(JSON.stringify({ publicKey: joining.publicKey })),
+    await assert.rejects(stranger.remove('devices/a/meetings/m1.bin'), /401/);
+    assert.deepEqual(
+      (await owner.list('pairing/')).map((file) => file.path),
+      ['pairing/r1/offer.json'],
     );
   });
 
@@ -184,19 +135,6 @@ describe('relay transport', () => {
     await assert.rejects(
       hostile.read('devices/a/meetings/m.bin', 1_000_000),
       /more than expected/,
-    );
-  });
-
-  it('caps how many requests can wait at once', async () => {
-    await startRelay();
-    await transport(ownerToken).register();
-    const stranger = transport(null);
-    for (let index = 0; index < 16; index += 1) {
-      await stranger.write(`pairing/r${index}/request.json`, Buffer.from('{}'));
-    }
-    await assert.rejects(
-      stranger.write('pairing/r16/request.json', Buffer.from('{}')),
-      /429/,
     );
   });
 
@@ -235,11 +173,12 @@ describe('relay transport', () => {
     await startRelay();
     await transport(ownerToken).register();
     const response = await fetch(
-      `${url}/v1/vaults/${vault}/files/pairing/..%2f..%2ftoken`,
+      `${url}/v1/vaults/${vault}/files/devices/..%2f..%2ftoken`,
+      { headers: { authorization: `Bearer ${ownerToken}` } },
     );
     assert.equal(response.status, 400);
     await assert.rejects(
-      transport(null).read('pairing/../token', 1_000_000),
+      transport(ownerToken).read('devices/../token', 1_000_000),
       /Unsafe/,
     );
   });

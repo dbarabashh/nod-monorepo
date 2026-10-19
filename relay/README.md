@@ -14,8 +14,8 @@ accepts `https://` relays, except `http://localhost` for testing.
 - A vault is registered by its first device with a token derived from the
   vault key; the relay keeps only a hash of it. The vault id must be the first
   32 hex characters of that hash, so only the key's holder can register it.
-- Everything except `pairing/` needs that token. The pairing area takes files
-  up to 4 KB and forgets them after a day.
+- Every file needs that token. Relays from before pairing was removed may
+  hold a leftover `<vault>/files/pairing/` folder in `RELAY_DATA`; delete it.
 - Back up `RELAY_DATA` if you like; it holds only ciphertext.
 
 To offer your relay in Settings → Sync without anyone typing its address,
@@ -30,10 +30,10 @@ Without it, each user picks a folder or a relay in Settings → Sync.
 ## On Vercel
 
 `relay/vercel` is the relay as a Vercel Function over a private Vercel Blob
-store. It serves the same file API the app syncs through, but not the pairing
-area, which the app doesn't use. It keeps no secrets: a vault id is a hash of
-the token derived from the vault key, so the function only checks that the
-token hashes to the id, and nobody can claim a vault first. It reaches the
+store. It serves the same file API the app syncs through. It keeps no secrets:
+a vault id is a hash of the token derived from the vault key, so the function
+only checks that the token hashes to the id, and nobody can claim a vault
+first. It reaches the
 store with the short-lived OIDC token Vercel gives it, not a stored token.
 
 Each vault keeps an index of its files, so a device that polls costs one small

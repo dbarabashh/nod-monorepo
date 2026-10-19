@@ -15,7 +15,7 @@ src/main/
                     encryption at rest (aead, data key)
   models/           speech model downloads: resume, checksum, storage
   meetings/         recorder, session, and the encrypted file-per-meeting store
-  sync/             device sync: engine, transports, pairing, settings
+  sync/             device sync: engine, transports, settings
   <domain>/         OS-facing code for one domain (audio/, storage/, keychain/)
 ```
 

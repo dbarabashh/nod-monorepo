@@ -12,7 +12,7 @@ describe('createFolderTransport', () => {
     const transport = createFolderTransport(dir());
     await transport.write('devices/a/meetings/m1.bin', Buffer.from('one'));
     await transport.write('devices/b/meetings/m2.bin', Buffer.from('two'));
-    await transport.write('pairing/r1/request.json', Buffer.from('{}'));
+    await transport.write('other/r1.json', Buffer.from('{}'));
 
     const listed = await transport.list('devices/');
     assert.deepEqual(listed.map((file) => file.path).sort(), [

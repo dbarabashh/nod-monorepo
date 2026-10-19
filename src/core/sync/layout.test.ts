@@ -1,11 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import {
-  meetingPath,
-  pairingPath,
-  parseMeetingPath,
-  parsePairingPath,
-} from './layout.ts';
+import { meetingPath, parseMeetingPath } from './layout.ts';
 
 describe('sync layout', () => {
   it('reads back the device and meeting from a meeting file path', () => {
@@ -13,10 +8,6 @@ describe('sync layout', () => {
     assert.deepEqual(parseMeetingPath(meetingPath('dev-1', 'm-1')), {
       deviceId: 'dev-1',
       meetingId: 'm-1',
-    });
-    assert.deepEqual(parsePairingPath(pairingPath('r1', 'offer')), {
-      requestId: 'r1',
-      step: 'offer',
     });
   });
 
@@ -30,7 +21,5 @@ describe('sync layout', () => {
     ]) {
       assert.equal(parseMeetingPath(path), null, path);
     }
-    assert.equal(parsePairingPath('pairing/r1/steal.json'), null);
-    assert.equal(parsePairingPath('pairing/../grant.json'), null);
   });
 });

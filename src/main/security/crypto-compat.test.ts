@@ -4,23 +4,10 @@ import {
   createDecipheriv,
   createHash,
   createHmac,
-  createPrivateKey,
-  createPublicKey,
-  diffieHellman,
-  hkdfSync,
   randomBytes,
 } from 'node:crypto';
 import { describe, it } from 'node:test';
-import {
-  commitmentOf,
-  createPairingKeys,
-  grantKey,
-  open,
-  pairingCode,
-  relayToken,
-  seal,
-  vaultIdOf,
-} from '../../core/crypto/index.ts';
+import { open, relayToken, seal, vaultIdOf } from '../../core/crypto/index.ts';
 
 // The same format built on OpenSSL through node:crypto, an independent
 // implementation; matching it in both directions shows the format and key
@@ -55,45 +42,7 @@ describe('compatibility with the OpenSSL version', () => {
     assert.deepEqual(opensslOpen(key, fresh, 'nod:meeting:m1'), plain);
   });
 
-  it('agrees with OpenSSL on the pairing keys, codes and relay token', () => {
-    const ours = createPairingKeys();
-    const theirs = createPairingKeys();
-    const opensslSecret = diffieHellman({
-      privateKey: createPrivateKey({
-        key: {
-          kty: 'OKP',
-          crv: 'X25519',
-          x: ours.publicKey,
-          d: ours.privateKey,
-        },
-        format: 'jwk',
-      }),
-      publicKey: createPublicKey({
-        key: { kty: 'OKP', crv: 'X25519', x: theirs.publicKey },
-        format: 'jwk',
-      }),
-    });
-    assert.deepEqual(
-      Buffer.from(grantKey(ours, theirs.publicKey, 'r1')),
-      Buffer.from(
-        hkdfSync('sha256', opensslSecret, 'nod:pairing', 'grant:r1', 32),
-      ),
-    );
-
-    assert.equal(
-      commitmentOf(ours.publicKey),
-      createHash('sha256')
-        .update(`nod:pairing:${ours.publicKey}`)
-        .digest('hex'),
-    );
-    const [a, b] = [ours.publicKey, theirs.publicKey].sort();
-    const digest = createHash('sha256')
-      .update(`nod:pairing-code:${a}:${b}`)
-      .digest();
-    assert.equal(
-      pairingCode(ours.publicKey, theirs.publicKey),
-      String(digest.readUInt32BE(0) % 1_000_000).padStart(6, '0'),
-    );
+  it('agrees with OpenSSL on the relay token and vault id', () => {
     assert.equal(
       relayToken(key),
       createHmac('sha256', key).update('nod:relay-token').digest('hex'),

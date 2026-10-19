@@ -12,13 +12,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import path from 'node:path';
 
 const idPattern = /^[A-Za-z0-9_-]{1,64}$/;
-const pairingPrefix = 'pairing/';
-const pairingFile =
-  /^pairing\/[A-Za-z0-9_-]{1,64}\/(request|offer|reveal|grant)\.json$/;
-const maxOpenRequests = 16;
-const pairingMaxBytes = 4 * 1024;
 const fileMaxBytes = 64 * 1024 * 1024;
-const pairingTtlMs = 24 * 60 * 60 * 1000;
 
 type Reply = { status: number; body?: Buffer | string; type?: string };
 
@@ -59,10 +53,7 @@ async function bodyOf(
 
 // Stores encrypted files for vaults and nothing else: it can't read them,
 // never merges them, and only lets a vault's own devices touch its files.
-export function createRelay(
-  dataDirectory: string,
-  now: () => number = Date.now,
-): Server {
+export function createRelay(dataDirectory: string): Server {
   const vaultDir = (vault: string) => path.join(dataDirectory, vault);
   const filesDir = (vault: string) => path.join(vaultDir(vault), 'files');
 
@@ -122,15 +113,6 @@ export function createRelay(
           const info = await stat(
             path.join(filesDir(vault), ...child.split('/')),
           );
-          if (
-            child.startsWith(pairingPrefix) &&
-            now() - info.mtimeMs > pairingTtlMs
-          ) {
-            await rm(path.join(filesDir(vault), ...child.split('/')), {
-              force: true,
-            });
-            continue;
-          }
           files.push({
             path: child,
             version: `${info.mtimeMs}-${info.size}`,
@@ -185,11 +167,7 @@ export function createRelay(
     const relative = match[3] ?? '';
     const listing = request.method === 'GET' && relative === '';
     const target = listing ? (url.searchParams.get('prefix') ?? '') : relative;
-    const token = await authorized(vault, request);
-    if (target.startsWith(pairingPrefix)) {
-      return pairing(vault, request, listing, target, token);
-    }
-    if (!token) {
+    if (!(await authorized(vault, request))) {
       return { status: 401 };
     }
     if (listing) {
@@ -221,116 +199,6 @@ export function createRelay(
     return { status: 405 };
   }
 
-  // A new device has no token yet, so it may post its request and reveal and
-  // read the answers. Each file is written once, so nobody can swap a key
-  // after the other side read it, and only the vault's devices may answer.
-  async function pairing(
-    vault: string,
-    request: IncomingMessage,
-    listing: boolean,
-    target: string,
-    token: boolean,
-  ): Promise<Reply> {
-    if (listing) {
-      return target === pairingPrefix ? list(vault, target) : { status: 400 };
-    }
-    const step = pairingFile.exec(target)?.[1];
-    if (!step) {
-      return { status: 400 };
-    }
-    const file = path.join(filesDir(vault), ...target.split('/'));
-    if (request.method === 'GET') {
-      return readReply(file);
-    }
-    if (request.method === 'DELETE') {
-      if (!token) {
-        return { status: 401 };
-      }
-      await rm(file, { force: true });
-      return { status: 204 };
-    }
-    if (request.method !== 'PUT') {
-      return { status: 405 };
-    }
-    if (!token && step !== 'request' && step !== 'reveal') {
-      return { status: 401 };
-    }
-    if (await present(file)) {
-      return { status: 409 };
-    }
-    if (step === 'request' && (await openRequests(vault)) >= maxOpenRequests) {
-      return { status: 429 };
-    }
-    const body = await bodyOf(request, pairingMaxBytes);
-    if (!body) {
-      return { status: 413 };
-    }
-    if (step === 'reveal' && !(await revealsCommitment(vault, target, body))) {
-      return { status: 400 };
-    }
-    await store(file, body);
-    return { status: 204 };
-  }
-
-  // Only the device that made the request can reveal its key, so nobody can
-  // take its place by writing a reveal first.
-  async function revealsCommitment(
-    vault: string,
-    target: string,
-    body: Buffer,
-  ): Promise<boolean> {
-    const requestFile = path.join(
-      filesDir(vault),
-      ...target.replace(/reveal\.json$/, 'request.json').split('/'),
-    );
-    try {
-      const commitment = Reflect.get(
-        JSON.parse((await readFile(requestFile)).toString('utf8')),
-        'commitment',
-      );
-      const publicKey = Reflect.get(
-        JSON.parse(body.toString('utf8')),
-        'publicKey',
-      );
-      return (
-        typeof commitment === 'string' &&
-        typeof publicKey === 'string' &&
-        createHash('sha256')
-          .update(`nod:pairing:${publicKey}`)
-          .digest('hex') === commitment
-      );
-    } catch {
-      return false;
-    }
-  }
-
-  async function present(file: string): Promise<boolean> {
-    try {
-      await stat(file);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async function openRequests(vault: string): Promise<number> {
-    const listed = await list(vault, pairingPrefix);
-    const files: unknown = JSON.parse(String(listed.body ?? '[]'));
-    const ids = new Set<string>();
-    if (Array.isArray(files)) {
-      for (const entry of files) {
-        const name =
-          typeof entry === 'object' && entry !== null
-            ? Reflect.get(entry, 'path')
-            : null;
-        if (typeof name === 'string') {
-          ids.add(name.split('/')[1] ?? '');
-        }
-      }
-    }
-    return ids.size;
-  }
-
   async function readReply(file: string): Promise<Reply> {
     try {
       return {
@@ -348,7 +216,7 @@ export function createRelay(
 
   async function store(file: string, body: Buffer) {
     await mkdir(path.dirname(file), { recursive: true });
-    const temporary = `${file}.tmp-${process.pid}-${now()}-${Math.random()}`;
+    const temporary = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random()}`;
     await writeFile(temporary, body);
     await rename(temporary, file);
   }
