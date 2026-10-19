@@ -15,7 +15,8 @@ export type IconName =
   | 'sync'
   | 'key'
   | 'transcript'
-  | 'summary';
+  | 'summary'
+  | 'trash';
 
 const paths: Record<IconName, string> = {
   search: 'M11 11l3 3M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Z',
@@ -32,6 +33,7 @@ const paths: Record<IconName, string> = {
   sync: 'M2.5 8a5.5 5.5 0 0 1 9.4-3.9l1.6 1.4M13.5 2.5v3h-3M13.5 8a5.5 5.5 0 0 1-9.4 3.9l-1.6-1.4M2.5 13.5v-3h3',
   key: 'M4.5 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM7 8h7.5M12.5 8v2.5M14.5 8v2',
   transcript: 'M3 4h10M3 7h10M3 10h7M3 13h4',
+  trash: 'M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.5 6.5v4.5M9.5 6.5v4.5',
   summary: 'M8 1.5 9.4 6.6 14.5 8l-5.1 1.4L8 14.5 6.6 9.4 1.5 8l5.1-1.4L8 1.5Z',
   speaker:
     'M2 6v4h2.5L8 13V3L4.5 6H2ZM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.5 6.5 0 0 1 0 9',

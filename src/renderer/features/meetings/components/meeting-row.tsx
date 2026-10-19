@@ -1,6 +1,7 @@
 import { ListRow } from '../../../components/ui/index.ts';
 import { formatDuration } from '../lib/format-duration.ts';
 import type { Meeting } from '../types.ts';
+import { DeleteMeetingButton } from './delete-meeting-button.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
 
 type MeetingRowProps = {
@@ -20,6 +21,11 @@ export function MeetingRow({ meeting, selected, onSelect }: MeetingRowProps) {
       selected={selected}
       onClick={() => onSelect(meeting.id)}
       className="meeting-row"
+      action={
+        meeting.status === 'recording' ? undefined : (
+          <DeleteMeetingButton meetingId={meeting.id} title={meeting.title} />
+        )
+      }
     >
       <span className="meeting-row__main">
         <span className="meeting-row__title">{meeting.title}</span>

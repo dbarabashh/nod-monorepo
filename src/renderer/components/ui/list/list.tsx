@@ -1,4 +1,4 @@
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { cx } from '../cx.ts';
 
 export function List({ className, ...props }: ComponentProps<'ul'>) {
@@ -7,10 +7,12 @@ export function List({ className, ...props }: ComponentProps<'ul'>) {
 
 type ListRowProps = ComponentProps<'button'> & {
   selected?: boolean;
+  action?: ReactNode;
 };
 
 export function ListRow({
   selected = false,
+  action,
   className,
   type = 'button',
   ...props
@@ -23,6 +25,7 @@ export function ListRow({
         aria-current={selected ? 'true' : undefined}
         {...props}
       />
+      {action && <span className="ui-list__action">{action}</span>}
     </li>
   );
 }

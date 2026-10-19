@@ -41,3 +41,26 @@
     }
   }
 }
+
+.ui-list__item {
+  position: relative;
+
+  /* Room for the action's widest state, so it never covers the row. */
+  &:has(.ui-list__action) .ui-list__row {
+    padding-inline-end: calc(var(--control-height-sm) * 2 + var(--space-4));
+  }
+
+  /* The action shows when the row is pointed at or reached with the
+     keyboard. Clipping keeps it in the tab order, so focusing it reveals it. */
+  &:not(:hover, :focus-within) .ui-list__action {
+    clip-path: inset(50%);
+  }
+}
+
+.ui-list__action {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: var(--space-2);
+  display: flex;
+  align-items: center;
+}
