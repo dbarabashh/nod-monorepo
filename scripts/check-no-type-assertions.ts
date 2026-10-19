@@ -8,7 +8,9 @@ async function* sourceFiles(dir: string): AsyncGenerator<string> {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
-      yield* sourceFiles(path);
+      if (entry.name !== 'node_modules') {
+        yield* sourceFiles(path);
+      }
     } else if (/\.(ts|tsx|mts)$/.test(entry.name)) {
       yield path;
     }

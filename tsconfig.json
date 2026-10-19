@@ -18,5 +18,6 @@
       "@fugood/llama.node": ["./src/types/llama-node.d.ts"]
     }
   },
-  "include": ["src/**/*", "relay/**/*", "*.ts", "*.mts", "scripts/**/*"]
+  "include": ["src/**/*", "relay/**/*", "*.ts", "*.mts", "scripts/**/*"],
+  "exclude": ["relay/vercel/api", "relay/vercel/node_modules"]
 }

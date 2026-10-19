@@ -1,0 +1,14 @@
+{
+  "name": "nod-sync-relay",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@vercel/blob": "2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5"
+  }
+}

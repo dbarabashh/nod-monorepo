@@ -8,6 +8,13 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
 const maxListingBytes = 8 * 1024 * 1024;
 
+const refusals: Record<number, string> = {
+  409: 'another change to this meeting is still finishing, sync will try again',
+  413: 'this meeting is too large to sync through it',
+  429: 'too many changes at once, sync will try again later',
+  507: 'the space for your devices on it is full',
+};
+
 // Content is already encrypted, but plain HTTP would still expose which
 // devices sync and when, so it is only allowed to this machine.
 export function relayBase(url: string): URL {
@@ -54,15 +61,26 @@ export function createRelayTransport(options: {
 
   // A redirect could carry the token to another host, and a 404 on a write
   // would otherwise look like success and stop that file from syncing.
-  async function request(url: string, init: RequestInit): Promise<Response> {
+  async function request(
+    url: string,
+    init: RequestInit,
+    known = false,
+  ): Promise<Response> {
     const response = await options.fetch(url, {
       ...init,
       redirect: 'error',
       headers: { ...headers(), ...init.headers },
     });
     const missing = response.status === 404 && init.method === 'GET';
-    if (!response.ok && !missing) {
-      throw new Error(`The relay answered ${response.status}`);
+    const unchanged = response.status === 304 && known;
+    if (!response.ok && !missing && !unchanged) {
+      const reason =
+        response.headers.get('x-relay-refusal') === 'new-vaults'
+          ? 'it isn’t taking new vaults right now, sync will try again later'
+          : refusals[response.status];
+      throw new Error(
+        `The relay answered ${response.status}${reason ? `: ${reason}` : ''}`,
+      );
     }
     return response;
   }
@@ -93,6 +111,8 @@ export function createRelayTransport(options: {
     return Buffer.concat(chunks);
   }
 
+  const listings = new Map<string, { version: string; files: RemoteFile[] }>();
+
   const fileUrl = (path: string) =>
     `${vaultUrl}/files/${assertSafePath(path).map(encodeURIComponent).join('/')}`;
 
@@ -100,21 +120,39 @@ export function createRelayTransport(options: {
     register: async () => {
       await request(vaultUrl, { method: 'PUT' });
     },
+    // Each poll sends the version of the listing it already has, and an
+    // unchanged listing comes back as 304 with nothing to download.
     list: async (prefix) => {
       if (prefix !== '') {
         assertSafePath(prefix.replace(/\/$/, ''));
       }
+      const known = listings.get(prefix);
       const response = await request(
         `${vaultUrl}/files?prefix=${encodeURIComponent(prefix)}`,
-        { method: 'GET' },
+        {
+          method: 'GET',
+          headers: known ? { 'if-none-match': known.version } : {},
+        },
+        known !== undefined,
       );
+      if (response.status === 304 && known) {
+        return known.files;
+      }
       if (response.status === 404) {
+        listings.delete(prefix);
         return [];
       }
-      const files: unknown = JSON.parse(
+      const parsed: unknown = JSON.parse(
         Buffer.from(await body(response, maxListingBytes)).toString('utf8'),
       );
-      return Array.isArray(files) ? files.filter(isRemoteFile) : [];
+      const files = Array.isArray(parsed) ? parsed.filter(isRemoteFile) : [];
+      const version = response.headers.get('etag');
+      if (version) {
+        listings.set(prefix, { version, files });
+      } else {
+        listings.delete(prefix);
+      }
+      return files;
     },
     read: async (path, maxBytes) => {
       const response = await request(fileUrl(path), { method: 'GET' });
