@@ -1,20 +1,29 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import {
   Button,
   EmptyState,
-  Icon,
   InputGroup,
   List,
 } from '../../components/ui/index.ts';
 import { useAsync } from '../../lib/use-async.ts';
-import { listMeetings } from './api.ts';
+import { listMeetings, onMeetingsChanged } from './api.ts';
+import { MeetingDetail } from './components/meeting-detail.tsx';
 import { MeetingRow } from './components/meeting-row.tsx';
 import { filterMeetings } from './lib/filter-meetings.ts';
 import { groupByDay } from './lib/group-by-day.ts';
+import type { Meeting } from './types.ts';
 import './meetings.css';
 
-export function MeetingsView() {
-  const { state, retry } = useAsync(listMeetings);
+type MeetingsViewProps = {
+  recordButton: ReactNode;
+  meetingActions: (meeting: Meeting) => ReactNode;
+};
+
+export function MeetingsView({
+  recordButton,
+  meetingActions,
+}: MeetingsViewProps) {
+  const { state, retry } = useAsync(listMeetings, onMeetingsChanged);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -31,6 +40,11 @@ export function MeetingsView() {
     }, 60_000);
     return () => clearInterval(timer);
   }, []);
+
+  const selected =
+    state.status === 'ready'
+      ? state.value.find((meeting) => meeting.id === selectedId)
+      : undefined;
 
   const groups = useMemo(() => {
     if (state.status !== 'ready') {
@@ -64,61 +78,66 @@ export function MeetingsView() {
             onChange={(event) => setQuery(event.target.value)}
             className="meetings__search"
           />
-          <Button variant="primary" disabled>
-            <Icon name="mic" />
-            New recording
-          </Button>
+          {recordButton}
         </div>
       </header>
 
-      <div className="meetings__body" data-scroll>
-        {state.status === 'loading' && (
-          <p className="meetings__status">Loading meetings…</p>
-        )}
-        {state.status === 'error' && (
-          <EmptyState
-            icon="list"
-            title="Couldn't load meetings"
-            action={<Button onClick={retry}>Try again</Button>}
-          />
-        )}
-        {state.status === 'ready' && state.value.length === 0 && (
-          <EmptyState
-            icon="mic"
-            title="No meetings yet"
-            description="Recorded meetings and voice notes will appear here."
-          />
-        )}
-        {state.status === 'ready' &&
-          state.value.length > 0 &&
-          groups.length === 0 && (
+      <div className="meetings__content">
+        <div className="meetings__body" data-scroll>
+          {state.status === 'loading' && (
+            <p className="meetings__status">Loading meetings…</p>
+          )}
+          {state.status === 'error' && (
             <EmptyState
-              icon="search"
-              title="No matches"
-              description={`Nothing matches “${query.trim()}”.`}
+              icon="list"
+              title="Couldn't load meetings"
+              action={<Button onClick={retry}>Try again</Button>}
             />
           )}
-        {groups.map((group, index) => (
-          <section
-            key={group.label}
-            className="meetings__group"
-            aria-labelledby={`${idPrefix}-${index}`}
-          >
-            <h2 id={`${idPrefix}-${index}`} className="meetings__group-title">
-              {group.label}
-            </h2>
-            <List>
-              {group.meetings.map((meeting) => (
-                <MeetingRow
-                  key={meeting.id}
-                  meeting={meeting}
-                  selected={meeting.id === selectedId}
-                  onSelect={setSelectedId}
-                />
-              ))}
-            </List>
-          </section>
-        ))}
+          {state.status === 'ready' && state.value.length === 0 && (
+            <EmptyState
+              icon="mic"
+              title="No meetings yet"
+              description="Start a recording to capture your first conversation."
+            />
+          )}
+          {state.status === 'ready' &&
+            state.value.length > 0 &&
+            groups.length === 0 && (
+              <EmptyState
+                icon="search"
+                title="No matches"
+                description={`Nothing matches “${query.trim()}”.`}
+              />
+            )}
+          {groups.map((group, index) => (
+            <section
+              key={group.label}
+              className="meetings__group"
+              aria-labelledby={`${idPrefix}-${index}`}
+            >
+              <h2 id={`${idPrefix}-${index}`} className="meetings__group-title">
+                {group.label}
+              </h2>
+              <List>
+                {group.meetings.map((meeting) => (
+                  <MeetingRow
+                    key={meeting.id}
+                    meeting={meeting}
+                    selected={meeting.id === selectedId}
+                    onSelect={setSelectedId}
+                  />
+                ))}
+              </List>
+            </section>
+          ))}
+        </div>
+        {selected && (
+          <MeetingDetail
+            meeting={selected}
+            actions={meetingActions(selected)}
+          />
+        )}
       </div>
     </section>
   );

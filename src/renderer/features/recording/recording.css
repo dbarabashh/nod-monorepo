@@ -1,0 +1,115 @@
+@layer app {
+  .record-button,
+  .meeting-recording-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .meeting-recording-actions {
+    flex-wrap: wrap;
+  }
+
+  .start-notice {
+    max-inline-size: var(--field-width-md);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+
+  .record-button__dot {
+    inline-size: var(--dot-size);
+    block-size: var(--dot-size);
+    border-radius: var(--radius-full);
+    background-color: currentColor;
+  }
+
+  .record-button__clock {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :root[data-window='widget'] body {
+    background-color: var(--color-widget-bg);
+  }
+
+  .recording-widget {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    justify-items: center;
+    gap: var(--space-1);
+    block-size: 100vh;
+    padding: var(--space-2) var(--space-1);
+    background-color: var(--color-widget-bg);
+    color: var(--color-widget-fg);
+    app-region: drag;
+  }
+
+  .recording-widget__stop,
+  .recording-widget__open {
+    inline-size: var(--control-height-lg);
+    border: 0;
+    border-radius: var(--radius-full);
+    background-color: var(--color-widget-bg);
+    color: inherit;
+    cursor: default;
+    app-region: no-drag;
+
+    &:hover {
+      background-color: var(--color-widget-hover);
+    }
+  }
+
+  .recording-widget__stop {
+    display: grid;
+    place-items: center;
+    block-size: var(--control-height-lg);
+  }
+
+  .recording-widget__pause-icon {
+    display: flex;
+    gap: var(--space-1);
+
+    & > span {
+      inline-size: var(--space-1);
+      block-size: var(--space-3);
+      border-radius: var(--radius-xs);
+      background-color: var(--color-widget-stop);
+    }
+  }
+
+  .recording-widget__clock {
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .recording-widget__open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    block-size: 100%;
+  }
+
+  .recording-widget__bar {
+    inline-size: var(--space-1);
+    block-size: var(--control-height-sm);
+    border-radius: var(--radius-full);
+    background-color: var(--color-widget-level);
+    transform-origin: center;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  @media (forced-colors: active) {
+    .recording-widget__pause-icon > span,
+    .recording-widget__bar {
+      background-color: ButtonText;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .recording-widget__bar {
+      transition: none;
+    }
+  }
+}

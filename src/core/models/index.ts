@@ -1,1 +1,8 @@
-export { modelCatalog, modelSize, type ModelDefinition } from './catalog.ts';
+export {
+  modelCatalog,
+  modelSize,
+  vadFile,
+  type ModelDefinition,
+  type SpeechModel,
+  type SummaryModel,
+} from './catalog.ts';

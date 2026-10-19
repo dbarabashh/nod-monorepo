@@ -68,6 +68,18 @@
     line-height: var(--leading-sm);
   }
 
+  .onboarding__body {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .onboarding__subtitle {
+    margin-block-start: var(--space-2);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-md);
+  }
+
   .onboarding__footer {
     display: flex;
     align-items: center;

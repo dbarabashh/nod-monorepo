@@ -85,7 +85,14 @@ if (process.platform === 'darwin') {
   env.ELECTRON_OVERRIDE_DIST_PATH = devDist;
 }
 
-const forge = spawn('electron-forge', ['start', ...process.argv.slice(2)], {
+const forgeBin = path.join(
+  root,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'electron-forge.cmd' : 'electron-forge',
+);
+
+const forge = spawn(forgeBin, ['start', ...process.argv.slice(2)], {
   cwd: root,
   env,
   stdio: 'inherit',

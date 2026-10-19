@@ -12,7 +12,12 @@ import {
   Icon,
   Meter,
 } from '../../../components/ui/index.ts';
-import { CaptureError, monitorLevel, type LevelMonitor } from '../capture.ts';
+import {
+  CaptureError,
+  monitorLevel,
+  type LevelMonitor,
+} from '../../../lib/audio-capture.ts';
+import { expectSystemAudioCapture } from '../api.ts';
 import { describeSource, type TestOutcome } from '../lib/source-state.ts';
 
 type AudioSourceRowProps = {
@@ -67,21 +72,22 @@ export function AudioSourceRow({
     setOutcome(null);
     setTesting(true);
     try {
-      const started = await monitorLevel(
+      const started = await monitorLevel({
         source,
-        (level) => {
+        expectSystemAudio: expectSystemAudioCapture,
+        onLevel: (level) => {
           if (meter.current) {
             meter.current.value = level;
           }
         },
-        () => {
+        onInterrupted: () => {
           if (run.current === current) {
             release();
             setTesting(false);
             setOutcome('interrupted');
           }
         },
-      );
+      });
       if (run.current !== current) {
         started.stop();
         return;

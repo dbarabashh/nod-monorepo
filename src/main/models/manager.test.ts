@@ -19,7 +19,8 @@ const model: ModelDefinition = {
   description: 'A test model',
   languages: 'English',
   license: 'MIT',
-  runtime: 'whisper.cpp',
+  kind: 'speech',
+  engine: 'whisper',
   recommended: false,
   files: [
     {
@@ -113,6 +114,16 @@ describe('createModelManager', () => {
     await models.remove('tiny');
     assert.deepEqual(await readdir(dir()), []);
     assert.equal((await only(models)).status, 'available');
+  });
+
+  it('offers a model for use only once all of its files are downloaded', async () => {
+    const models = manager();
+    assert.equal(await models.installed('speech'), null);
+    await models.download('tiny');
+    const installed = await models.installed('speech');
+    assert.equal(installed?.model.id, 'tiny');
+    assert.equal(installed?.path('a.bin'), join(dir(), 'tiny', 'a.bin'));
+    assert.equal(await models.installed('summary'), null);
   });
 
   it('refuses ids that are not in the catalog', async () => {

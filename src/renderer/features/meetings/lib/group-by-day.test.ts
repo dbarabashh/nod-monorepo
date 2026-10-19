@@ -11,7 +11,8 @@ function meeting(id: string, startedAt: Date): Meeting {
     title: id,
     startedAt,
     durationSeconds: 600,
-    status: 'ready',
+    status: 'finished',
+    contentVersion: '',
   };
 }
 

@@ -1,4 +1,6 @@
 allowBuilds:
+  '@fugood/llama.node': false
+  '@fugood/whisper.node': false
   electron: true
   electron-winstaller: true
   fs-xattr: true

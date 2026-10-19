@@ -1,6 +1,5 @@
-import type { AudioSource } from '../../../shared/ipc.ts';
-import { expectSystemAudioCapture } from './api.ts';
-import { levelFromSamples } from './lib/level.ts';
+import { pcmSampleRate, type AudioSource } from '../../shared/ipc.ts';
+import { levelFromSamples } from './audio-level.ts';
 
 const rawAudio: MediaTrackConstraints = {
   echoCancellation: false,
@@ -45,11 +44,14 @@ function stopTracks(stream: MediaStream): void {
   }
 }
 
-async function openStream(source: AudioSource): Promise<MediaStream> {
+async function openStream(
+  source: AudioSource,
+  expectSystemAudio: () => Promise<void>,
+): Promise<MediaStream> {
   if (source === 'microphone') {
     return navigator.mediaDevices.getUserMedia({ audio: rawAudio });
   }
-  await expectSystemAudioCapture();
+  await expectSystemAudio();
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: true,
     audio: rawAudio,
@@ -75,14 +77,23 @@ export type LevelMonitor = {
   stop: () => void;
 };
 
+export type MonitorOptions = {
+  source: AudioSource;
+  expectSystemAudio: () => Promise<void>;
+  onLevel: (level: number) => void;
+  onInterrupted: () => void;
+  onPcm?: (samples: Int16Array) => void;
+};
+
+const levelIntervalMs = 33;
+
 export async function monitorLevel(
-  source: AudioSource,
-  onLevel: (level: number) => void,
-  onInterrupted: () => void,
+  options: MonitorOptions,
 ): Promise<LevelMonitor> {
+  const { source, expectSystemAudio, onLevel, onInterrupted, onPcm } = options;
   let stream: MediaStream;
   try {
-    stream = await openStream(source);
+    stream = await openStream(source, expectSystemAudio);
   } catch (error) {
     throw toCaptureError(error);
   }
@@ -90,11 +101,30 @@ export async function monitorLevel(
   let context: AudioContext | undefined;
   let analyser: AnalyserNode;
   try {
-    context = new AudioContext();
+    context = new AudioContext(onPcm ? { sampleRate: pcmSampleRate } : {});
     await context.resume();
     analyser = context.createAnalyser();
     analyser.fftSize = 512;
-    context.createMediaStreamSource(stream).connect(analyser);
+    const input = context.createMediaStreamSource(stream);
+    input.connect(analyser);
+    if (onPcm) {
+      await context.audioWorklet.addModule(
+        new URL('pcm-capture.js', document.baseURI).href,
+      );
+      const pcm = new AudioWorkletNode(context, 'pcm-capture', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+        channelCountMode: 'explicit',
+        channelInterpretation: 'speakers',
+      });
+      pcm.port.onmessage = (event: MessageEvent<unknown>) => {
+        if (event.data instanceof Int16Array) {
+          onPcm(event.data);
+        }
+      };
+      input.connect(pcm);
+    }
   } catch {
     stopTracks(stream);
     void context?.close();
@@ -103,22 +133,21 @@ export async function monitorLevel(
   const audioContext = context;
 
   const samples = new Float32Array(analyser.fftSize);
-  let frame = 0;
   let stopped = false;
 
-  const tick = () => {
+  // A timer rather than animation frames: a recording keeps running while
+  // its window is hidden, and hidden windows get no frames.
+  const timer = setInterval(() => {
     analyser.getFloatTimeDomainData(samples);
     onLevel(levelFromSamples(samples));
-    frame = requestAnimationFrame(tick);
-  };
-  frame = requestAnimationFrame(tick);
+  }, levelIntervalMs);
 
   const stop = () => {
     if (stopped) {
       return;
     }
     stopped = true;
-    cancelAnimationFrame(frame);
+    clearInterval(timer);
     stopTracks(stream);
     void audioContext.close();
   };

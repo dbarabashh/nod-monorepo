@@ -13,7 +13,10 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@fugood/llama.node": ["./src/types/llama-node.d.ts"]
+    }
   },
   "include": ["src/**/*", "*.ts", "*.mts", "scripts/**/*"]
 }

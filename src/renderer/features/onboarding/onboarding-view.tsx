@@ -14,22 +14,24 @@ const steps: Step[] = [
       'Conversations are captured on this computer, without a bot joining the call. Allow the microphone for your side and system audio for everyone else.',
   },
   {
-    title: 'Download speech models',
+    title: 'Download models',
     description:
-      'Transcription runs on this device, so it needs a speech model stored locally. Nothing you say is sent anywhere to be transcribed. Downloads continue in the background.',
+      'Transcripts and summaries are made on this device, so they need models stored locally. Nothing you say is sent anywhere. Downloads continue in the background.',
   },
 ];
 
 type OnboardingViewProps = {
   audio: ReactNode;
-  models: ReactNode;
+  speechModels: ReactNode;
+  summaryModels: ReactNode;
   finish: 'idle' | 'saving' | 'failed';
   onFinish: () => void;
 };
 
 export function OnboardingView({
   audio,
-  models,
+  speechModels,
+  summaryModels,
   finish,
   onFinish,
 }: OnboardingViewProps) {
@@ -76,7 +78,18 @@ export function OnboardingView({
           <p className="onboarding__description">{step.description}</p>
         </header>
 
-        <div className="onboarding__body">{index === 0 ? audio : models}</div>
+        <div className="onboarding__body">
+          {index === 0 ? (
+            audio
+          ) : (
+            <>
+              <h2 className="onboarding__subtitle">Speech</h2>
+              {speechModels}
+              <h2 className="onboarding__subtitle">Summary</h2>
+              {summaryModels}
+            </>
+          )}
+        </div>
 
         {finish === 'failed' && (
           <p className="onboarding__error" role="alert">

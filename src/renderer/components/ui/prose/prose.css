@@ -1,0 +1,35 @@
+.ui-prose {
+  display: grid;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+
+  & h4 {
+    margin-block-start: var(--space-2);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-md);
+
+    &:first-child {
+      margin-block-start: 0;
+    }
+  }
+
+  & ul,
+  & ol {
+    display: grid;
+    gap: var(--space-1);
+    padding-inline-start: var(--space-6);
+  }
+
+  & ul {
+    list-style: disc;
+  }
+
+  & ol {
+    list-style: decimal;
+  }
+
+  & strong {
+    font-weight: var(--weight-semibold);
+  }
+}

@@ -5,71 +5,71 @@ export type ModelFile = {
   sha256: string;
 };
 
-export type ModelRuntime = 'whisper.cpp' | 'sherpa-onnx';
-
-export type ModelDefinition = {
+type ModelDetails = {
   id: string;
   name: string;
   description: string;
   languages: string;
   license: string;
-  runtime: ModelRuntime;
   recommended: boolean;
   files: ModelFile[];
 };
 
+export type SpeechModel = ModelDetails & {
+  kind: 'speech';
+  engine: 'whisper' | 'parakeet';
+};
+
+export type SummaryModel = ModelDetails & {
+  kind: 'summary';
+  engine: 'llama';
+};
+
+export type ModelDefinition = SpeechModel | SummaryModel;
+
 const whisperCpp =
   'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1';
 const parakeet =
-  'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/2bda32ec70b097a55adaa07d9a7173915b43cc78';
+  'https://huggingface.co/ggml-org/parakeet-GGUF/resolve/35156454d1a39de06863303dd209fd2bed6ee079';
+const qwen =
+  'https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/a06e946bb6b655725eafa393f4a9745d460374c9';
+
+export const vadFile: ModelFile = {
+  name: 'ggml-silero-v6.2.0.bin',
+  url: 'https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v6.2.0.bin',
+  sizeBytes: 885_098,
+  sha256: '2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987',
+};
 
 export const modelCatalog: ModelDefinition[] = [
   {
     id: 'parakeet-tdt-0.6b-v3',
+    kind: 'speech',
+    engine: 'parakeet',
     name: 'Parakeet TDT 0.6B v3',
     description: 'Fast and accurate for European languages.',
     languages: '25 European languages',
-    license: 'CC BY 4.0, NVIDIA (int8 conversion)',
-    runtime: 'sherpa-onnx',
+    license: 'CC BY 4.0, NVIDIA (GGUF conversion)',
     recommended: true,
     files: [
       {
-        name: 'encoder.int8.onnx',
-        url: `${parakeet}/encoder.int8.onnx`,
-        sizeBytes: 652_184_281,
+        name: 'ggml-parakeet-tdt-0.6b-v3-q8_0.bin',
+        url: `${parakeet}/ggml-parakeet-tdt-0.6b-v3-q8_0.bin`,
+        sizeBytes: 668_757_119,
         sha256:
-          'acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247',
+          '4d64e9e96c2792186d072fde0034df0ad670cf680a2f53069052ead827fd600e',
       },
-      {
-        name: 'decoder.int8.onnx',
-        url: `${parakeet}/decoder.int8.onnx`,
-        sizeBytes: 11_845_275,
-        sha256:
-          '179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e',
-      },
-      {
-        name: 'joiner.int8.onnx',
-        url: `${parakeet}/joiner.int8.onnx`,
-        sizeBytes: 6_355_277,
-        sha256:
-          '3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3',
-      },
-      {
-        name: 'tokens.txt',
-        url: `${parakeet}/tokens.txt`,
-        sizeBytes: 93_939,
-        sha256:
-          'd58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d',
-      },
+      vadFile,
     ],
   },
   {
     id: 'whisper-large-v3-turbo',
+    kind: 'speech',
+    engine: 'whisper',
     name: 'Whisper Large v3 Turbo',
     description: 'Most accurate, for any language. Slower on older computers.',
     languages: '99 languages',
     license: 'MIT, OpenAI',
-    runtime: 'whisper.cpp',
     recommended: false,
     files: [
       {
@@ -79,15 +79,17 @@ export const modelCatalog: ModelDefinition[] = [
         sha256:
           '317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1',
       },
+      vadFile,
     ],
   },
   {
     id: 'whisper-small',
+    kind: 'speech',
+    engine: 'whisper',
     name: 'Whisper Small',
     description: 'Small and quick, for any language. Less accurate.',
     languages: '99 languages',
     license: 'MIT, OpenAI',
-    runtime: 'whisper.cpp',
     recommended: false,
     files: [
       {
@@ -96,6 +98,26 @@ export const modelCatalog: ModelDefinition[] = [
         sizeBytes: 264_464_607,
         sha256:
           '49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f',
+      },
+      vadFile,
+    ],
+  },
+  {
+    id: 'qwen3-4b-instruct',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Qwen3 4B Instruct',
+    description: 'Writes meeting summaries on this device.',
+    languages: '100+ languages',
+    license: 'Apache 2.0, Qwen',
+    recommended: true,
+    files: [
+      {
+        name: 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
+        url: `${qwen}/Qwen3-4B-Instruct-2507-Q4_K_M.gguf`,
+        sizeBytes: 2_497_281_120,
+        sha256:
+          '3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597',
       },
     ],
   },

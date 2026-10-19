@@ -25,7 +25,7 @@ describe('modelCatalog', () => {
     }
   });
 
-  it('uses unique ids and file names, and recommends exactly one model', () => {
+  it('uses unique ids and file names, and recommends one model of each kind', () => {
     const ids = modelCatalog.map((model) => model.id);
     assert.equal(new Set(ids).size, ids.length);
     for (const model of modelCatalog) {
@@ -35,12 +35,27 @@ describe('modelCatalog', () => {
         assert.doesNotMatch(name, /[/\\]|^\.|\.partial$/, name);
       }
     }
-    assert.deepEqual(
-      modelCatalog
-        .filter((model) => model.recommended)
-        .map((model) => model.id),
-      ['parakeet-tdt-0.6b-v3'],
-    );
+    for (const kind of ['speech', 'summary']) {
+      assert.equal(
+        modelCatalog.filter((model) => model.kind === kind && model.recommended)
+          .length,
+        1,
+        kind,
+      );
+    }
+  });
+});
+
+describe('speech models', () => {
+  it('each bring the voice activity model they need to run', () => {
+    for (const model of modelCatalog.filter(
+      (entry) => entry.kind === 'speech',
+    )) {
+      assert.ok(
+        model.files.some((file) => file.name === 'ggml-silero-v6.2.0.bin'),
+        model.id,
+      );
+    }
   });
 });
 

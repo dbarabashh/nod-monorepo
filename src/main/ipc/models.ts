@@ -1,7 +1,6 @@
-import { BrowserWindow } from 'electron';
 import { IpcChannel, IpcEvent, type ModelInfo } from '../../shared/ipc.ts';
 import type { ModelManager } from '../models/manager.ts';
-import { handleFromApp } from '../security/sender.ts';
+import { broadcast, handleFromApp } from '../security/sender.ts';
 
 function modelId(value: unknown): string {
   if (typeof value !== 'string') {
@@ -32,9 +31,7 @@ export function broadcastModels(): (models: ModelInfo[]) => void {
       return;
     }
     setTimeout(() => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        window.webContents.send(IpcEvent.onModelsChanged, latest);
-      }
+      broadcast(IpcEvent.onModelsChanged, latest);
       latest = null;
     }, 200);
   };

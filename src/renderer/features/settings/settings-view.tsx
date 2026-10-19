@@ -3,10 +3,15 @@ import './settings.css';
 
 type SettingsViewProps = {
   audio: ReactNode;
-  models: ReactNode;
+  speechModels: ReactNode;
+  summaryModels: ReactNode;
 };
 
-export function SettingsView({ audio, models }: SettingsViewProps) {
+export function SettingsView({
+  audio,
+  speechModels,
+  summaryModels,
+}: SettingsViewProps) {
   const idPrefix = useId();
 
   return (
@@ -40,7 +45,20 @@ export function SettingsView({ audio, models }: SettingsViewProps) {
             Models are stored on this device and transcribe without a network
             connection.
           </p>
-          {models}
+          {speechModels}
+        </section>
+        <section
+          className="settings__section"
+          aria-labelledby={`${idPrefix}-summary`}
+        >
+          <h2 id={`${idPrefix}-summary`} className="settings__section-title">
+            Summary model
+          </h2>
+          <p className="settings__section-hint">
+            Writes a summary when a meeting is finished, without sending the
+            transcript anywhere.
+          </p>
+          {summaryModels}
         </section>
       </div>
     </section>

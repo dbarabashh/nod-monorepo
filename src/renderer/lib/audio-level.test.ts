@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { levelFromSamples } from './level.ts';
+import { levelFromSamples } from './audio-level.ts';
 
 describe('levelFromSamples', () => {
   it('reads silence and an empty buffer as zero', () => {

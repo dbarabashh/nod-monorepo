@@ -19,3 +19,5 @@ export { InputGroup } from './input-group/input-group.tsx';
 export { List, ListRow } from './list/list.tsx';
 export { Meter, Progress } from './meter/meter.tsx';
 export { Nav, NavItem } from './nav/nav.tsx';
+export { Tabs } from './tabs/tabs.tsx';
+export { Prose } from './prose/prose.tsx';

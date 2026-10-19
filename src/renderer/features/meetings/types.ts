@@ -1,4 +1,6 @@
-export type MeetingStatus = 'recording' | 'processing' | 'ready';
+import type { MeetingSummary } from '../../../shared/ipc.ts';
+
+export type MeetingStatus = MeetingSummary['status'];
 
 export type Meeting = {
   id: string;
@@ -6,4 +8,5 @@ export type Meeting = {
   startedAt: Date;
   durationSeconds: number;
   status: MeetingStatus;
+  contentVersion: string;
 };

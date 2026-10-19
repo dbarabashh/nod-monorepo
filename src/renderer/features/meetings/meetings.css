@@ -45,6 +45,12 @@
     inline-size: var(--field-width-md);
   }
 
+  .meetings__content {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    min-block-size: 0;
+  }
+
   .meetings__body {
     min-block-size: 0;
     padding: var(--space-2) var(--space-4) var(--space-8);
@@ -92,5 +98,91 @@
     font-size: var(--text-sm);
     line-height: var(--leading-sm);
     font-variant-numeric: tabular-nums;
+  }
+
+  .meeting-detail {
+    display: grid;
+    align-content: start;
+    gap: var(--space-4);
+    inline-size: var(--detail-width);
+    padding: var(--space-6);
+    border-inline-start: var(--border-width) solid var(--color-border);
+    overflow-y: auto;
+  }
+
+  .meeting-detail__heading {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .meeting-detail__title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-lg);
+    letter-spacing: var(--tracking-lg);
+    overflow-wrap: anywhere;
+  }
+
+  .meeting-detail__facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+
+    & dt {
+      color: var(--color-text-muted);
+    }
+
+    & dd {
+      margin: 0;
+    }
+  }
+
+  .meeting-detail__note {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+
+  .meeting-detail__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .meeting-detail__section {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .meeting-detail__copy {
+    justify-self: end;
+  }
+
+  .meeting-detail__transcript {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+  }
+
+  .meeting-detail__line {
+    display: grid;
+    gap: var(--space-0-5);
+  }
+
+  .meeting-detail__speaker {
+    display: flex;
+    gap: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-sm);
+  }
+
+  .meeting-detail__time {
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--weight-regular);
   }
 }

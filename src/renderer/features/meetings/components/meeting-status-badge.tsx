@@ -6,8 +6,8 @@ const statusView: Record<
   { label: string; variant: BadgeVariant; dot: boolean } | null
 > = {
   recording: { label: 'Recording', variant: 'danger', dot: true },
-  processing: { label: 'Processing', variant: 'neutral', dot: false },
-  ready: null,
+  paused: { label: 'Paused', variant: 'neutral', dot: false },
+  finished: null,
 };
 
 export function MeetingStatusBadge({ status }: { status: MeetingStatus }) {

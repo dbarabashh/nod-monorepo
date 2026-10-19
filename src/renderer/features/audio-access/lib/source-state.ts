@@ -1,5 +1,5 @@
 import type { AudioSource, AudioSourceAccess } from '../../../../shared/ipc.ts';
-import type { CaptureFailure } from '../capture.ts';
+import type { CaptureFailure } from '../../../lib/audio-capture.ts';
 
 export type TestOutcome = 'working' | CaptureFailure | null;
 

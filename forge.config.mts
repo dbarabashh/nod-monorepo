@@ -94,6 +94,11 @@ const config: ForgeConfig = {
           target: 'main',
         },
         {
+          entry: { transcriber: 'src/main/transcription/worker.ts' },
+          config: 'vite.main.config.mts',
+          target: 'main',
+        },
+        {
           entry: { preload: 'src/preload/index.ts' },
           config: 'vite.preload.config.mts',
           target: 'preload',

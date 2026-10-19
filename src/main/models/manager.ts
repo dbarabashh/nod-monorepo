@@ -38,6 +38,12 @@ export type ModelManager = {
   download: (id: string) => Promise<void>;
   cancel: (id: string) => void;
   remove: (id: string) => Promise<void>;
+  installed: (kind: ModelDefinition['kind']) => Promise<InstalledModel | null>;
+};
+
+export type InstalledModel = {
+  model: ModelDefinition;
+  path: (fileName: string) => string;
 };
 
 export function createModelManager(options: {
@@ -98,6 +104,7 @@ export function createModelManager(options: {
   function snapshot(): ModelInfo[] {
     return catalog.map((model) => ({
       id: model.id,
+      kind: model.kind,
       name: model.name,
       description: model.description,
       languages: model.languages,
@@ -164,6 +171,23 @@ export function createModelManager(options: {
   }
 
   return {
+    installed: async (kind) => {
+      await Promise.all(
+        catalog
+          .filter((model) => model.kind === kind && !running.has(model.id))
+          .map(scan),
+      );
+      const ready = catalog.filter(
+        (model) =>
+          model.kind === kind &&
+          !running.has(model.id) &&
+          onDisk.get(model.id)?.status === 'downloaded',
+      );
+      const model = ready.find((entry) => entry.recommended) ?? ready[0];
+      return model
+        ? { model, path: (fileName) => filePath(model, fileName) }
+        : null;
+    },
     list: async () => {
       await Promise.all(
         catalog.filter((model) => !onDisk.has(model.id)).map(scan),

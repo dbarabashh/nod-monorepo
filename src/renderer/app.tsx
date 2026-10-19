@@ -4,6 +4,10 @@ import { AudioAccessPanel } from './features/audio-access/index.ts';
 import { MeetingsView } from './features/meetings/index.ts';
 import { ModelsPanel } from './features/models/index.ts';
 import { OnboardingGate } from './features/onboarding/index.ts';
+import {
+  MeetingRecordingActions,
+  RecordButton,
+} from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
 import './app.css';
 
@@ -11,7 +15,11 @@ type Page = 'meetings' | 'settings';
 
 export function App() {
   return (
-    <OnboardingGate audio={<AudioAccessPanel />} models={<ModelsPanel />}>
+    <OnboardingGate
+      audio={<AudioAccessPanel />}
+      speechModels={<ModelsPanel kind="speech" />}
+      summaryModels={<ModelsPanel kind="summary" />}
+    >
       <Shell />
     </OnboardingGate>
   );
@@ -52,9 +60,21 @@ function Shell() {
       </aside>
       <main ref={main} tabIndex={-1} className="app-shell__main">
         {page === 'meetings' ? (
-          <MeetingsView />
+          <MeetingsView
+            recordButton={<RecordButton />}
+            meetingActions={(meeting) => (
+              <MeetingRecordingActions
+                meetingId={meeting.id}
+                status={meeting.status}
+              />
+            )}
+          />
         ) : (
-          <SettingsView audio={<AudioAccessPanel />} models={<ModelsPanel />} />
+          <SettingsView
+            audio={<AudioAccessPanel />}
+            speechModels={<ModelsPanel kind="speech" />}
+            summaryModels={<ModelsPanel kind="summary" />}
+          />
         )}
       </main>
     </div>

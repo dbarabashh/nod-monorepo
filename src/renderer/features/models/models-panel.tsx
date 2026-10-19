@@ -1,3 +1,4 @@
+import type { ModelInfo } from '../../../shared/ipc.ts';
 import { Button, EmptyState } from '../../components/ui/index.ts';
 import {
   cancelModelDownload,
@@ -10,7 +11,7 @@ import { useAsync } from '../../lib/use-async.ts';
 import { ModelRow } from './components/model-row.tsx';
 import './models.css';
 
-export function ModelsPanel() {
+export function ModelsPanel({ kind }: { kind: ModelInfo['kind'] }) {
   const { state, retry } = useAsync(listModels, onModelsChanged);
 
   if (state.status === 'loading') {
@@ -29,15 +30,17 @@ export function ModelsPanel() {
 
   return (
     <div className="models">
-      {state.value.map((model) => (
-        <ModelRow
-          key={model.id}
-          model={model}
-          onDownload={() => void downloadModel(model.id)}
-          onCancel={() => void cancelModelDownload(model.id)}
-          onDelete={() => void deleteModel(model.id)}
-        />
-      ))}
+      {state.value
+        .filter((model) => model.kind === kind)
+        .map((model) => (
+          <ModelRow
+            key={model.id}
+            model={model}
+            onDownload={() => void downloadModel(model.id)}
+            onCancel={() => void cancelModelDownload(model.id)}
+            onDelete={() => void deleteModel(model.id)}
+          />
+        ))}
     </div>
   );
 }
