@@ -1,45 +1,67 @@
 @layer app {
   .settings {
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: var(--sidebar-width) 1fr;
     block-size: 100%;
     min-block-size: 0;
   }
 
-  .settings__header {
-    padding: var(--space-4) var(--space-6);
-    border-block-end: var(--border-width) solid var(--color-border);
-  }
-
-  .settings__title {
-    font-size: var(--text-xl);
-    font-weight: var(--weight-bold);
-    line-height: var(--leading-xl);
-    letter-spacing: var(--tracking-xl);
-  }
-
-  .settings__body {
+  .settings__menu {
     display: grid;
     align-content: start;
-    gap: var(--space-8);
-    min-block-size: 0;
-    padding: var(--space-6);
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-2);
+    border-inline-end: var(--border-width) solid var(--color-border);
+    overflow-y: auto;
   }
 
-  .settings__section {
-    display: grid;
-    gap: var(--space-3);
-    max-inline-size: var(--measure-wide);
-  }
-
-  .settings__section-title {
+  .settings__menu-title {
+    padding-inline: var(--space-2);
     font-size: var(--text-lg);
     font-weight: var(--weight-bold);
     line-height: var(--leading-lg);
     letter-spacing: var(--tracking-lg);
   }
 
-  .settings__section-hint {
+  .settings__group {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .settings__group-label {
+    padding-inline: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-sm);
+  }
+
+  .settings__page {
+    min-block-size: 0;
+    overflow-y: auto;
+  }
+
+  .settings__page-body {
+    display: grid;
+    align-content: start;
+    gap: var(--space-6);
+    max-inline-size: var(--measure-wide);
+    padding: var(--space-8) var(--space-6);
+  }
+
+  .settings__page-header {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .settings__page-title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+    letter-spacing: var(--tracking-xl);
+  }
+
+  .settings__page-description {
     color: var(--color-text-muted);
   }
 }

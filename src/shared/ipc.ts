@@ -55,6 +55,7 @@ export type MeetingSummary = {
 export type MeetingDetail = {
   id: string;
   transcript: Array<{
+    id: string;
     speaker: Speaker;
     startMs: number;
     endMs: number;
@@ -68,11 +69,6 @@ export type MeetingDetail = {
 
 export type SummaryStatus = 'idle' | 'writing' | 'failed';
 
-export type TranscriptLineKey = Pick<
-  MeetingDetail['transcript'][number],
-  'speaker' | 'startMs'
->;
-
 export type RecordingState =
   | { status: 'idle' }
   | {
@@ -80,6 +76,29 @@ export type RecordingState =
       meetingId: string;
       segmentStartedAt: number;
       previousMs: number;
+    };
+
+export type SyncTransportInfo =
+  | { kind: 'folder'; folder: string }
+  | { kind: 'relay'; url: string };
+
+export type SyncState =
+  | { status: 'off'; error: string | null }
+  | {
+      status: 'joining';
+      transport: SyncTransportInfo;
+      code: string | null;
+      confirmed: boolean;
+    }
+  | {
+      status: 'on';
+      transport: SyncTransportInfo;
+      vaultId: string;
+      devices: number;
+      lastSyncedAt: number | null;
+      error: string | null;
+      requests: Array<{ requestId: string; code: string }>;
+      recoveryConfirmed: boolean;
     };
 
 export type AppState = {
@@ -91,6 +110,7 @@ export const IpcEvent = {
   onMeetingsChanged: 'meetings:changed',
   onRecordingChanged: 'recording:changed',
   onRecordingLevel: 'recording:level',
+  onSyncChanged: 'sync:changed',
 } satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
@@ -107,6 +127,7 @@ export const IpcChannel = {
   listMeetings: 'meetings:list',
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
+  deleteMeeting: 'meetings:delete',
   summarizeMeeting: 'meetings:summarize',
   editSummary: 'meetings:edit-summary',
   editTranscriptLine: 'meetings:edit-line',
@@ -119,6 +140,19 @@ export const IpcChannel = {
   sendRecordingLevel: 'recording:send-level',
   sendCaptureStopped: 'recording:capture-stopped',
   showMainWindow: 'app:show-main-window',
+  getSyncState: 'sync:get',
+  chooseSyncFolder: 'sync:choose-folder',
+  connectSyncRelay: 'sync:connect-relay',
+  approveSyncDevice: 'sync:approve-device',
+  confirmSyncJoin: 'sync:confirm-join',
+  rejectSyncDevice: 'sync:reject-device',
+  cancelSyncJoin: 'sync:cancel-join',
+  stopSync: 'sync:stop',
+  syncNow: 'sync:now',
+  getRecoveryPhrase: 'sync:recovery-phrase',
+  confirmRecoveryPhrase: 'sync:confirm-recovery-phrase',
+  restoreSyncFromFolder: 'sync:restore-folder',
+  restoreSyncFromRelay: 'sync:restore-relay',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
   string
@@ -140,11 +174,12 @@ export type AppApi = {
   listMeetings: () => Promise<MeetingSummary[]>;
   getMeeting: (id: string) => Promise<MeetingDetail>;
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
+  deleteMeeting: (id: string) => Promise<void>;
   summarizeMeeting: (id: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
   editTranscriptLine: (
     id: string,
-    line: TranscriptLineKey,
+    lineId: string,
     text: string,
   ) => Promise<void>;
   sendRecordingAudio: (speaker: Speaker, samples: Int16Array) => void;
@@ -161,4 +196,22 @@ export type AppApi = {
   ) => () => void;
   onRecordingChanged: (callback: (state: RecordingState) => void) => () => void;
   onRecordingLevel: (callback: (level: number) => void) => () => void;
+  getSyncState: () => Promise<SyncState>;
+  chooseSyncFolder: () => Promise<void>;
+  connectSyncRelay: (url: string, vaultId: string) => Promise<void>;
+  approveSyncDevice: (requestId: string, code: string) => Promise<void>;
+  confirmSyncJoin: (code: string) => Promise<void>;
+  rejectSyncDevice: (requestId: string) => Promise<void>;
+  cancelSyncJoin: () => Promise<void>;
+  stopSync: () => Promise<void>;
+  syncNow: () => Promise<void>;
+  getRecoveryPhrase: () => Promise<string>;
+  confirmRecoveryPhrase: () => Promise<void>;
+  restoreSyncFromFolder: (phrase: string) => Promise<void>;
+  restoreSyncFromRelay: (
+    url: string,
+    vaultId: string,
+    phrase: string,
+  ) => Promise<void>;
+  onSyncChanged: (callback: (state: SyncState) => void) => () => void;
 };

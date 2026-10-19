@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { formatDuration } from '../lib/format-duration.ts';
 import type { Meeting } from '../types.ts';
+import { DeleteMeetingButton } from './delete-meeting-button.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
 import { MeetingTranscript } from './meeting-transcript.tsx';
 
@@ -35,7 +36,12 @@ export function MeetingDetail({ meeting, actions }: MeetingDetailProps) {
         <dt>Recorded</dt>
         <dd>{formatDuration(meeting.durationSeconds)}</dd>
       </dl>
-      <div className="meeting-detail__actions">{actions}</div>
+      <div className="meeting-detail__actions">
+        {actions}
+        {meeting.status !== 'recording' && (
+          <DeleteMeetingButton meetingId={meeting.id} />
+        )}
+      </div>
       <MeetingTranscript meetingId={meeting.id} status={meeting.status} />
     </aside>
   );

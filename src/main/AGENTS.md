@@ -11,8 +11,11 @@ secrets.
 src/main/
   index.ts          app lifecycle and window creation only; wires everything else
   ipc/<domain>.ts   ipcMain handlers for one domain, registered from index.ts
-  security/         navigation, window-open, permission and IPC sender guards
+  security/         navigation, window-open, permission and IPC sender guards,
+                    encryption at rest (aead, data key)
   models/           speech model downloads: resume, checksum, storage
+  meetings/         recorder, session, and the encrypted file-per-meeting store
+  sync/             device sync: engine, transports, pairing, settings
   <domain>/         OS-facing code for one domain (audio/, storage/, keychain/)
 ```
 

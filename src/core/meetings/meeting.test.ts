@@ -132,6 +132,7 @@ describe('the transcript', () => {
     let meeting = startMeeting('m1', 'A', 0);
     meeting = appendTranscript(meeting, [
       {
+        id: 'others-4_000',
         speaker: 'others',
         startMs: 4_000,
         endMs: 6_000,
@@ -139,12 +140,36 @@ describe('the transcript', () => {
       },
     ]);
     meeting = appendTranscript(meeting, [
-      { speaker: 'me', startMs: 1_000, endMs: 3_000, text: 'Shall we start?' },
-      { speaker: 'me', startMs: 7_000, endMs: 7_500, text: '   ' },
+      {
+        id: 'me-1_000',
+        speaker: 'me',
+        startMs: 1_000,
+        endMs: 3_000,
+        text: 'Shall we start?',
+      },
+      {
+        id: 'me-7_000',
+        speaker: 'me',
+        startMs: 7_000,
+        endMs: 7_500,
+        text: '   ',
+      },
     ]);
     assert.deepEqual(meeting.transcript, [
-      { speaker: 'me', startMs: 1_000, endMs: 3_000, text: 'Shall we start?' },
-      { speaker: 'others', startMs: 4_000, endMs: 6_000, text: 'Sounds good.' },
+      {
+        id: 'me-1_000',
+        speaker: 'me',
+        startMs: 1_000,
+        endMs: 3_000,
+        text: 'Shall we start?',
+      },
+      {
+        id: 'others-4_000',
+        speaker: 'others',
+        startMs: 4_000,
+        endMs: 6_000,
+        text: 'Sounds good.',
+      },
     ]);
     assert.equal(
       transcriptText(meeting),
@@ -154,9 +179,27 @@ describe('the transcript', () => {
 
   it("copies the transcript with each line's time and speaker", () => {
     const meeting = appendTranscript(startMeeting('m1', 'A', 0), [
-      { speaker: 'me', startMs: 1_500, endMs: 3_000, text: 'Shall we start?' },
-      { speaker: 'others', startMs: 65_000, endMs: 66_000, text: 'Yes.' },
-      { speaker: 'me', startMs: 3_725_000, endMs: 3_726_000, text: 'Bye.' },
+      {
+        id: 'me-1_500',
+        speaker: 'me',
+        startMs: 1_500,
+        endMs: 3_000,
+        text: 'Shall we start?',
+      },
+      {
+        id: 'others-65_000',
+        speaker: 'others',
+        startMs: 65_000,
+        endMs: 66_000,
+        text: 'Yes.',
+      },
+      {
+        id: 'me-3_725_000',
+        speaker: 'me',
+        startMs: 3_725_000,
+        endMs: 3_726_000,
+        text: 'Bye.',
+      },
     ]);
     assert.equal(
       meetingText(meeting, 'transcript'),
@@ -187,37 +230,83 @@ describe('the transcript', () => {
 
   it('corrects one transcript line, and removes a line emptied by hand', () => {
     const meeting = appendTranscript(startMeeting('m1', 'A', 0), [
-      { speaker: 'me', startMs: 1_000, endMs: 2_000, text: 'Ask Jon.' },
-      { speaker: 'others', startMs: 1_000, endMs: 2_000, text: 'Jon here.' },
-      { speaker: 'me', startMs: 3_000, endMs: 4_000, text: 'Когда тебе.' },
+      {
+        id: 'me-1_000',
+        speaker: 'me',
+        startMs: 1_000,
+        endMs: 2_000,
+        text: 'Ask Jon.',
+      },
+      {
+        id: 'others-1_000',
+        speaker: 'others',
+        startMs: 1_000,
+        endMs: 2_000,
+        text: 'Jon here.',
+      },
+      {
+        id: 'me-3_000',
+        speaker: 'me',
+        startMs: 3_000,
+        endMs: 4_000,
+        text: 'Когда тебе.',
+      },
     ]);
-    const fixed = editTranscriptLine(
-      meeting,
-      { speaker: 'others', startMs: 1_000 },
-      ' John here. ',
-    );
-    assert.deepEqual(
-      editTranscriptLine(fixed, { speaker: 'me', startMs: 3_000 }, '')
-        .transcript,
-      [
-        { speaker: 'me', startMs: 1_000, endMs: 2_000, text: 'Ask Jon.' },
-        { speaker: 'others', startMs: 1_000, endMs: 2_000, text: 'John here.' },
-      ],
-    );
+    const fixed = editTranscriptLine(meeting, 'others-1_000', ' John here. ');
+    assert.deepEqual(editTranscriptLine(fixed, 'me-3_000', '').transcript, [
+      {
+        id: 'me-1_000',
+        speaker: 'me',
+        startMs: 1_000,
+        endMs: 2_000,
+        text: 'Ask Jon.',
+      },
+      {
+        id: 'others-1_000',
+        speaker: 'others',
+        startMs: 1_000,
+        endMs: 2_000,
+        text: 'John here.',
+      },
+    ]);
     assert.throws(
-      () => editTranscriptLine(fixed, { speaker: 'others', startMs: 9 }, 'x'),
+      () => editTranscriptLine(fixed, 'others-9', 'x'),
       /no longer in the transcript/,
     );
   });
 
   it('drops lines without a real time, which the file could not store', () => {
     const meeting = appendTranscript(startMeeting('m1', 'A', 0), [
-      { speaker: 'me', startMs: Number.NaN, endMs: 1_000, text: 'Lost.' },
-      { speaker: 'me', startMs: 0, endMs: Infinity, text: 'Lost too.' },
-      { speaker: 'others', startMs: 2_000, endMs: 3_000, text: 'Kept.' },
+      {
+        id: 'lost',
+        speaker: 'me',
+        startMs: Number.NaN,
+        endMs: 1_000,
+        text: 'Lost.',
+      },
+      {
+        id: 'me-0',
+        speaker: 'me',
+        startMs: 0,
+        endMs: Infinity,
+        text: 'Lost too.',
+      },
+      {
+        id: 'others-2_000',
+        speaker: 'others',
+        startMs: 2_000,
+        endMs: 3_000,
+        text: 'Kept.',
+      },
     ]);
     assert.deepEqual(meeting.transcript, [
-      { speaker: 'others', startMs: 2_000, endMs: 3_000, text: 'Kept.' },
+      {
+        id: 'others-2_000',
+        speaker: 'others',
+        startMs: 2_000,
+        endMs: 3_000,
+        text: 'Kept.',
+      },
     ]);
     assert.deepEqual(
       parseMeetings(JSON.parse(JSON.stringify(serializeMeetings([meeting])))),

@@ -79,6 +79,9 @@ src/
 build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Windows)
                and icon.png (Linux, 1024 px), plus entitlements.mac.plist for
                the signed macOS build, all wired in forge.config.mts
+docs/decisions/  numbered decision records; read 0001-sync.md before
+                 touching meetings storage or sync
+relay/         the optional self-hostable sync relay (no dependencies)
 ```
 
 Dependencies point one way: `renderer → shared ← preload ← main → core`.

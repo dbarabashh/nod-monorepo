@@ -18,5 +18,5 @@
       "@fugood/llama.node": ["./src/types/llama-node.d.ts"]
     }
   },
-  "include": ["src/**/*", "*.ts", "*.mts", "scripts/**/*"]
+  "include": ["src/**/*", "relay/**/*", "*.ts", "*.mts", "scripts/**/*"]
 }

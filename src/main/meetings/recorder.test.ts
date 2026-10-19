@@ -1,21 +1,22 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { startMeeting, type Meeting } from '../../core/meetings/index.ts';
-import { createRecorder } from './recorder.ts';
-import type { MeetingStore } from './store.ts';
+import { createRecorder, type RecorderStore } from './recorder.ts';
 
 function setup(initial: Meeting[] = []) {
   let time = 1_000;
-  let saved: Meeting[] = initial;
+  const saved = new Map(initial.map((meeting) => [meeting.id, meeting]));
   let tick = () => {};
   let ticking = false;
   let ids = 0;
-  const store: MeetingStore = {
-    load: async () => saved,
-    save: async (meetings) => {
-      saved = meetings;
+  const store: RecorderStore = {
+    load: async () => [...saved.values()],
+    save: async (meeting) => {
+      saved.set(meeting.id, meeting);
     },
-    flush: async () => {},
+    remove: async (id) => {
+      saved.delete(id);
+    },
   };
   const recorder = createRecorder({
     store,
@@ -36,7 +37,7 @@ function setup(initial: Meeting[] = []) {
       time += ms;
     },
     tick: () => tick(),
-    saved: () => saved,
+    saved: () => [...saved.values()],
     ticking: () => ticking,
   };
 }
@@ -138,7 +139,7 @@ describe('createRecorder', () => {
         save: async () => {
           throw new Error('ENOSPC');
         },
-        flush: async () => {},
+        remove: async () => {},
       },
       now: () => 0,
       newId: () => 'x',
@@ -164,7 +165,7 @@ describe('createRecorder', () => {
           new Promise<void>((resolve) => {
             saves.push(resolve);
           }),
-        flush: async () => {},
+        remove: async () => {},
       },
       now: () => 0,
       newId: () => 'x',
@@ -192,7 +193,9 @@ describe('createRecorder', () => {
     const earlier: Meeting = {
       ...startMeeting('a', 'A', 0),
       finishedAt: 10,
-      transcript: [{ speaker: 'me', startMs: 0, endMs: 1, text: 'Hi.' }],
+      transcript: [
+        { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1, text: 'Hi.' },
+      ],
     };
     let failFirst: (error: Error) => void = () => {};
     let saves = 0;
@@ -207,7 +210,7 @@ describe('createRecorder', () => {
               })
             : Promise.resolve();
         },
-        flush: async () => {},
+        remove: async () => {},
       },
       now: () => 100,
       newId: () => 'b',
@@ -237,7 +240,7 @@ describe('createRecorder', () => {
             throw new Error('ENOSPC');
           }
         },
-        flush: async () => {},
+        remove: async () => {},
       },
       now: () => 0,
       newId: () => 'x',
@@ -265,7 +268,13 @@ describe('createRecorder', () => {
     await recorder.load();
     const id = await recorder.start('A');
     await recorder.appendLines(id, [
-      { speaker: 'others', startMs: 500, endMs: 900, text: 'Jon here.' },
+      {
+        id: 'others-500',
+        speaker: 'others',
+        startMs: 500,
+        endMs: 900,
+        text: 'Jon here.',
+      },
     ]);
     await recorder.finish(id);
     await recorder.saveSummary(id, 'Met Jon.');
@@ -273,11 +282,7 @@ describe('createRecorder', () => {
 
     await recorder.editSummary(id, 'Met Ann.');
     const afterSummary = recorder.summaries()[0]?.contentVersion;
-    await recorder.editLine(
-      id,
-      { speaker: 'others', startMs: 500 },
-      'Ann here.',
-    );
+    await recorder.editLine(id, 'others-500', 'Ann here.');
 
     assert.notEqual(afterSummary, before);
     assert.notEqual(recorder.summaries()[0]?.contentVersion, afterSummary);
@@ -310,6 +315,71 @@ describe('createRecorder', () => {
     assert.equal(recorder.summaries()[0]?.contentVersion, before);
   });
 
+  it('deletes a meeting, but never the one being recorded', async () => {
+    const { recorder, saved } = setup();
+    await recorder.load();
+    const first = await recorder.start('A');
+    await recorder.pause();
+    const second = await recorder.start('B');
+
+    await assert.rejects(recorder.remove(second), /Pause the recording/);
+    await recorder.remove(first);
+
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => meeting.id),
+      [second],
+    );
+    assert.deepEqual(
+      saved().map((meeting) => meeting.id),
+      [second],
+    );
+  });
+
+  it('shows changes and deletions that arrive from another device', async () => {
+    const { recorder } = setup([startMeeting('m1', 'Old title', 0)]);
+    await recorder.load();
+    const before = recorder.summaries()[0]?.contentVersion;
+
+    recorder.applyRemote({
+      kind: 'meeting',
+      id: 'm1',
+      meeting: {
+        ...startMeeting('m1', 'New title', 0),
+        summary: 'From the phone.',
+      },
+    });
+    recorder.applyRemote({
+      kind: 'meeting',
+      id: 'm2',
+      meeting: startMeeting('m2', 'Recorded elsewhere', 50),
+    });
+
+    assert.equal(recorder.transcriptOf('m1')?.summary, 'From the phone.');
+    assert.notEqual(
+      recorder.summaries().find((m) => m.id === 'm1')?.contentVersion,
+      before,
+    );
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => meeting.title),
+      ['Recorded elsewhere', 'New title'],
+    );
+
+    recorder.applyRemote({ kind: 'deleted', id: 'm1', deletedAt: 99 });
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => meeting.id),
+      ['m2'],
+    );
+  });
+
+  it('stops recording a meeting that another device deleted', async () => {
+    const { recorder } = setup();
+    await recorder.load();
+    const id = await recorder.start('A');
+    recorder.applyRemote({ kind: 'deleted', id, deletedAt: 5 });
+    assert.deepEqual(recorder.state(), { status: 'idle' });
+    assert.deepEqual(recorder.summaries(), []);
+  });
+
   it('records one meeting at a time', async () => {
     const { recorder } = setup();
     await recorder.load();
@@ -327,7 +397,7 @@ describe('createRecorder', () => {
         save: async () => {
           throw new Error('should not save');
         },
-        flush: async () => {},
+        remove: async () => {},
       },
       now: () => 0,
       newId: () => 'x',

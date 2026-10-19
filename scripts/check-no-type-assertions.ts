@@ -18,6 +18,7 @@ async function* sourceFiles(dir: string): AsyncGenerator<string> {
 async function* checkedFiles(): AsyncGenerator<string> {
   yield* sourceFiles('src');
   yield* sourceFiles('scripts');
+  yield* sourceFiles('relay');
   for (const entry of await readdir('.')) {
     if (entry.endsWith('.mts')) {
       yield entry;

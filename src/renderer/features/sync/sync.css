@@ -1,0 +1,97 @@
+@layer app {
+  .sync {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .sync__note {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+
+  .sync__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .sync__relay {
+    display: grid;
+    gap: var(--space-3);
+
+    & summary {
+      color: var(--color-text-muted);
+      font-size: var(--text-sm);
+      line-height: var(--leading-sm);
+    }
+
+    &[open] summary {
+      margin-block-end: var(--space-3);
+    }
+  }
+
+  .sync__form {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .sync__code {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+    letter-spacing: var(--tracking-xl);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .sync__request {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: var(--border-width) solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+  }
+
+  .sync__facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+
+    & dt {
+      color: var(--color-text-muted);
+    }
+
+    & dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .sync__recovery {
+    display: grid;
+    gap: var(--space-2);
+
+    &[data-variant='confirm'] {
+      padding: var(--space-4);
+      border: var(--border-width) solid var(--color-border-strong);
+      border-radius: var(--radius-lg);
+    }
+  }
+
+  .sync__recovery-title {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-md);
+  }
+
+  .sync__words {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    list-style: decimal;
+    gap: var(--space-1) var(--space-6);
+    padding-inline-start: var(--space-6);
+    font-variant-numeric: tabular-nums;
+  }
+}

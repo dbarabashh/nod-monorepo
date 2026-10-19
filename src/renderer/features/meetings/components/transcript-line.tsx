@@ -12,8 +12,7 @@ export const TranscriptLine = memo(
   TranscriptLineView,
   (before, after) =>
     before.meetingId === after.meetingId &&
-    before.line.speaker === after.line.speaker &&
-    before.line.startMs === after.line.startMs &&
+    before.line.id === after.line.id &&
     before.line.text === after.line.text,
 );
 
@@ -37,7 +36,7 @@ function TranscriptLineView({ meetingId, line }: TranscriptLineProps) {
     if (text === line.text) {
       return;
     }
-    editTranscriptLine(meetingId, line, text).catch(() => {
+    editTranscriptLine(meetingId, line.id, text).catch(() => {
       element.textContent = line.text;
     });
   }

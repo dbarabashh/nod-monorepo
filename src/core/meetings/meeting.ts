@@ -6,6 +6,7 @@ export type Segment = {
 export type Speaker = 'me' | 'others';
 
 export type TranscriptLine = {
+  id: string;
   speaker: Speaker;
   startMs: number;
   endMs: number;
@@ -95,16 +96,12 @@ export function editSummary(meeting: Meeting, markdown: string): Meeting {
     : { ...meeting, summary, summaryEdited: true };
 }
 
-export type LineKey = Pick<TranscriptLine, 'speaker' | 'startMs'>;
-
 export function editTranscriptLine(
   meeting: Meeting,
-  key: LineKey,
+  lineId: string,
   text: string,
 ): Meeting {
-  const index = meeting.transcript.findIndex(
-    (line) => line.speaker === key.speaker && line.startMs === key.startMs,
-  );
+  const index = meeting.transcript.findIndex((line) => line.id === lineId);
   const line = meeting.transcript[index];
   if (!line) {
     throw new Error('That line is no longer in the transcript');
@@ -209,15 +206,23 @@ function parseSegment(raw: unknown): Segment | null {
   return { startedAt, endedAt };
 }
 
-function parseLine(raw: unknown): TranscriptLine | null {
+// Files written before lines had ids get ones derived from their position, so
+// reading the same file twice gives the same ids.
+function parseLine(
+  raw: unknown,
+  index: number,
+  meetingId: string,
+): TranscriptLine | null {
   if (typeof raw !== 'object' || raw === null) {
     return null;
   }
+  const id = field(raw, 'id') ?? `${meetingId}-${index}`;
   const speaker = field(raw, 'speaker');
   const startMs = field(raw, 'startMs');
   const endMs = field(raw, 'endMs');
   const text = field(raw, 'text');
   if (
+    typeof id !== 'string' ||
     (speaker !== 'me' && speaker !== 'others') ||
     typeof startMs !== 'number' ||
     typeof endMs !== 'number' ||
@@ -225,10 +230,10 @@ function parseLine(raw: unknown): TranscriptLine | null {
   ) {
     return null;
   }
-  return { speaker, startMs, endMs, text };
+  return { id, speaker, startMs, endMs, text };
 }
 
-function parseMeeting(raw: unknown): Meeting | null {
+export function parseMeeting(raw: unknown): Meeting | null {
   if (typeof raw !== 'object' || raw === null) {
     return null;
   }
@@ -251,7 +256,7 @@ function parseMeeting(raw: unknown): Meeting | null {
     return null;
   }
   const parsed = segments.map(parseSegment);
-  const lines = transcript.map(parseLine);
+  const lines = transcript.map((line, index) => parseLine(line, index, id));
   if (
     parsed.length === 0 ||
     parsed.some((segment) => segment === null) ||

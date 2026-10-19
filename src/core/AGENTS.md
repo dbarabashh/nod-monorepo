@@ -10,9 +10,14 @@ its own package later.
 - Never import `electron`, Node built-ins (`node:*` or bare `fs`, `path`, …),
   `src/main`, `src/preload` or `src/renderer`. The linter enforces this. The
   only exception is `node:test` and `node:assert` in `*.test.ts` files.
-- Get platform capabilities (storage, crypto primitives, filesystem, clock,
-  network) through interfaces declared here and implemented in `src/main`. Core
+- Get platform capabilities (storage, filesystem, clock, network, key storage)
+  through interfaces declared here and implemented in `src/main`. Core
   receives them as arguments; it never reaches for a global.
+- Take cryptography from `core/crypto`, which wraps the audited noble and
+  scure libraries so every client runs the same code. Never write a
+  cryptographic primitive, and never use `node:crypto` or WebCrypto here.
+  The one global these libraries read is `crypto.getRandomValues` for
+  randomness; every target provides it (a mobile client needs its polyfill).
 - Organize by domain (`core/<domain>/`), each with an `index.ts` barrel. Other
   layers import a domain only through its barrel.
 - Keep it pure and deterministic where possible. Most of the code worth

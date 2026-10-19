@@ -2,7 +2,6 @@ import type {
   MeetingDetail,
   MeetingPart,
   MeetingSummary,
-  TranscriptLineKey,
 } from '../../../shared/ipc.ts';
 import type { Meeting } from './types.ts';
 
@@ -47,8 +46,12 @@ export function editSummary(id: string, markdown: string): Promise<void> {
 
 export function editTranscriptLine(
   id: string,
-  line: TranscriptLineKey,
+  lineId: string,
   text: string,
 ): Promise<void> {
-  return window.api.editTranscriptLine(id, line, text);
+  return window.api.editTranscriptLine(id, lineId, text);
+}
+
+export function deleteMeeting(id: string): Promise<void> {
+  return window.api.deleteMeeting(id);
 }

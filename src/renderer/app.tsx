@@ -9,6 +9,7 @@ import {
   RecordButton,
 } from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
+import { RecoveryPanel, SyncPanel } from './features/sync/index.ts';
 import './app.css';
 
 type Page = 'meetings' | 'settings';
@@ -72,8 +73,10 @@ function Shell() {
         ) : (
           <SettingsView
             audio={<AudioAccessPanel />}
-            speechModels={<ModelsPanel kind="speech" />}
-            summaryModels={<ModelsPanel kind="summary" />}
+            transcription={<ModelsPanel kind="speech" />}
+            summaries={<ModelsPanel kind="summary" />}
+            sync={<SyncPanel />}
+            recovery={<RecoveryPanel />}
           />
         )}
       </main>

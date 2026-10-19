@@ -9,7 +9,7 @@ import {
   resumeMeeting,
   setSummary,
   startMeeting,
-  type LineKey,
+  type DocumentState,
   type Meeting,
   type TranscriptLine,
 } from '../../core/meetings/index.ts';
@@ -37,13 +37,17 @@ export type Recorder = {
   setProblem: (id: string, problem: string | null) => void;
   saveSummary: (id: string, summary: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
-  editLine: (id: string, key: LineKey, text: string) => Promise<void>;
+  editLine: (id: string, lineId: string, text: string) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  applyRemote: (state: DocumentState) => void;
 };
+
+export type RecorderStore = Pick<MeetingStore, 'load' | 'save' | 'remove'>;
 
 type Active = { id: string; previousMs: number; segmentStartedAt: number };
 
 export function createRecorder(options: {
-  store: MeetingStore;
+  store: RecorderStore;
   now: () => number;
   newId: () => string;
   every: (callback: () => void) => () => void;
@@ -92,9 +96,9 @@ export function createRecorder(options: {
     );
   }
 
-  async function save(): Promise<void> {
+  async function save(id: string): Promise<void> {
     try {
-      await store.save(loadedMeetings());
+      await store.save(find(id));
     } catch (error) {
       if (!saveFailed) {
         saveFailed = true;
@@ -117,9 +121,9 @@ export function createRecorder(options: {
     );
   }
 
-  async function persist() {
+  async function persist(id: string) {
     try {
-      await save();
+      await save(id);
     } finally {
       onChange();
     }
@@ -128,7 +132,7 @@ export function createRecorder(options: {
   async function update(id: string, change: (meeting: Meeting) => Meeting) {
     replace(change(find(id)));
     touch(id);
-    await persist();
+    await persist(id);
   }
 
   function extendActive() {
@@ -153,7 +157,7 @@ export function createRecorder(options: {
       segmentStartedAt: meeting.segments.at(-1)?.startedAt ?? now(),
     };
     try {
-      await persist();
+      await persist(meeting.id);
     } catch (error) {
       if (active?.id === meeting.id) {
         active = null;
@@ -174,7 +178,9 @@ export function createRecorder(options: {
     // elapsed time itself, so this saves without telling every window.
     stopHeartbeat = every(() => {
       extendActive();
-      save().catch(() => undefined);
+      if (active) {
+        save(active.id).catch(() => undefined);
+      }
     });
   }
 
@@ -182,11 +188,19 @@ export function createRecorder(options: {
     if (!active) {
       return;
     }
+    const { id } = active;
     stopHeartbeat();
     stopHeartbeat = () => {};
     extendActive();
     active = null;
-    await persist();
+    await persist(id);
+  }
+
+  function forget(id: string) {
+    meetings = loadedMeetings().filter((meeting) => meeting.id !== id);
+    summaryStatus.delete(id);
+    problems.delete(id);
+    revisions.delete(id);
   }
 
   function summaries(): MeetingSummary[] {
@@ -251,8 +265,8 @@ export function createRecorder(options: {
       ),
     editSummary: (id, markdown) =>
       update(id, (meeting) => editSummary(meeting, markdown)),
-    editLine: (id, key, text) =>
-      update(id, (meeting) => editTranscriptLine(meeting, key, text)),
+    editLine: (id, lineId, text) =>
+      update(id, (meeting) => editTranscriptLine(meeting, lineId, text)),
     list: async () => {
       if (!meetings) {
         await load();
@@ -285,7 +299,40 @@ export function createRecorder(options: {
         await pause();
       }
       replace(finishMeeting(find(id), now()));
-      await persist();
+      await persist(id);
+    },
+    remove: async (id) => {
+      find(id);
+      if (active?.id === id) {
+        throw new Error('Pause the recording before deleting this meeting');
+      }
+      await store.remove(id, now());
+      forget(id);
+      onChange();
+    },
+    applyRemote: (state) => {
+      if (!meetings) {
+        return;
+      }
+      if (state.kind === 'deleted') {
+        if (active?.id === state.id) {
+          stopHeartbeat();
+          stopHeartbeat = () => {};
+          active = null;
+        }
+        if (lookup(state.id)) {
+          forget(state.id);
+          onChange();
+        }
+        return;
+      }
+      meetings = lookup(state.id)
+        ? meetings.map((meeting) =>
+            meeting.id === state.id ? state.meeting : meeting,
+          )
+        : [...meetings, state.meeting];
+      touch(state.id);
+      onChange();
     },
   };
 }

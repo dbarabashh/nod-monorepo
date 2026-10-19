@@ -2,9 +2,11 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   net,
   safeStorage,
   session,
+  type OpenDialogOptions,
 } from 'electron';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -17,16 +19,22 @@ import { registerAppStateIpc } from './ipc/app-state.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
 import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
+import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
 import { createRecorder } from './meetings/recorder.ts';
 import { createMeetingSession } from './meetings/session.ts';
 import { createTranscriber } from './transcription/service.ts';
 import { createMeetingStore } from './meetings/store.ts';
 import { createModelManager } from './models/manager.ts';
+import { open, seal } from '../core/crypto/index.ts';
+import { loadDataKey, type KeyWrap } from './security/data-key.ts';
 import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
 import { secureSession } from './security/session.ts';
 import { IpcEvent } from '../shared/ipc.ts';
 import { createMainWindow } from './windows/main-window.ts';
 import { openRecordingWidget } from './windows/recording-widget.ts';
+import { createSyncController } from './sync/controller.ts';
+import { createSyncScheduler } from './sync/scheduler.ts';
+import { createSyncSettings } from './sync/settings.ts';
 
 ignoreClosedOutput();
 
@@ -50,19 +58,60 @@ let widget: BrowserWindow | null = null;
 let quitting = false;
 let pauseRecording = () => recorder.pause();
 
-const meetingStore = createMeetingStore(
-  path.join(app.getPath('userData'), 'meetings.bin'),
-  {
-    encrypt: (plain) => {
-      requireSecureStorage();
-      return safeStorage.encryptString(plain);
-    },
-    decrypt: (data) => {
-      requireSecureStorage();
-      return safeStorage.decryptString(data);
-    },
+const keychain: KeyWrap = {
+  wrap: (plain) => {
+    requireSecureStorage();
+    return safeStorage.encryptString(plain);
   },
-);
+  unwrap: (data) => {
+    requireSecureStorage();
+    return safeStorage.decryptString(data);
+  },
+};
+
+const meetingStore = createMeetingStore({
+  directory: path.join(app.getPath('userData'), 'meetings'),
+  cipher: async (hasStoredMeetings) => {
+    const key = await loadDataKey(
+      path.join(app.getPath('userData'), 'keys', 'data.key'),
+      keychain,
+      async () => hasStoredMeetings,
+    );
+    return {
+      encrypt: (plain, context) => seal(key, plain, context),
+      decrypt: (data, context) => open(key, data, context),
+    };
+  },
+  legacy: {
+    file: path.join(app.getPath('userData'), 'meetings.bin'),
+    decrypt: keychain.unwrap,
+  },
+  onWrite: () => syncScheduler.soon(),
+});
+
+const syncController = createSyncController({
+  settings: createSyncSettings({
+    directory: app.getPath('userData'),
+    keychain,
+  }),
+  store: meetingStore,
+  onRemote: (state) => recorder.applyRemote(state),
+  fetch: (url, init) => net.fetch(url, init),
+  newId: randomUUID,
+  now: Date.now,
+  onChange: () => broadcastSync(syncController),
+});
+
+const syncScheduler = createSyncScheduler({
+  refresh: syncController.refresh,
+  idleDelayMs: () => {
+    const state = syncController.state();
+    return state.status === 'joining' ||
+      (state.status === 'on' && state.requests.length > 0)
+      ? 2_000
+      : 15_000;
+  },
+});
 
 const recorder = createRecorder({
   store: meetingStore,
@@ -170,7 +219,31 @@ app.whenReady().then(async () => {
       widget?.webContents.send(IpcEvent.onRecordingLevel, level),
     copyText: (text) => clipboard.writeText(text),
   });
-  await recorder.load().catch(() => undefined);
+  registerSyncIpc({
+    appUrl,
+    controller: syncController,
+    chooseFolder: async () => {
+      const options: OpenDialogOptions = {
+        title: 'Choose a folder to sync meetings through',
+        properties: ['openDirectory', 'createDirectory'],
+      };
+      const result = mainWindow
+        ? await dialog.showOpenDialog(mainWindow, options)
+        : await dialog.showOpenDialog(options);
+      return result.canceled ? null : (result.filePaths[0] ?? null);
+    },
+    syncSoon: () => syncScheduler.soon(),
+  });
+  // Sync only starts on top of meetings that were read, so a failed load can
+  // never be overwritten by copies from other devices.
+  const loaded = await recorder.load().then(
+    () => true,
+    () => false,
+  );
+  await syncController.load();
+  if (loaded) {
+    syncScheduler.start();
+  }
   app.on('second-instance', showMainWindow);
   showMainWindow();
 

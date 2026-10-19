@@ -1,6 +1,5 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import type { Meeting } from '../../core/meetings/index.ts';
 import { modelCatalog } from '../../core/models/index.ts';
 import type { ModelManager } from '../models/manager.ts';
 import type { Transcriber } from '../transcription/service.ts';
@@ -13,14 +12,11 @@ function setup(captureGraceMs = 0) {
   const calls: string[] = [];
   let summaryResult = () => Promise.resolve('We agreed.');
   let flushResult = () => Promise.resolve();
-  let saved: Meeting[] = [];
   const recorder = createRecorder({
     store: {
-      load: async () => saved,
-      save: async (meetings) => {
-        saved = meetings;
-      },
-      flush: async () => {},
+      load: async () => [],
+      save: async () => {},
+      remove: async () => {},
     },
     now: () => time,
     newId: () => `m${++ids}`,
@@ -124,7 +120,7 @@ describe('createMeetingSession', () => {
     await recorder.load();
     await session.start('A');
     await recorder.appendLines('m1', [
-      { speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+      { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
     ]);
     await Promise.all([session.finish('m1'), session.finish('m1')]);
     await settle();
@@ -137,7 +133,7 @@ describe('createMeetingSession', () => {
     await recorder.load();
     await session.start('A');
     await recorder.appendLines('m1', [
-      { speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+      { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
     ]);
     failSummary();
     await session.finish('m1');
@@ -216,7 +212,7 @@ describe('createMeetingSession', () => {
     await recorder.load();
     await session.start('A');
     await recorder.appendLines('m1', [
-      { speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+      { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
     ]);
     await session.finish('m1');
     await settle();

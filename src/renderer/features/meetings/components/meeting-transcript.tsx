@@ -129,7 +129,7 @@ export function MeetingTranscript({
                   <ol className="meeting-detail__transcript" data-selectable>
                     {detail.transcript.map((line) => (
                       <TranscriptLine
-                        key={`${line.speaker}-${line.startMs}`}
+                        key={line.id}
                         meetingId={meetingId}
                         line={line}
                       />

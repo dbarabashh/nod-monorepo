@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { loadModel } from '@fugood/llama.node';
 import {
   initParakeet,
@@ -148,6 +149,7 @@ async function drain(stream: Stream, final: boolean): Promise<void> {
         Math.ceil(chunk.endMs * samplesPerMs),
       );
       lines.push({
+        id: randomUUID(),
         speaker: stream.speaker,
         startMs: Math.round(baseMs + chunk.startMs),
         endMs: Math.round(baseMs + chunk.endMs),

@@ -5,7 +5,6 @@ import {
   pcmSampleRate,
   type MeetingPart,
   type Speaker,
-  type TranscriptLineKey,
 } from '../../shared/ipc.ts';
 import { createAudioBudget } from '../meetings/audio-budget.ts';
 import type { Recorder } from '../meetings/recorder.ts';
@@ -48,22 +47,6 @@ function meetingPart(value: unknown): MeetingPart {
 
 function isSpeaker(value: unknown): value is Speaker {
   return value === 'me' || value === 'others';
-}
-
-function lineKey(value: unknown): TranscriptLineKey {
-  if (typeof value !== 'object' || value === null) {
-    throw new Error('Unknown transcript line');
-  }
-  const speaker = Reflect.get(value, 'speaker');
-  const startMs = Reflect.get(value, 'startMs');
-  if (
-    !isSpeaker(speaker) ||
-    typeof startMs !== 'number' ||
-    !Number.isFinite(startMs)
-  ) {
-    throw new Error('Unknown transcript line');
-  }
-  return { speaker, startMs };
 }
 
 export function registerRecordingIpc(options: {
@@ -110,16 +93,19 @@ export function registerRecordingIpc(options: {
   handleFromApp(appUrl, IpcChannel.finishMeeting, (id) =>
     session.finish(meetingId(id)),
   );
+  handleFromApp(appUrl, IpcChannel.deleteMeeting, (id) =>
+    recorder.remove(meetingId(id)),
+  );
   handleFromApp(appUrl, IpcChannel.editSummary, (id, markdown) =>
     recorder.editSummary(
       meetingId(id),
       boundedString(markdown, maxSummaryChars, tooLong),
     ),
   );
-  handleFromApp(appUrl, IpcChannel.editTranscriptLine, (id, line, text) =>
+  handleFromApp(appUrl, IpcChannel.editTranscriptLine, (id, lineId, text) =>
     recorder.editLine(
       meetingId(id),
-      lineKey(line),
+      boundedString(lineId, maxIdLength, 'Unknown transcript line'),
       boundedString(text, maxLineChars, tooLong),
     ),
   );
