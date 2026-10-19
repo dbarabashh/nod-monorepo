@@ -76,7 +76,8 @@ src/
   shared/      contracts imported by several processes (IPC channels and types)
   core/        platform-neutral data model, migrations, sync, crypto
   declarations.d.ts  ambient types (Forge Vite globals, window.api)
-build/         packaging assets (icons, entitlements), once added
+build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Windows)
+               and icon.png (Linux, 1024 px), wired in forge.config.mts
 ```
 
 Dependencies point one way: `renderer → shared ← preload ← main → core`.
