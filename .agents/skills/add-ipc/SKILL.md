@@ -7,44 +7,28 @@ description: Add a typed channel between the Electron main process and the rende
 
 Read `.agents/rules/electron.md` first. This skill is the checklist on top of
 it. Every channel touches four places, and skipping one leaves either a type
-hole or a security hole.
+hole or a security hole. Read how the existing channels do each step and
+follow that shape; the snippets below show the pattern, not the current code.
 
 ## 1. Define the contract once
 
-Put the channel name and its payload/result types in `src/shared/ipc.ts`, which
-main, preload and renderer all import. Create it the first time a channel is
-added:
+Put the channel name and its payload and result types in `src/shared/ipc.ts`,
+which main, preload and renderer all import, and add the function to the API
+type the preload exposes.
 
-```ts
-export const IpcChannel = {
-  getAppVersion: 'app:get-version',
-} as const;
-
-export type AppApi = {
-  getAppVersion: () => Promise<string>;
-};
-```
-
-- Name channels `<domain>:<verb>-<noun>` (`meetings:list`, `settings:update`).
+- Name channels `<domain>:<verb>-<noun>`.
 - One channel per operation. Never add a generic `invoke(channel, ...args)`.
-- Type-only exports should be imported with `import type`.
+- Declare types explicitly instead of asserting them (`.agents/rules/typescript.md`).
 
 ## 2. Handle it in main
 
-Add the handler to `src/main/ipc/<domain>.ts` inside a `register<Domain>Ipc()`
-function, and call that function from `src/main/index.ts`:
-
-```ts
-ipcMain.handle(IpcChannel.getAppVersion, (event) => {
-  assertTrustedSender(event);
-  return app.getVersion();
-});
-```
+Group handlers per domain in `src/main/ipc/<domain>.ts` behind one register
+function, and call it from the main entry.
 
 - Validate every argument as `unknown` before using it. The renderer is
   untrusted, so a type annotation on the parameter is not validation.
 - Check `event.senderFrame` belongs to the app (the Vite dev server URL in dev,
-  the `file://` renderer in production). Put this check in one helper and reuse it.
+  the `file://` renderer in production). Keep this check in one shared helper.
 - Return only what the renderer needs to show. Keys, tokens and raw encrypted
   blobs stay in main.
 - Return plain serializable data. Never return class instances, functions, or
@@ -54,46 +38,26 @@ ipcMain.handle(IpcChannel.getAppVersion, (event) => {
 
 ## 3. Expose it in preload (`src/preload/index.ts`)
 
-```ts
-import { contextBridge, ipcRenderer } from 'electron';
-import { IpcChannel, type AppApi } from '../shared/ipc';
-
-const api: AppApi = {
-  getAppVersion: () => ipcRenderer.invoke(IpcChannel.getAppVersion),
-};
-
-contextBridge.exposeInMainWorld('api', api);
-```
-
-- Expose exactly one object (`window.api`) and add functions to it. Never expose
-  `ipcRenderer` itself.
-- For main → renderer events, expose a subscribe function that returns an
+- Add the function to the one object exposed as `window.api`, typed with the
+  API type from `src/shared/ipc.ts`. Never expose `ipcRenderer` itself.
+- Request/response: `(...args) => ipcRenderer.invoke(<channel>, ...args)`.
+- Main → renderer events: expose a subscribe function that returns an
   unsubscribe, and strip the `IpcRendererEvent` before calling the callback:
 
   ```ts
-  onMeetingUpdated: (callback) => {
-    const listener = (_event: IpcRendererEvent, meeting: Meeting) => callback(meeting);
-    ipcRenderer.on(IpcChannel.meetingUpdated, listener);
-    return () => ipcRenderer.removeListener(IpcChannel.meetingUpdated, listener);
+  on<Event>: (callback) => {
+    const listener = (_event: IpcRendererEvent, payload: <Payload>) => callback(payload);
+    ipcRenderer.on(<channel>, listener);
+    return () => ipcRenderer.removeListener(<channel>, listener);
   },
   ```
 
-## 4. Type it in the renderer
+## 4. Use it in the renderer
 
-Declare the bridge once in `src/declarations.d.ts`:
-
-```ts
-import type { AppApi } from './shared/ipc';
-
-declare global {
-  interface Window {
-    api: AppApi;
-  }
-}
-```
-
-Views never call `window.api` directly. The feature's `api.ts` wraps the call
-(see `src/renderer/AGENTS.md`), and the renderer never imports `electron`.
+`window.api` is typed once in `src/declarations.d.ts` from the shared API type,
+so a new function needs no extra declaration. Views never call `window.api`
+directly: the feature's `api.ts` wraps the call (see `src/renderer/AGENTS.md`),
+and the renderer never imports `electron`.
 
 ## 5. Verify
 

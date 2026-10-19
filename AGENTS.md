@@ -10,7 +10,8 @@ Windows, Linux). Mobile clients come later, so the data model and sync must not
 depend on Electron or on a single OS. `local-first.md` turns this into rules.
 
 Electron Forge 8 packages the app, Vite bundles the main, preload and renderer
-targets, and TypeScript runs in strict mode.
+targets, and TypeScript runs in strict mode. The renderer uses React with a
+plain-CSS design system (`src/renderer/components/ui`).
 
 The project is meant to be open source and forkable. Keep code, docs and agent
 context free of personal or company identity: no names, emails, private URLs,
@@ -31,11 +32,13 @@ internal service IDs or paths that exist only on one machine.
   - `testing.md` (always): tests must be able to fail; logic changes are checked against their tests
   - `loop-engineering.md` (always): independent review/fix loops before material work is ready
   - `dependencies.md` (`package.json`, `pnpm-*.yaml`, `.github/**`): every dependency is supply-chain risk to user data
-  - `electron.md` (`src/**`, `forge.config.mts`, `index.html`): process boundaries, IPC, window security, fuses
-  - `typescript.md` (`*.ts`, `*.mts`): strict types, no `any`, pnpm only
+  - `electron.md` (`src/**`, `forge.config.mts`): process boundaries, IPC, window security, fuses
+  - `styling.md` (`src/renderer/**`): plain CSS, tokens only, cascade layers, no translucency
+  - `typescript.md` (`*.ts`, `*.tsx`, `*.mts`): strict types, no `any`, pnpm only
 - `.agents/skills/<name>/SKILL.md` uses the [Agent Skills](https://agentskills.io)
   format. Claude Code loads each skill through a symlink in `.claude/skills/`.
   - `add-feature`: add a feature or extend one across core, IPC, main and renderer
+  - `add-ui-component`: add or change a design-system primitive in plain CSS
   - `add-ipc`: add a typed main ↔ renderer channel through the preload bridge
   - `write-tests`: write or update node:test unit tests without false positives
   - `build-macos`: build the DMG and ZIP locally and verify them
@@ -53,7 +56,7 @@ pnpm install
 pnpm start       # dev mode with Vite HMR and DevTools open
 pnpm typecheck   # tsc --noEmit, strict
 pnpm test        # node:test over src/**/*.test.ts (Node >= 24)
-pnpm lint        # oxlint + oxfmt --check
+pnpm lint        # oxlint + oxfmt --check + type-assertion check
 pnpm lint:fix    # oxlint --fix + oxfmt --write
 pnpm make        # installers for the host OS into out/make
 ```

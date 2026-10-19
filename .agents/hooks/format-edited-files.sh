@@ -17,7 +17,7 @@ while IFS= read -r file; do
     *) continue ;;
   esac
   case "$path" in
-    *.ts|*.mts|*.cts|*.js|*.mjs|*.cjs)
+    *.ts|*.tsx|*.mts|*.cts|*.js|*.jsx|*.mjs|*.cjs)
       (cd "$repo_root" && pnpm exec oxlint --fix "$path" >/dev/null 2>&1) || true
       (cd "$repo_root" && pnpm exec oxfmt --write "$path" >/dev/null 2>&1) || true
       ;;

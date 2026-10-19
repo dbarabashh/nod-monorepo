@@ -16,8 +16,8 @@ local testing only. Never hand an unsigned build to users, because macOS shows
 ## Preconditions
 
 1. `pnpm install` has completed with no `Ignored build scripts` warning. The DMG
-   maker needs the native modules `fs-xattr` and `macos-alias`, which build only
-   if they are listed under `allowBuilds` in `pnpm-workspace.yaml`.
+   maker depends on native modules, which build only if they are listed under
+   `allowBuilds` in `pnpm-workspace.yaml`.
 2. `pnpm typecheck && pnpm lint` pass. `make` doesn't type-check, so a type
    error would ship silently.
 
@@ -48,8 +48,8 @@ local testing only. Never hand an unsigned build to users, because macOS shows
 
 ## Troubleshooting
 
-- `Cannot find module '../build/Release/volume.node'` means the native modules
-  were installed unbuilt. Make sure they are in `allowBuilds`, then run
+- `Cannot find module '…/build/Release/….node'` means a native module was
+  installed unbuilt. Make sure they are in `allowBuilds`, then run
   `rm -rf node_modules && pnpm install`.
 - The ZIP builds but the DMG fails: read the first `✖` line of the output. It
   is almost always the native-module problem above.

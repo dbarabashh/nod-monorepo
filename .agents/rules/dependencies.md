@@ -9,7 +9,9 @@ alwaysApply: false
 - Keep `dependencies` minimal, because they ship inside the app. Build and dev tooling goes in `devDependencies`.
 - Allow install scripts only by listing the package under `allowBuilds` in `pnpm-workspace.yaml`, and only after reading what the script does.
 - Always commit `pnpm-lock.yaml`. Install with the frozen lockfile in CI, and never hand-edit the lockfile.
-- Don't upgrade to a version published only days ago unless it fixes a security issue. Fresh releases are where hijacked packages land.
+- pnpm refuses any version published less than 7 days ago (`minimumReleaseAge: 10080` in `pnpm-workspace.yaml`). Fresh releases are where hijacked packages land. Never lower the value or disable it to get an install through.
+- Add a `minimumReleaseAgeExclude` entry only for an exact version (`name@x.y.z`) that is an urgent security fix or was already installed before the rule existed. Use a version-less name pattern only for per-platform binary packages whose version the parent package pins (`@oxlint/binding-*`). Remove each entry once its version is older than 7 days.
+- Never downgrade an already-installed runtime dependency (Electron especially) just to satisfy the age rule. Patch releases often carry security fixes; add a temporary exact-version exclusion instead.
 - Never add a package that phones home, collects telemetry, or loads code from the network at runtime.
 - Never load remote code in the app (CDN scripts, remote modules, `eval` of fetched text). Everything that runs is bundled at build time.
 - Dependabot (`.github/dependabot.yml`) opens weekly update PRs and waits 7 days after a release (14 days for majors) before proposing it. Review each PR like a new dependency: read the changelog, and run `pnpm install && pnpm typecheck && pnpm lint && pnpm test && pnpm make`. Never merge one only because CI is green.

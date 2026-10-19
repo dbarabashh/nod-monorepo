@@ -37,7 +37,7 @@ Worth a test:
 Not worth a test:
 
 - **Glue and pass-through.** Code that only wires calls together, with no
-  decisions of its own: `src/main/index.ts`, a handler that only forwards, a
+  decisions of its own: the main entry, a handler that only forwards, a
   barrel file.
 - **What the type checker already guarantees.** Shapes, required fields, and
   which function accepts what.
@@ -62,7 +62,7 @@ This usually works out as:
   here. Use known test vectors for crypto and serialization.
 - **`src/main`**: IPC input validation and handlers that make decisions. Pass
   Electron, the filesystem and the clock in as parameters and use small fakes.
-  Not the wiring, and never import `src/main/index.ts` in a test.
+  Not the wiring, and never import the main entry in a test.
 - **`src/renderer`**: pure helpers in `features/<feature>/lib/` that transform
   or decide something. No DOM or component tests yet.
 
@@ -154,7 +154,7 @@ you aren't sure, ask.
 
 ```sh
 pnpm test                                     # all src/**/*.test.ts
-node --test src/core/sync/merge.test.ts       # one file
+node --test <path>.test.ts                    # one file
 node --test --test-name-pattern="keeps edits" "src/**/*.test.ts"
 pnpm typecheck                                # tests aren't type-checked by the runner
 ```

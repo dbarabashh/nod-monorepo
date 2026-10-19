@@ -1,0 +1,32 @@
+.ui-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.ui-empty-state__icon {
+  --icon-size: var(--icon-size-lg);
+
+  display: grid;
+  place-items: center;
+  inline-size: var(--control-height-lg);
+  block-size: var(--control-height-lg);
+  margin-block-end: var(--space-1);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-field);
+  color: var(--color-text-muted);
+}
+
+.ui-empty-state__title {
+  font-size: var(--text-lg);
+  line-height: var(--leading-lg);
+  letter-spacing: var(--tracking-lg);
+  font-weight: var(--weight-bold);
+}
+
+.ui-empty-state__description {
+  max-inline-size: var(--measure-narrow);
+  color: var(--color-text-muted);
+}

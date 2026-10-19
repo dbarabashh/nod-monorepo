@@ -1,0 +1,97 @@
+.ui-button {
+  --_bg: var(--color-field);
+  --_bg-hover: var(--color-field-hover);
+  --_fg: var(--color-text);
+  --_border: var(--_bg);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1-5);
+  block-size: var(--control-height-md);
+  padding-inline: var(--control-padding-md);
+  border: var(--border-width) solid var(--_border);
+  border-radius: var(--radius-control);
+  background-color: var(--_bg);
+  color: var(--_fg);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-none);
+  letter-spacing: var(--tracking-md);
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+
+  &:hover:not(:disabled) {
+    --_bg: var(--_bg-hover);
+  }
+
+  &:disabled {
+    --_bg: var(--color-surface-active);
+    --_border: var(--color-surface-active);
+    --_fg: var(--color-text-disabled);
+  }
+
+  &[data-variant='primary']:not(:disabled) {
+    --_bg: var(--color-accent);
+    --_bg-hover: var(--color-accent-hover);
+    --_fg: var(--color-on-accent);
+  }
+
+  &[data-variant='danger']:not(:disabled) {
+    --_bg: var(--color-tone-danger-bg);
+    --_bg-hover: var(--color-tone-danger-bg);
+    --_fg: var(--color-tone-danger-fg);
+
+    &:hover {
+      --_fg: var(--color-danger-hover);
+    }
+  }
+
+  &[data-variant='outline'] {
+    --_bg: var(--color-surface);
+    --_bg-hover: var(--color-field);
+    --_border: var(--color-border-strong);
+
+    font-weight: var(--weight-regular);
+
+    &:disabled {
+      --_bg: var(--color-surface);
+      --_border: var(--color-border);
+    }
+  }
+
+  &[data-variant='ghost'] {
+    --_bg: transparent;
+    --_bg-hover: var(--color-field);
+
+    &:disabled {
+      --_bg: transparent;
+      --_border: transparent;
+    }
+  }
+
+  &[data-size='sm'] {
+    block-size: var(--control-height-sm);
+    padding-inline: var(--control-padding-sm);
+  }
+
+  &[data-size='lg'] {
+    block-size: var(--control-height-lg);
+    padding-inline: var(--control-padding-lg);
+    font-size: var(--text-lg);
+    letter-spacing: var(--tracking-lg);
+  }
+
+  @media (forced-colors: active) {
+    border-color: ButtonText;
+
+    &:disabled {
+      border-color: GrayText;
+      color: GrayText;
+    }
+  }
+}
