@@ -27,6 +27,7 @@ import { createMeetingStore } from './meetings/store.ts';
 import { createModelManager } from './models/manager.ts';
 import { open, seal } from '../core/crypto/index.ts';
 import { loadDataKey, type KeyWrap } from './security/data-key.ts';
+import { linuxPasswordStore } from './security/password-store.ts';
 import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
 import { secureSession } from './security/session.ts';
 import { IpcEvent } from '../shared/ipc.ts';
@@ -37,6 +38,17 @@ import { createSyncScheduler } from './sync/scheduler.ts';
 import { createSyncSettings } from './sync/settings.ts';
 
 ignoreClosedOutput();
+
+// Has to be set before the app is ready; an explicit --password-store wins.
+if (
+  process.platform === 'linux' &&
+  !app.commandLine.hasSwitch('password-store')
+) {
+  const store = linuxPasswordStore(process.env);
+  if (store) {
+    app.commandLine.appendSwitch('password-store', store);
+  }
+}
 
 // A second process would load and rewrite the same meetings file, so every
 // launch after the first hands over to the running app.
