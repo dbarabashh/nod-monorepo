@@ -52,9 +52,6 @@ function Shell() {
           >
             Meetings
           </NavItem>
-          <NavItem icon="calendar" disabled>
-            Calendar
-          </NavItem>
         </Nav>
         <Nav aria-label="App" className="app-shell__sidebar-footer">
           <NavItem
