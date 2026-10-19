@@ -8,6 +8,7 @@ import {
   createRelayHandler,
   defaultLimits,
   networkOf,
+  versionOf,
   type Limits,
   type Storage,
 } from './relay.ts';
@@ -884,6 +885,13 @@ describe('vercel relay', () => {
       fetch: async () => new Response(null, { status: 304 }),
     });
     await assert.rejects(reader.read(meeting, 100), /answered 304/);
+  });
+
+  it('uses a weak ETag as the version it names, and refuses an empty one', () => {
+    assert.equal(versionOf('W/"f632147f"'), '"f632147f"');
+    assert.equal(versionOf('"f632147f"'), '"f632147f"');
+    assert.throws(() => versionOf(''), /no version/);
+    assert.throws(() => versionOf('W/'), /no version/);
   });
 });
 

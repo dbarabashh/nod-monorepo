@@ -29,6 +29,18 @@ export type Storage = {
 
 export class Conflict extends Error {}
 
+// Storage serves larger objects compressed and marks their ETag weak (W/),
+// and a conditional write never matches a weak ETag. The value is the same
+// object version either way, so it is used without the mark. An empty one
+// would make a conditional write unconditional.
+export function versionOf(etag: string): string {
+  const version = etag.replace(/^W\//, '');
+  if (version === '') {
+    throw new Error('Blob storage returned no version');
+  }
+  return version;
+}
+
 export type Limits = {
   fileBytes: number;
   vaultBytes: number;

@@ -10,15 +10,12 @@ import {
 // Vercel compiles each function file to JavaScript without rewriting import
 // paths, so the module is imported by the name it has at run time.
 // oxlint-disable-next-line import/extensions
-import { Conflict, createRelayHandler, type Storage } from '../relay.js';
-
-// A missing version would make a conditional write unconditional.
-function versionOf(etag: string): string {
-  if (etag === '') {
-    throw new Error('Blob storage returned no version');
-  }
-  return etag;
-}
+import {
+  Conflict,
+  createRelayHandler,
+  versionOf,
+  type Storage,
+} from '../relay.js';
 
 async function bytesOf(stream: ReadableStream<Uint8Array>) {
   const chunks: Uint8Array[] = [];
