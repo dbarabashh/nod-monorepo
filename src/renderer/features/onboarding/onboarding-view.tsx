@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { Button, Icon } from '../../components/ui/index.ts';
+import { Button } from '../../components/ui/index.ts';
 
 type Step = {
   title: string;
@@ -16,18 +16,20 @@ const steps: Step[] = [
   {
     title: 'Download speech models',
     description:
-      'Transcription runs on this device, so it needs speech models stored locally. Nothing you say is sent anywhere to be transcribed.',
+      'Transcription runs on this device, so it needs a speech model stored locally. Nothing you say is sent anywhere to be transcribed. Downloads continue in the background.',
   },
 ];
 
 type OnboardingViewProps = {
   audio: ReactNode;
+  models: ReactNode;
   finish: 'idle' | 'saving' | 'failed';
   onFinish: () => void;
 };
 
 export function OnboardingView({
   audio,
+  models,
   finish,
   onFinish,
 }: OnboardingViewProps) {
@@ -74,9 +76,7 @@ export function OnboardingView({
           <p className="onboarding__description">{step.description}</p>
         </header>
 
-        <div className="onboarding__body">
-          {index === 0 ? audio : <ModelsPlaceholder />}
-        </div>
+        <div className="onboarding__body">{index === 0 ? audio : models}</div>
 
         {finish === 'failed' && (
           <p className="onboarding__error" role="alert">
@@ -121,23 +121,5 @@ export function OnboardingView({
         </footer>
       </div>
     </main>
-  );
-}
-
-function ModelsPlaceholder() {
-  return (
-    <div className="onboarding__placeholder">
-      <span className="onboarding__placeholder-icon">
-        <Icon name="download" />
-      </span>
-      <div>
-        <p className="onboarding__placeholder-title">
-          Model downloads aren't available yet
-        </p>
-        <p className="onboarding__placeholder-text">
-          This step will download the speech models before your first recording.
-        </p>
-      </div>
-    </div>
   );
 }

@@ -1,6 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { AudioSource, AudioSourceAccess } from '../../../../shared/ipc.ts';
-import { Button, Icon, Meter } from '../../../components/ui/index.ts';
+import {
+  Button,
+  Card,
+  CardActions,
+  CardBody,
+  CardDetail,
+  CardMedia,
+  CardMeta,
+  CardTitle,
+  Icon,
+  Meter,
+} from '../../../components/ui/index.ts';
 import { CaptureError, monitorLevel, type LevelMonitor } from '../capture.ts';
 import { describeSource, type TestOutcome } from '../lib/source-state.ts';
 
@@ -91,29 +102,27 @@ export function AudioSourceRow({
   }
 
   return (
-    <section className="audio-source" aria-labelledby={titleId}>
-      <span className="audio-source__icon">
+    <Card aria-labelledby={titleId}>
+      <CardMedia>
         <Icon name={source === 'microphone' ? 'mic' : 'speaker'} />
-      </span>
-      <div className="audio-source__body">
-        <h3 id={titleId} className="audio-source__title">
-          {copy[source].title}
-        </h3>
-        <p className="audio-source__hint">{copy[source].hint}</p>
+      </CardMedia>
+      <CardBody>
+        <CardTitle id={titleId}>{copy[source].title}</CardTitle>
+        <CardMeta>{copy[source].hint}</CardMeta>
         <output
-          className="audio-source__status"
-          data-attention={view.attention || undefined}
+          className="ui-card__meta"
+          data-variant={view.attention ? 'danger' : 'strong'}
         >
           {view.message}
         </output>
         {testing && (
-          <div className="audio-source__meter">
+          <CardDetail>
             <Meter ref={meter} aria-label={`${copy[source].title} level`} />
-            <p className="audio-source__hint">{copy[source].testHint}</p>
-          </div>
+            <CardMeta>{copy[source].testHint}</CardMeta>
+          </CardDetail>
         )}
-      </div>
-      <div className="audio-source__actions">
+      </CardBody>
+      <CardActions>
         {view.canRequest && (
           <Button variant="primary" onClick={onRequest}>
             Allow access
@@ -135,7 +144,7 @@ export function AudioSourceRow({
             Test
           </Button>
         )}
-      </div>
-    </section>
+      </CardActions>
+    </Card>
   );
 }

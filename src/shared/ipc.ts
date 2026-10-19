@@ -18,9 +18,30 @@ export type AudioSourceAccess = {
 
 export type AudioAccess = Record<AudioSource, AudioSourceAccess>;
 
+export type ModelStatus = 'available' | 'paused' | 'downloading' | 'downloaded';
+
+export type ModelError = 'network' | 'disk-full' | 'not-writable' | 'checksum';
+
+export type ModelInfo = {
+  id: string;
+  name: string;
+  description: string;
+  languages: string;
+  license: string;
+  recommended: boolean;
+  sizeBytes: number;
+  downloadedBytes: number;
+  status: ModelStatus;
+  error: ModelError | null;
+};
+
 export type AppState = {
   onboardingCompleted: boolean;
 };
+
+export const IpcEvent = {
+  onModelsChanged: 'models:changed',
+} satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
   getAppState: 'app-state:get',
@@ -29,7 +50,14 @@ export const IpcChannel = {
   requestMicrophoneAccess: 'audio-access:request-microphone',
   openAudioSettings: 'audio-access:open-settings',
   expectSystemAudioCapture: 'audio-access:expect-system-audio',
-} satisfies Record<Exclude<keyof AppApi, 'platform'>, string>;
+  listModels: 'models:list',
+  downloadModel: 'models:download',
+  cancelModelDownload: 'models:cancel',
+  deleteModel: 'models:delete',
+} satisfies Record<
+  Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
+  string
+>;
 
 export type AppApi = {
   platform: NodeJS.Platform;
@@ -39,4 +67,9 @@ export type AppApi = {
   requestMicrophoneAccess: () => Promise<AudioAccess>;
   openAudioSettings: (source: AudioSource) => Promise<void>;
   expectSystemAudioCapture: () => Promise<void>;
+  listModels: () => Promise<ModelInfo[]>;
+  downloadModel: (id: string) => Promise<void>;
+  cancelModelDownload: (id: string) => Promise<void>;
+  deleteModel: (id: string) => Promise<void>;
+  onModelsChanged: (callback: (models: ModelInfo[]) => void) => () => void;
 };

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Nav, NavItem } from './components/ui/index.ts';
 import { AudioAccessPanel } from './features/audio-access/index.ts';
 import { MeetingsView } from './features/meetings/index.ts';
+import { ModelsPanel } from './features/models/index.ts';
 import { OnboardingGate } from './features/onboarding/index.ts';
 import { SettingsView } from './features/settings/index.ts';
 import './app.css';
@@ -10,7 +11,7 @@ type Page = 'meetings' | 'settings';
 
 export function App() {
   return (
-    <OnboardingGate audio={<AudioAccessPanel />}>
+    <OnboardingGate audio={<AudioAccessPanel />} models={<ModelsPanel />}>
       <Shell />
     </OnboardingGate>
   );
@@ -53,7 +54,7 @@ function Shell() {
         {page === 'meetings' ? (
           <MeetingsView />
         ) : (
-          <SettingsView audio={<AudioAccessPanel />} />
+          <SettingsView audio={<AudioAccessPanel />} models={<ModelsPanel />} />
         )}
       </main>
     </div>

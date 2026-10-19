@@ -1,0 +1,10 @@
+@layer app {
+  .models {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .models__note {
+    color: var(--color-text-muted);
+  }
+}

@@ -14,7 +14,7 @@ alwaysApply: false
 - Keep per-component private variables prefixed `--_` (`--_bg`) and set them in variants instead of repeating properties.
 - Gate OS-specific styling on `:root[data-platform='darwin' | 'win32' | 'linux']` in `base.css` or the component, never on user-agent sniffing.
 - Support `@media (forced-colors: active)` (Windows high contrast) for every interactive component, using system colors (`ButtonText`, `FieldText`, `GrayText`, `Highlight`).
-- Show focus with `:focus-visible`, never remove the outline without replacing it, and keep hit targets at least `--control-height-sm` tall.
+- Show focus with `:focus-visible`, never remove the outline without replacing it, and keep hit targets at least `--control-height-sm` tall. The only exception is a region focused from code (`tabindex="-1"`) so screen readers follow a page change; it isn't a control, so it shows no ring.
 - Desktop conventions: `cursor: default` on controls (no pointer hand), app chrome is not text-selectable, user content is (`[data-selectable]`, inputs, editors).
 - Don't build on thin weights (below 400) or sub-pixel sizes (`0.5px`). Windows scaling at 125–150% blurs them.
 - Never set inline `style` for static values. Inline styles are only for values computed at runtime.

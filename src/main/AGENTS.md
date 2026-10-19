@@ -12,6 +12,7 @@ src/main/
   index.ts          app lifecycle and window creation only; wires everything else
   ipc/<domain>.ts   ipcMain handlers for one domain, registered from index.ts
   security/         navigation, window-open, permission and IPC sender guards
+  models/           speech model downloads: resume, checksum, storage
   <domain>/         OS-facing code for one domain (audio/, storage/, keychain/)
 ```
 

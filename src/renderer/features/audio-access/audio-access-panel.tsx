@@ -1,39 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
-import { audioSources, type AudioAccess } from '../../../shared/ipc.ts';
+import { useEffect } from 'react';
+import { audioSources } from '../../../shared/ipc.ts';
 import { Button, EmptyState } from '../../components/ui/index.ts';
 import {
   getAudioAccess,
   openAudioSettings,
   requestMicrophoneAccess,
 } from './api.ts';
+import { useAsync } from '../../lib/use-async.ts';
 import { AudioSourceRow } from './components/audio-source-row.tsx';
 import './audio-access.css';
 
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; access: AudioAccess };
-
 export function AudioAccessPanel() {
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
-
-  const show = useCallback((access: Promise<AudioAccess>) => {
-    access.then(
-      (value) => setState({ status: 'ready', access: value }),
-      () => setState({ status: 'error' }),
-    );
-  }, []);
-
-  const load = useCallback(() => show(getAudioAccess()), [show]);
+  const { state, setState, retry, refresh, track } = useAsync(getAudioAccess);
 
   useEffect(() => {
-    load();
-    window.addEventListener('focus', load);
-    return () => window.removeEventListener('focus', load);
-  }, [load]);
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [refresh]);
 
   function request() {
-    show(requestMicrophoneAccess());
+    track(
+      requestMicrophoneAccess().then((value) =>
+        setState({ status: 'ready', value }),
+      ),
+    );
   }
 
   if (state.status === 'loading') {
@@ -45,16 +35,7 @@ export function AudioAccessPanel() {
       <EmptyState
         icon="mic"
         title="Couldn't check audio access"
-        action={
-          <Button
-            onClick={() => {
-              setState({ status: 'loading' });
-              load();
-            }}
-          >
-            Try again
-          </Button>
-        }
+        action={<Button onClick={retry}>Try again</Button>}
       />
     );
   }
@@ -63,15 +44,11 @@ export function AudioAccessPanel() {
     <div className="audio-access">
       {audioSources.map((source) => (
         <AudioSourceRow
-          key={`${source}:${state.access[source].status}`}
+          key={`${source}:${state.value[source].status}`}
           source={source}
-          access={state.access[source]}
+          access={state.value[source]}
           onRequest={request}
-          onOpenSettings={() => {
-            openAudioSettings(source).catch(() =>
-              setState({ status: 'error' }),
-            );
-          }}
+          onOpenSettings={() => track(openAudioSettings(source))}
         />
       ))}
     </div>

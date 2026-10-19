@@ -11,6 +11,7 @@ alwaysApply: true
 - Save the transcript incrementally while recording, so a crash or quit loses seconds, not the conversation. Audio can't be reprocessed later, so only steps that run on the saved transcript (summaries) may fail and be retried.
 - Let the user decide what is kept. Every stored item can be deleted, and deletion propagates to the user's other synced devices.
 - Keep data exportable in open formats (JSON, Markdown) that are readable without the app. Never introduce a format only this app can open.
+- Download speech models only from a pinned revision listed in `src/core/models`, and move a file into place only after its size and sha256 match. Never load a model file that wasn't verified.
 - Send content to a third-party service (for example an AI provider) only when the user has enabled it. Send the minimum needed, never to a service that retains it or trains on it, and make the destination visible to the user.
 - Never add telemetry or crash reporting that can carry user content. Anything collected is opt-in.
 - Store third-party access tokens on the device in secure storage, request the narrowest scopes, and let the user revoke them. A leaked token is a breach of every account it reaches.

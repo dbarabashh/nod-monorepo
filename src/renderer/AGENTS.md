@@ -14,7 +14,7 @@ src/renderer/
   styles/                 tokens, reset, base, utilities and the layer order
   features/<feature>/     one self-contained slice per product area
   components/ui/          the design system: plain CSS primitives (see its AGENTS.md)
-  lib/                    helpers used by 2+ features, created when first needed
+  lib/                    helpers and hooks used by 2+ features
 ```
 
 ## A feature

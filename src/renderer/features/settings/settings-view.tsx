@@ -3,9 +3,10 @@ import './settings.css';
 
 type SettingsViewProps = {
   audio: ReactNode;
+  models: ReactNode;
 };
 
-export function SettingsView({ audio }: SettingsViewProps) {
+export function SettingsView({ audio, models }: SettingsViewProps) {
   const idPrefix = useId();
 
   return (
@@ -27,6 +28,19 @@ export function SettingsView({ audio }: SettingsViewProps) {
             Audio is processed on this device as it plays and is never saved.
           </p>
           {audio}
+        </section>
+        <section
+          className="settings__section"
+          aria-labelledby={`${idPrefix}-models`}
+        >
+          <h2 id={`${idPrefix}-models`} className="settings__section-title">
+            Speech models
+          </h2>
+          <p className="settings__section-hint">
+            Models are stored on this device and transcribe without a network
+            connection.
+          </p>
+          {models}
         </section>
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, net, session } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -6,6 +6,9 @@ import { windowIcon } from './app-icon.ts';
 import { createAppStateStore } from './app-state/store.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
+import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
+import { modelCatalog } from '../core/models/index.ts';
+import { createModelManager } from './models/manager.ts';
 import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
 import { secureSession } from './security/session.ts';
 import { secureWindow } from './security/window.ts';
@@ -48,6 +51,13 @@ app.whenReady().then(() => {
     appUrl,
     createAppStateStore(path.join(app.getPath('userData'), 'app-state.json')),
   );
+  const models = createModelManager({
+    catalog: modelCatalog,
+    directory: path.join(app.getPath('userData'), 'models'),
+    fetch: (url, init) => net.fetch(url, init),
+    onChange: broadcastModels(),
+  });
+  registerModelsIpc(appUrl, models);
   createWindow();
 
   app.on('activate', () => {

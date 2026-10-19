@@ -6,41 +6,19 @@ import {
   InputGroup,
   List,
 } from '../../components/ui/index.ts';
+import { useAsync } from '../../lib/use-async.ts';
 import { listMeetings } from './api.ts';
 import { MeetingRow } from './components/meeting-row.tsx';
 import { filterMeetings } from './lib/filter-meetings.ts';
 import { groupByDay } from './lib/group-by-day.ts';
-import type { Meeting } from './types.ts';
 import './meetings.css';
 
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; meetings: Meeting[] };
-
 export function MeetingsView() {
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const { state, retry } = useAsync(listMeetings);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [attempt, setAttempt] = useState(0);
   const idPrefix = useId();
-
-  useEffect(() => {
-    let active = true;
-    listMeetings().then(
-      (meetings) => active && setState({ status: 'ready', meetings }),
-      () => active && setState({ status: 'error' }),
-    );
-    return () => {
-      active = false;
-    };
-  }, [attempt]);
-
-  function retry() {
-    setState({ status: 'loading' });
-    setAttempt((count) => count + 1);
-  }
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -59,7 +37,7 @@ export function MeetingsView() {
       return [];
     }
     return groupByDay(
-      filterMeetings(state.meetings, query),
+      filterMeetings(state.value, query),
       now,
       navigator.language,
     );
@@ -73,7 +51,7 @@ export function MeetingsView() {
             Meetings
           </h1>
           {state.status === 'ready' && (
-            <span className="meetings__count">{state.meetings.length}</span>
+            <span className="meetings__count">{state.value.length}</span>
           )}
         </div>
         <div className="meetings__actions">
@@ -104,7 +82,7 @@ export function MeetingsView() {
             action={<Button onClick={retry}>Try again</Button>}
           />
         )}
-        {state.status === 'ready' && state.meetings.length === 0 && (
+        {state.status === 'ready' && state.value.length === 0 && (
           <EmptyState
             icon="mic"
             title="No meetings yet"
@@ -112,7 +90,7 @@ export function MeetingsView() {
           />
         )}
         {state.status === 'ready' &&
-          state.meetings.length > 0 &&
+          state.value.length > 0 &&
           groups.length === 0 && (
             <EmptyState
               icon="search"

@@ -1,12 +1,20 @@
-.ui-meter {
+.ui-meter,
+.ui-progress {
   display: block;
   inline-size: 100%;
   block-size: var(--meter-height);
+  border: 0;
   border-radius: var(--radius-full);
   background: var(--color-field);
   appearance: none;
   overflow: hidden;
 
+  @media (forced-colors: active) {
+    border: var(--border-width) solid CanvasText;
+  }
+}
+
+.ui-meter {
   &::-webkit-meter-inner-element {
     display: block;
     block-size: 100%;
@@ -27,11 +35,27 @@
   }
 
   @media (forced-colors: active) {
-    border: var(--border-width) solid CanvasText;
-
     &::-webkit-meter-optimum-value,
     &::-webkit-meter-suboptimum-value,
     &::-webkit-meter-even-less-good-value {
+      background: Highlight;
+    }
+  }
+}
+
+.ui-progress {
+  &::-webkit-progress-bar {
+    border-radius: inherit;
+    background: var(--color-field);
+  }
+
+  &::-webkit-progress-value {
+    border-radius: inherit;
+    background: var(--color-accent);
+  }
+
+  @media (forced-colors: active) {
+    &::-webkit-progress-value {
       background: Highlight;
     }
   }

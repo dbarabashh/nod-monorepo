@@ -19,6 +19,9 @@
   }
 
   .settings__body {
+    display: grid;
+    align-content: start;
+    gap: var(--space-8);
     min-block-size: 0;
     padding: var(--space-6);
   }

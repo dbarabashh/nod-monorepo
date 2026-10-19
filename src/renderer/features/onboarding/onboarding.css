@@ -81,35 +81,6 @@
     line-height: var(--leading-sm);
   }
 
-  .onboarding__placeholder {
-    display: flex;
-    align-items: start;
-    gap: var(--space-3);
-    padding: var(--space-4);
-    border: var(--border-width) dashed var(--color-border);
-    border-radius: var(--radius-lg);
-  }
-
-  .onboarding__placeholder-icon {
-    display: grid;
-    place-items: center;
-    inline-size: var(--control-height-md);
-    block-size: var(--control-height-md);
-    border-radius: var(--radius-md);
-    background-color: var(--color-field);
-    color: var(--color-text-muted);
-  }
-
-  .onboarding__placeholder-title {
-    font-weight: var(--weight-medium);
-  }
-
-  .onboarding__placeholder-text {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-  }
-
   @media (forced-colors: active) {
     .onboarding__step[data-done],
     .onboarding__step[aria-current='step'] {

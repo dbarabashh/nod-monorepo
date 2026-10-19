@@ -19,4 +19,8 @@
     min-block-size: 0;
     background-color: var(--color-surface);
   }
+
+  .app-shell__main:focus-visible {
+    outline: none;
+  }
 }
