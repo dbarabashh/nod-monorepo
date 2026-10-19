@@ -15,3 +15,4 @@ export {
   phraseWords,
   recoveryPhrase,
 } from './recovery.ts';
+export { fileKeyOf } from './vault-keys.ts';

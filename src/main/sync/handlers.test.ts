@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { createMeetingStore } from '../meetings/store.ts';
@@ -242,5 +242,38 @@ describe('sync handlers', () => {
       kind: 'folder',
       folder: shared,
     });
+  });
+
+  it('changes the recovery phrase only after the user confirms', async () => {
+    const { controller, handlers, asked, tick } = await setUp({
+      answers: [true, false, true],
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+
+    await handlers.changeRecoveryPhrase();
+    assert.equal(asked[1]?.message, 'Change your recovery phrase?');
+    assert.equal(controller.recoveryPhrase(), zeroKeyPhrase);
+
+    tick(10_000);
+    await handlers.changeRecoveryPhrase();
+    assert.notEqual(controller.recoveryPhrase(), zeroKeyPhrase);
+  });
+
+  it('changes the phrase while the place can’t be reached only after a second yes', async () => {
+    const { controller, handlers, asked, tick } = await setUp({
+      answers: [true, true, false, true, true],
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    await handlers.chooseSyncFolder();
+    await rm(join(dir(), 'shared'), { recursive: true });
+
+    await assert.rejects(handlers.changeRecoveryPhrase(), /can’t be found/);
+    assert.equal(asked.at(-1)?.message, 'Change the phrase anyway?');
+    assert.equal(controller.recoveryPhrase(), zeroKeyPhrase);
+
+    tick(60_000);
+    await handlers.changeRecoveryPhrase();
+    assert.equal(asked.at(-1)?.message, 'Change the phrase anyway?');
+    assert.notEqual(controller.recoveryPhrase(), zeroKeyPhrase);
   });
 });

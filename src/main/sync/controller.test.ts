@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -21,6 +21,7 @@ import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController, UnreachableError } from './controller.ts';
+import type { SyncState } from '../../shared/ipc.ts';
 import { createRelayTransport, type Fetch } from './relay-transport.ts';
 import { createSyncSettings } from './settings.ts';
 
@@ -34,7 +35,11 @@ describe('sync controller', () => {
 
   async function device(
     name: string,
-    options: { defaultRelay?: string; fetch?: Fetch } = {},
+    options: {
+      defaultRelay?: string;
+      fetch?: Fetch;
+      savesFail?: () => boolean;
+    } = {},
   ) {
     const store = createMeetingStore({
       directory: join(dir(), name, 'meetings'),
@@ -45,11 +50,18 @@ describe('sync controller', () => {
     });
     await store.load();
     const received: DocumentState[] = [];
+    const settings = createSyncSettings({
+      directory: join(dir(), name),
+      keychain: reversing,
+    });
     const controller = createSyncController({
-      settings: createSyncSettings({
-        directory: join(dir(), name),
-        keychain: reversing,
-      }),
+      settings: {
+        load: settings.load,
+        save: (vault) =>
+          options.savesFail?.()
+            ? Promise.reject(new Error('disk full'))
+            : settings.save(vault),
+      },
       store,
       onRemote: (state) => received.push(state),
       fetch: options.fetch ?? ((url, init) => fetch(url, init)),
@@ -118,6 +130,7 @@ describe('sync controller', () => {
       lastSyncedAt: null,
       error: null,
       recoveryConfirmed: false,
+      closed: false,
     });
     assert.equal((await device('laptop')).controller.recoveryPhrase(), phrase);
     await assert.rejects(laptop.controller.create(), /already has/);
@@ -612,5 +625,263 @@ describe('sync controller', () => {
     });
     const state = entered.controller.state();
     assert.equal(state.status === 'ready' && state.recoveryConfirmed, true);
+  });
+
+  const savesFail = new Set<string>();
+
+  async function syncedTrio(shared: string) {
+    savesFail.clear();
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.store.save(startMeeting('m1', 'Before', 0));
+    await laptop.controller.useFolder(shared);
+    const phrase = laptop.controller.recoveryPhrase();
+    const others = [];
+    for (const name of ['desktop', 'tablet']) {
+      const other = await device(name, {
+        savesFail: () => savesFail.has(name),
+      });
+      await other.controller.enterPhrase(phrase, {
+        leaveCopies: false,
+        replaceUnreadable: false,
+      });
+      await other.controller.useFolder(shared);
+      others.push(other);
+    }
+    for (const each of [laptop, ...others]) {
+      await each.controller.refresh();
+    }
+    const [desktop, tablet] = others;
+    assert.ok(desktop && tablet);
+    return { laptop, desktop, tablet, phrase };
+  }
+
+  function closedOf(controller: { state: () => SyncState }) {
+    const state = controller.state();
+    return state.status === 'ready' && state.closed;
+  }
+
+  function oldVaultFiles(shared: string, phrase: string) {
+    return readdir(
+      join(shared, 'nod-sync', vaultIdOf(keyFromRecoveryPhrase(phrase))),
+      { recursive: true },
+    ).then((entries) => entries.map(String));
+  }
+
+  it('closes the old vault when the phrase changes; only devices given the new phrase sync again', async () => {
+    const shared = await sharedFolder();
+    const { laptop, desktop, tablet, phrase } = await syncedTrio(shared);
+
+    await laptop.controller.changePhrase(false);
+    const newPhrase = laptop.controller.recoveryPhrase();
+    assert.notEqual(newPhrase, phrase);
+    const changed = laptop.controller.state();
+    assert.equal(
+      changed.status === 'ready' && changed.recoveryConfirmed,
+      false,
+    );
+    const files = await oldVaultFiles(shared, phrase);
+    const notice = files.find((entry) => entry.endsWith('closed.json')) ?? '';
+    const laptopDir = notice.replace(/closed\.json$/, '');
+    assert.notEqual(notice, '');
+    assert.deepEqual(
+      files.filter(
+        (entry) => entry.startsWith(laptopDir) && entry.endsWith('.bin'),
+      ),
+      [],
+    );
+
+    await desktop.store.save(startMeeting('m-late', 'After closing', 0));
+    await desktop.controller.refresh();
+    await tablet.controller.refresh();
+    assert.equal(closedOf(desktop.controller), true);
+    assert.equal(closedOf(tablet.controller), true);
+    await desktop.controller.refresh();
+    assert.equal(
+      (await oldVaultFiles(shared, phrase)).some((entry) =>
+        entry.endsWith('m-late.bin'),
+      ),
+      false,
+    );
+
+    await desktop.controller.enterPhrase(newPhrase, {
+      leaveCopies: false,
+      replaceUnreadable: false,
+    });
+    assert.equal(closedOf(desktop.controller), false);
+    await laptop.store.save(startMeeting('m2', 'New', 0));
+    await laptop.controller.refresh();
+    await desktop.controller.refresh();
+    await tablet.controller.refresh();
+    assert.ok(desktop.received.some((state) => state.id === 'm2'));
+    assert.equal(
+      tablet.received.some((state) => state.id === 'm2'),
+      false,
+    );
+  });
+
+  it('stays stopped after a restart even if the notice was removed', async () => {
+    const shared = await sharedFolder();
+    const { laptop, desktop, phrase } = await syncedTrio(shared);
+    await laptop.controller.changePhrase(false);
+    await desktop.controller.refresh();
+    assert.equal(closedOf(desktop.controller), true);
+
+    const notices = (await oldVaultFiles(shared, phrase)).filter((entry) =>
+      entry.endsWith('closed.json'),
+    );
+    for (const notice of notices) {
+      await rm(
+        join(
+          shared,
+          'nod-sync',
+          vaultIdOf(keyFromRecoveryPhrase(phrase)),
+          notice,
+        ),
+      );
+    }
+    const restarted = await device('desktop');
+    await restarted.controller.refresh();
+    assert.equal(closedOf(restarted.controller), true);
+  });
+
+  it('ignores a notice that doesn’t open with the vault key', async () => {
+    const shared = await sharedFolder();
+    const { desktop, phrase } = await syncedTrio(shared);
+    const forged = join(
+      shared,
+      'nod-sync',
+      vaultIdOf(keyFromRecoveryPhrase(phrase)),
+      'devices',
+      'intruder',
+    );
+    await mkdir(forged, { recursive: true });
+    await writeFile(join(forged, 'closed.json'), randomBytes(200));
+    await desktop.controller.refresh();
+    assert.equal(closedOf(desktop.controller), false);
+  });
+
+  it('keeps the new phrase when the old vault can’t be told', async () => {
+    const shared = await sharedFolder();
+    const { laptop, phrase } = await syncedTrio(shared);
+    await rm(join(shared, 'nod-sync'), { recursive: true });
+    await writeFile(join(shared, 'nod-sync'), 'not a folder');
+
+    await laptop.controller.changePhrase(false);
+
+    assert.notEqual(laptop.controller.recoveryPhrase(), phrase);
+    const after = laptop.controller.state();
+    assert.match(
+      after.status === 'ready' ? (after.error ?? '') : '',
+      /weren’t told/,
+    );
+    const reopened = await device('laptop');
+    assert.equal(
+      reopened.controller.recoveryPhrase(),
+      laptop.controller.recoveryPhrase(),
+    );
+    await laptop.controller.confirmRecoveryPhrase();
+    const confirmed = laptop.controller.state();
+    assert.match(
+      confirmed.status === 'ready' ? (confirmed.error ?? '') : '',
+      /weren’t told/,
+    );
+  });
+
+  it('changes the phrase while the place is gone only when copies may stay', async () => {
+    const shared = await sharedFolder();
+    const { laptop, phrase } = await syncedTrio(shared);
+    await rm(shared, { recursive: true });
+    await assert.rejects(
+      laptop.controller.changePhrase(false),
+      UnreachableError,
+    );
+    assert.equal(laptop.controller.recoveryPhrase(), phrase);
+    await laptop.controller.changePhrase(true);
+    assert.notEqual(laptop.controller.recoveryPhrase(), phrase);
+  });
+
+  it('changes the phrase of a device that syncs nowhere', async () => {
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    const phrase = laptop.controller.recoveryPhrase();
+    await laptop.controller.changePhrase(false);
+    assert.notEqual(laptop.controller.recoveryPhrase(), phrase);
+  });
+
+  it('stops at once when a notice arrives even if saving that fails, and saves it later', async () => {
+    const shared = await sharedFolder();
+    const { laptop, desktop, phrase } = await syncedTrio(shared);
+    await laptop.controller.changePhrase(false);
+    savesFail.add('desktop');
+    await desktop.store.save(startMeeting('m-late', 'After closing', 0));
+
+    await desktop.controller.refresh();
+
+    assert.equal(closedOf(desktop.controller), true);
+    assert.equal(
+      (await oldVaultFiles(shared, phrase)).some((entry) =>
+        entry.endsWith('m-late.bin'),
+      ),
+      false,
+    );
+    savesFail.delete('desktop');
+    await desktop.controller.refresh();
+    assert.equal(closedOf((await device('desktop')).controller), true);
+  });
+
+  it('isn’t blinded by a notice it can’t read, and doesn’t sync while one is unread', async () => {
+    const shared = await sharedFolder();
+    const { laptop, desktop, phrase } = await syncedTrio(shared);
+    const junk = join(
+      shared,
+      'nod-sync',
+      vaultIdOf(keyFromRecoveryPhrase(phrase)),
+      'devices',
+      '0000',
+    );
+    await mkdir(junk, { recursive: true });
+    await writeFile(join(junk, 'closed.json'), randomBytes(64 * 1024));
+    await desktop.store.save(startMeeting('m-held', 'Held back', 0));
+
+    await desktop.controller.refresh();
+    assert.equal(closedOf(desktop.controller), false);
+    assert.equal(
+      (await oldVaultFiles(shared, phrase)).some((entry) =>
+        entry.endsWith('m-held.bin'),
+      ),
+      false,
+    );
+    const held = desktop.controller.state();
+    assert.match(
+      held.status === 'ready' ? (held.error ?? '') : '',
+      /couldn’t be read/,
+    );
+
+    await laptop.controller.changePhrase(false);
+    await desktop.controller.refresh();
+    assert.equal(closedOf(desktop.controller), true);
+  });
+
+  it('lets a device closed by someone else make its own new phrase, and keeps it closed when sync stops', async () => {
+    const shared = await sharedFolder();
+    const { laptop, desktop, tablet, phrase } = await syncedTrio(shared);
+    await tablet.controller.changePhrase(false);
+    await desktop.controller.refresh();
+    await laptop.controller.refresh();
+    assert.equal(closedOf(desktop.controller), true);
+
+    await laptop.controller.disconnect(false);
+    assert.equal(closedOf(laptop.controller), true);
+    assert.equal(closedOf((await device('laptop')).controller), true);
+
+    await desktop.controller.changePhrase(false);
+    assert.equal(closedOf(desktop.controller), false);
+    assert.notEqual(desktop.controller.recoveryPhrase(), phrase);
+    await desktop.store.save(startMeeting('m-own', 'Own phrase', 0));
+    await desktop.controller.refresh();
+    const state = desktop.controller.state();
+    assert.equal(state.status === 'ready' && state.connected, true);
+    assert.equal(state.status === 'ready' && state.lastSyncedAt, 7);
   });
 });

@@ -14,6 +14,7 @@ export type Vault = {
   deviceId: string;
   transport: TransportSettings | null;
   recoveryConfirmed: boolean;
+  closed: boolean;
 };
 
 function isMissing(error: unknown): boolean {
@@ -95,6 +96,7 @@ export function createSyncSettings(options: {
         deviceId,
         transport,
         recoveryConfirmed: field(raw, 'recoveryConfirmed') === true,
+        closed: field(raw, 'closed') === true,
       };
     },
     // One file holds the wrapped key and everything tied to it, so a failed
@@ -116,6 +118,7 @@ export function createSyncSettings(options: {
         deviceId: vault.deviceId,
         transport: vault.transport,
         recoveryConfirmed: vault.recoveryConfirmed,
+        closed: vault.closed,
       }),
     );
   }

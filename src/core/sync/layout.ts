@@ -7,6 +7,7 @@ const meetingFile = new RegExp(
 const pairingFile = new RegExp(
   `^pairing/(${idPattern})/(request|offer|reveal|grant)\\.json$`,
 );
+const closedFile = new RegExp(`^devices/(${idPattern})/closed\\.json$`);
 const wholeId = new RegExp(`^${idPattern}$`);
 
 export function isSyncId(value: string): boolean {
@@ -15,6 +16,14 @@ export function isSyncId(value: string): boolean {
 
 export function meetingPath(deviceId: string, meetingId: string): string {
   return `devices/${deviceId}/meetings/${meetingId}.bin`;
+}
+
+export function closedPath(deviceId: string): string {
+  return `devices/${deviceId}/closed.json`;
+}
+
+export function parseClosedPath(path: string): string | null {
+  return closedFile.exec(path)?.[1] ?? null;
 }
 
 export function devicesPrefix(): string {

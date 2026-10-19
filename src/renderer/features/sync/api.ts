@@ -37,3 +37,7 @@ export function disconnectSync(): Promise<void> {
 export function syncNow(): Promise<void> {
   return window.api.syncNow();
 }
+
+export function changeRecoveryPhrase(): Promise<void> {
+  return window.api.changeRecoveryPhrase();
+}

@@ -266,6 +266,37 @@ export function createSyncHandlers(options: {
       }
       await stop();
     },
+    changeRecoveryPhrase: async () => {
+      if (
+        !(await ask({
+          message: 'Change your recovery phrase?',
+          detail:
+            'Nod makes a new recovery phrase and stops syncing through the old one. Enter the new phrase on each device you keep; a lost or removed device never gets it, but it keeps what it already has. Do it soon: devices still on the old phrase stop syncing once they see the change. Write the new phrase down right after.',
+          confirmLabel: 'Change phrase',
+          cancelLabel: 'Cancel',
+        }))
+      ) {
+        return;
+      }
+      try {
+        await controller.changePhrase(false);
+      } catch (failure) {
+        if (
+          !(failure instanceof UnreachableError) ||
+          !(await ask({
+            message: 'Change the phrase anyway?',
+            detail:
+              'The folder or relay can’t be reached, so your other devices won’t be told and this device’s copies stay there. Enter the new phrase on the devices you keep yourself.',
+            confirmLabel: 'Change phrase',
+            cancelLabel: 'Cancel',
+          }))
+        ) {
+          throw failure;
+        }
+        await controller.changePhrase(true);
+      }
+      syncSoon();
+    },
     syncNow: async () => {
       syncSoon();
     },

@@ -26,6 +26,11 @@ export function registerSyncIpc(
   handleFromApp(appUrl, IpcChannel.chooseSyncFolder, handlers.chooseSyncFolder);
   handleFromApp(appUrl, IpcChannel.connectSyncRelay, handlers.connectSyncRelay);
   handleFromApp(appUrl, IpcChannel.disconnectSync, handlers.disconnectSync);
+  handleFromApp(
+    appUrl,
+    IpcChannel.changeRecoveryPhrase,
+    handlers.changeRecoveryPhrase,
+  );
   handleFromApp(appUrl, IpcChannel.syncNow, handlers.syncNow);
 }
 

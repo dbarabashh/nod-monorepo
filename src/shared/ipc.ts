@@ -95,6 +95,7 @@ export type SyncState =
       lastSyncedAt: number | null;
       error: string | null;
       recoveryConfirmed: boolean;
+      closed: boolean;
     };
 
 export type AppState = {
@@ -144,6 +145,7 @@ export const IpcChannel = {
   chooseSyncFolder: 'sync:choose-folder',
   connectSyncRelay: 'sync:connect-relay',
   disconnectSync: 'sync:disconnect',
+  changeRecoveryPhrase: 'sync:change-recovery-phrase',
   syncNow: 'sync:now',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
@@ -196,6 +198,7 @@ export type AppApi = {
   chooseSyncFolder: () => Promise<void>;
   connectSyncRelay: (url: string) => Promise<void>;
   disconnectSync: () => Promise<void>;
+  changeRecoveryPhrase: () => Promise<void>;
   syncNow: () => Promise<void>;
   onSyncChanged: (callback: (state: SyncState) => void) => () => void;
 };

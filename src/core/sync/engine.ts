@@ -5,7 +5,7 @@ import {
   type DocumentState,
   type MeetingDocument,
 } from '../meetings/index.ts';
-import { open, seal } from '../crypto/index.ts';
+import { fileKeyOf, open, seal } from '../crypto/index.ts';
 import {
   devicesPrefix,
   meetingContext,
@@ -52,6 +52,7 @@ export function createSyncEngine(options: {
   now: () => number;
 }): SyncEngine {
   const { transport, vault, store, onRemote, now } = options;
+  const fileKey = fileKeyOf(vault.key);
   const published = new Map<string, MeetingDocument>();
   const seen = new Map<string, string>();
   let status: SyncStatus = { lastSyncedAt: null, devices: 0, error: null };
@@ -66,7 +67,7 @@ export function createSyncEngine(options: {
     await transport.write(
       meetingPath(vault.deviceId, id),
       seal(
-        vault.key,
+        fileKey,
         saveDocument(document),
         meetingContext(vault.id, vault.deviceId, id),
       ),
@@ -80,7 +81,7 @@ export function createSyncEngine(options: {
       return;
     }
     const document = loadDocument(
-      open(vault.key, sealed, meetingContext(vault.id, deviceId, meetingId)),
+      open(fileKey, sealed, meetingContext(vault.id, deviceId, meetingId)),
     );
     if (!document) {
       throw new Error('A meeting from another device could not be read');

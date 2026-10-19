@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DocumentState } from '../../core/meetings/index.ts';
 import {
+  fileKeyOf,
   keyFromRecoveryPhrase,
   randomKey,
   recoveryPhrase,
@@ -9,10 +10,14 @@ import {
   vaultIdOf,
 } from '../../core/crypto/index.ts';
 import {
+  closedPath,
   createSyncEngine,
   devicesPrefix,
   meetingPath,
+  openClosedNotice,
+  parseClosedPath,
   parseMeetingPath,
+  sealClosedNotice,
   type SyncEngine,
   type Transport,
 } from '../../core/sync/index.ts';
@@ -27,7 +32,10 @@ const folderName = 'nod-sync';
 type Connection = {
   transport: Transport;
   engine: SyncEngine;
+  checked: Map<string, string>;
 };
+
+const noticeMaxBytes = 4 * 1024;
 
 export type PhrasePreview = {
   vaultCode: string;
@@ -43,6 +51,17 @@ export class UnreachableError extends Error {}
 // far too many to find another key that gives the same code.
 export function vaultCodeOf(vaultId: string): string {
   return vaultId.slice(0, 16).toUpperCase().match(/.{4}/g)?.join('-') ?? '';
+}
+
+// Two messages shown together read as two sentences.
+function sentences(...parts: Array<string | null>): string | null {
+  const shown = parts.filter((part) => part !== null && part !== '');
+  if (shown.length < 2) {
+    return shown[0] ?? null;
+  }
+  return shown
+    .map((part) => (/[.!?]$/.test(part ?? '') ? part : `${part}.`))
+    .join(' ');
 }
 
 function messageOf(failure: unknown): string {
@@ -66,6 +85,10 @@ export function createSyncController(options: {
   let unreadable: string | null = null;
   let connection: Connection | null = null;
   let error: string | null = null;
+  // Outlives sync rounds and confirming the phrase, unlike error: only the
+  // next change of phrase clears it.
+  let warning: string | null = null;
+  let closedUnsaved = false;
   let inFlight: Promise<void> = Promise.resolve();
   let busy = false;
   // Bumped by every change, so a connection that finishes opening after the
@@ -110,6 +133,7 @@ export function createSyncController(options: {
         onRemote,
         now,
       }),
+      checked: new Map(),
     };
   }
 
@@ -153,6 +177,54 @@ export function createSyncController(options: {
     }
     for (const id of store.ids().filter((id) => !store.isDeleted(id))) {
       await from?.transport.remove(meetingPath(current.deviceId, id));
+    }
+  }
+
+  // A vault stays closed even if its notice later disappears, since a device
+  // holding the old phrase could delete it. A notice that can't be read holds
+  // the round back rather than risk syncing into a closed vault.
+  async function checkClosed(current: Vault, at: Connection): Promise<boolean> {
+    const fileKey = fileKeyOf(current.key);
+    const files = await at.transport.list(devicesPrefix());
+    let readable = true;
+    for (const file of files) {
+      const deviceId = parseClosedPath(file.path);
+      if (
+        !deviceId ||
+        deviceId === current.deviceId ||
+        at.checked.get(file.path) === file.version
+      ) {
+        continue;
+      }
+      let data: Uint8Array | null;
+      try {
+        data = await at.transport.read(file.path, noticeMaxBytes);
+      } catch {
+        readable = false;
+        continue;
+      }
+      let closed = false;
+      try {
+        closed = data
+          ? openClosedNotice(fileKey, current.id, deviceId, data)
+          : false;
+      } catch {
+        closed = false;
+      }
+      if (closed && vault?.id === current.id) {
+        vault = { ...vault, closed: true };
+        closedUnsaved = true;
+        break;
+      }
+      at.checked.set(file.path, file.version);
+    }
+    return readable;
+  }
+
+  async function saveClosed() {
+    if (closedUnsaved && vault?.closed) {
+      await settings.save(vault);
+      closedUnsaved = false;
     }
   }
 
@@ -232,6 +304,7 @@ export function createSyncController(options: {
       deviceId: newId(),
       transport,
       recoveryConfirmed,
+      closed: false,
     };
   }
 
@@ -259,8 +332,9 @@ export function createSyncController(options: {
         connected: connection !== null,
         devices: status?.devices ?? 0,
         lastSyncedAt: status?.lastSyncedAt ?? null,
-        error: error ?? status?.error ?? null,
+        error: sentences(error ?? status?.error ?? null, warning),
         recoveryConfirmed: vault.recoveryConfirmed,
+        closed: vault.closed,
       };
     },
     create: () =>
@@ -321,6 +395,7 @@ export function createSyncController(options: {
     ) =>
       change(async () => {
         assertReplaceable(choices.replaceUnreadable);
+        warning = null;
         const key = keyFromRecoveryPhrase(phrase);
         const current = vault;
         if (current && vaultIdOf(key) === current.id) {
@@ -337,18 +412,69 @@ export function createSyncController(options: {
     useRelay: (url: string) => change(() => attach({ kind: 'relay', url })),
     disconnect: (leaveCopies: boolean) =>
       change(async () => {
-        const current = requireVault();
-        await leave(current, leaveCopies);
+        await leave(requireVault(), leaveCopies);
         connection = null;
-        vault = { ...current, transport: null };
+        vault = { ...requireVault(), transport: null };
         await settings.save(vault);
+      }),
+    // The new phrase is never sent anywhere, so a lost device can't get it;
+    // the user enters it on the devices they keep. It is saved before the old
+    // vault is touched, so a failure there can't lose it.
+    changePhrase: (leaveCopies: boolean) =>
+      change(async () => {
+        const current = requireVault();
+        warning = null;
+        const next = vaultOf(randomKey(), current.transport, false);
+        let old: Connection | null = null;
+        if (current.transport) {
+          connection = null;
+          await inFlight;
+          try {
+            old = await connectionFor(current, current.transport);
+          } catch (failure) {
+            if (!leaveCopies) {
+              throw new UnreachableError(messageOf(failure));
+            }
+          }
+        }
+        await settings.save(next);
+        vault = next;
+        connection = null;
+        if (old) {
+          let kept: string | null = null;
+          try {
+            for (const id of store.ids().filter((id) => !store.isDeleted(id))) {
+              await old.transport.remove(meetingPath(current.deviceId, id));
+            }
+          } catch (failure) {
+            kept = `This device’s copies stayed in the old place: ${messageOf(failure)}`;
+          }
+          try {
+            await old.transport.write(
+              closedPath(current.deviceId),
+              sealClosedNotice(
+                fileKeyOf(current.key),
+                current.id,
+                current.deviceId,
+                now(),
+              ),
+            );
+            warning = kept && `The new phrase is saved. ${kept}`;
+          } catch (failure) {
+            warning = `The new phrase is saved, but your other devices weren’t told: ${messageOf(failure)}. Enter the new phrase on them now.${kept ? ` ${kept}` : ''}`;
+          }
+        } else if (current.transport) {
+          warning =
+            'The new phrase is saved, but the folder or relay couldn’t be reached, so your other devices weren’t told. Enter the new phrase on them now.';
+        }
+        await connect();
       }),
     recoveryPhrase: (): string => recoveryPhrase(requireVault().key),
     confirmRecoveryPhrase: () =>
       change(async () => {
-        const next = { ...requireVault(), recoveryConfirmed: true };
-        await settings.save(next);
-        vault = next;
+        await inFlight;
+        vault = { ...requireVault(), recoveryConfirmed: true };
+        await settings.save(vault);
       }),
     refresh: () => {
       const round = inFlight.then(async () => {
@@ -357,7 +483,25 @@ export function createSyncController(options: {
         }
         await connect();
         const current = connection;
-        if (current) {
+        const owner = vault;
+        if (current && owner) {
+          let checkFailed = false;
+          const readable =
+            owner.closed ||
+            (await checkClosed(owner, current).catch((failure: unknown) => {
+              checkFailed = true;
+              error = messageOf(failure);
+              return false;
+            }));
+          await saveClosed().catch(() => undefined);
+          if (!readable && !checkFailed && !vault?.closed) {
+            error =
+              'A sync file couldn’t be read, so sync is paused until it can be.';
+          }
+          if (vault?.closed || !readable) {
+            onChange();
+            return;
+          }
           await current.engine.sync();
           if (current === connection) {
             error = null;

@@ -1,10 +1,12 @@
 export {
+  closedPath,
   devicesPrefix,
   isSyncId,
   meetingContext,
   meetingPath,
   pairingPath,
   pairingPrefix,
+  parseClosedPath,
   parseMeetingPath,
   parsePairingPath,
   type PairingStep,
@@ -30,3 +32,4 @@ export {
   type RemoteFile,
   type Transport,
 } from './transport.ts';
+export { openClosedNotice, sealClosedNotice } from './closing.ts';

@@ -4,6 +4,7 @@ import { useAsync } from '../../lib/use-async.ts';
 import { disconnectSync, getSyncState, onSyncChanged, syncNow } from './api.ts';
 import { ChoosePlace } from './components/choose-place.tsx';
 import { KeySetup } from './components/key-setup.tsx';
+import { PhraseChanged } from './components/phrase-changed.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
 import { Unavailable } from './components/unavailable.tsx';
 import { useAction } from './lib/use-action.ts';
@@ -93,6 +94,9 @@ export function SyncPanel() {
         <KeySetup />
       </div>
     );
+  }
+  if (sync.closed) {
+    return <PhraseChanged syncing={sync.transport !== null} />;
   }
   return (
     <div className="sync">

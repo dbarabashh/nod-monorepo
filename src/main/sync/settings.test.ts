@@ -23,6 +23,7 @@ describe('sync settings', () => {
       deviceId: 'device-1',
       transport,
       recoveryConfirmed: false,
+      closed: false,
     };
   };
 

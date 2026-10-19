@@ -14,7 +14,7 @@ import {
 } from '../../core/meetings/index.ts';
 import { meetingContext, meetingPath } from '../../core/sync/index.ts';
 import { createMeetingStore, type Cipher } from '../meetings/store.ts';
-import { open, seal } from '../../core/crypto/index.ts';
+import { fileKeyOf, open, seal } from '../../core/crypto/index.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncEngine } from '../../core/sync/index.ts';
 import { createFolderTransport } from './folder-transport.ts';
@@ -146,7 +146,11 @@ describe('sync engine', () => {
       const sealed = await folder.read(meetingPath(name, 'm1'), 1_000_000);
       assert.ok(sealed);
       const document = loadDocument(
-        open(vaultKey, sealed, meetingContext('vault-1', name, 'm1')),
+        open(
+          fileKeyOf(vaultKey),
+          sealed,
+          meetingContext('vault-1', name, 'm1'),
+        ),
       );
       assert.deepEqual(readDocument(document ?? loadFail()), {
         kind: 'deleted',
@@ -154,6 +158,9 @@ describe('sync engine', () => {
         deletedAt: 9_000,
       });
       assert.equal(Buffer.from(sealed).includes('Jon'), false);
+      assert.throws(() =>
+        open(vaultKey, sealed, meetingContext('vault-1', name, 'm1')),
+      );
     }
   });
 

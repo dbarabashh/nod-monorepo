@@ -187,6 +187,9 @@ describe('vercel relay', () => {
       'pairing/r1/request.json',
       'devices/laptop/meetings/../../index.json',
       'devices/laptop/meetings/m1.txt',
+      'devices/laptop/other.json',
+      'devices/laptop/device.json',
+      'devices/laptop/meetings/closed.json',
       'index.json',
     ]) {
       assert.equal(
@@ -196,6 +199,13 @@ describe('vercel relay', () => {
       );
     }
     assert.equal((await send('/files?prefix=../')).status, 400);
+    for (const path of ['devices/laptop/closed.json']) {
+      assert.equal(
+        (await send(`/files/${path}`, { method: 'PUT', body: 'x' })).status,
+        204,
+        path,
+      );
+    }
   });
 
   it('refuses writes past the vault’s limits', async () => {
