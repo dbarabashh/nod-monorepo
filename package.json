@@ -4,20 +4,17 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Nod desktop app for macOS",
+  "description": "Nod desktop app for macOS, Windows and Linux",
   "keywords": [],
   "license": "MIT",
-  "author": {
-    "name": "Dima Barabash",
-    "email": "dbarabashdev@gmail.com"
-  },
+  "author": "Dima Barabash",
   "main": ".vite/build/main.cjs",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "node scripts/start.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "release": "electron-forge release",
-    "lint": "oxlint && oxfmt --check",
+    "lint": "oxlint && oxfmt --check && node scripts/check-no-type-assertions.ts",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\""
@@ -40,6 +37,9 @@
     "@electron-forge/shared-types": "^8.0.1",
     "@electron/fuses": "^2.1.3",
     "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "electron": "^44.9.0",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.88.0",
@@ -47,7 +47,9 @@
     "vite": "^8.3.4"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "engines": {
     "node": ">=24"

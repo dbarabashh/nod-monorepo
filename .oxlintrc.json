@@ -1,6 +1,14 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import"],
+  "plugins": [
+    "eslint",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "react",
+    "jsx-a11y"
+  ],
   "categories": {
     "correctness": "warn"
   },
@@ -12,7 +20,14 @@
         "ignorePackages": true,
         "checkTypeImports": true
       }
-    ]
+    ],
+    "typescript/consistent-type-assertions": [
+      "error",
+      {
+        "assertionStyle": "never"
+      }
+    ],
+    "typescript/no-non-null-assertion": "error"
   },
   "overrides": [
     {

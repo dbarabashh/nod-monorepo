@@ -12,7 +12,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx"
   },
-  "include": ["src/**/*", "*.ts", "*.mts"]
+  "include": ["src/**/*", "*.ts", "*.mts", "scripts/**/*"]
 }

@@ -4,4 +4,19 @@ allowBuilds:
   fs-xattr: true
   macos-alias: true
 
+minimumReleaseAge: 10080
+
+minimumReleaseAgeExclude:
+  - electron@44.9.0
+  - oxlint@1.88.0
+  - '@oxlint/binding-*'
+  - '@oxc-project/types@0.154.0'
+  - rolldown@1.2.14
+  - '@rolldown/binding-*'
+  - listr2@11.3.0
+  - node-abi@4.38.0
+  - postcss@8.5.30
+  - undici@6.29.1
+  - undici@7.30.1
+
 nodeLinker: hoisted

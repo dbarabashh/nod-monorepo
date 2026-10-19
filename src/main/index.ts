@@ -1,27 +1,39 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
+import { windowIcon } from './app-icon.ts';
+import { createAppStateStore } from './app-state/store.ts';
+import { registerAppStateIpc } from './ipc/app-state.ts';
+import { registerAudioAccessIpc } from './ipc/audio-access.ts';
+import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
+import { secureSession } from './security/session.ts';
+import { secureWindow } from './security/window.ts';
 
 if (started) {
   app.quit();
 }
 
+const appUrl =
+  MAIN_WINDOW_VITE_DEV_SERVER_URL ||
+  pathToFileURL(
+    path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+  ).href;
+
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1120,
+    height: 760,
+    minWidth: 720,
+    minHeight: 480,
+    icon: windowIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
-  }
+  secureWindow(mainWindow.webContents, appUrl);
+  mainWindow.loadURL(appUrl);
 
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
@@ -29,6 +41,13 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  const displayCapture = createDisplayCaptureGate(Date.now, 5000);
+  secureSession(session.defaultSession, appUrl, displayCapture);
+  registerAudioAccessIpc(appUrl, displayCapture);
+  registerAppStateIpc(
+    appUrl,
+    createAppStateStore(path.join(app.getPath('userData'), 'app-state.json')),
+  );
   createWindow();
 
   app.on('activate', () => {

@@ -11,6 +11,7 @@ touching it:
 - `src/core/AGENTS.md`: platform-neutral domain logic, data model, sync
 - `src/shared/AGENTS.md`: the IPC contract
 - `src/main/AGENTS.md`: handlers and OS adapters
+- `src/preload/AGENTS.md`: the bridge that exposes `window.api`
 - `src/renderer/AGENTS.md`: feature slices in the UI
 
 Dependencies point one way: `renderer → shared ← preload ← main → core`. The
@@ -59,9 +60,9 @@ setting may need no core).
    here and an implementation in `src/main`. Add unit tests next to it
    (`write-tests` skill).
 2. **Contract.** Declare the channels and payload types in `src/shared/ipc.ts`
-   and extend `AppApi`. Follow `add-ipc` for the details.
+   and extend the API type the preload exposes. Follow `add-ipc` for the details.
 3. **Main.** Add `src/main/ipc/<domain>.ts` with handlers that validate input,
-   call core and return plain data. Register it from `src/main/index.ts`. Put
+   call core and return plain data. Register it from the main entry. Put
    OS adapters in `src/main/<domain>/`.
 4. **Preload.** Expose the new functions on `window.api` in
    `src/preload/index.ts`.

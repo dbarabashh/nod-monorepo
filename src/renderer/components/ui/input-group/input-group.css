@@ -1,0 +1,20 @@
+.ui-input-group {
+  position: relative;
+  display: block;
+
+  & > .ui-input {
+    border-radius: var(--radius-control);
+    padding-inline-start: calc(
+      var(--space-2) + var(--icon-size) + var(--space-1-5)
+    );
+  }
+}
+
+.ui-input-group__icon {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--space-2);
+  margin-block: auto;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}

@@ -1,0 +1,96 @@
+@layer app {
+  .meetings {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    block-size: 100%;
+    min-block-size: 0;
+  }
+
+  .meetings__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-6);
+    border-block-end: var(--border-width) solid var(--color-border);
+  }
+
+  .meetings__heading {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .meetings__title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+    letter-spacing: var(--tracking-xl);
+  }
+
+  .meetings__count {
+    color: var(--color-text-muted);
+    font-size: var(--text-md);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meetings__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .meetings__search {
+    inline-size: var(--field-width-md);
+  }
+
+  .meetings__body {
+    min-block-size: 0;
+    padding: var(--space-2) var(--space-4) var(--space-8);
+  }
+
+  .meetings__status {
+    padding: var(--space-6) var(--space-2);
+    color: var(--color-text-muted);
+  }
+
+  .meetings__group + .meetings__group {
+    margin-block-start: var(--space-2);
+  }
+
+  .meetings__group-title {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    padding: var(--space-3) var(--space-3) var(--space-1);
+    background-color: var(--color-surface);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    font-weight: var(--weight-medium);
+  }
+
+  .meeting-row__main {
+    display: grid;
+    flex: 1;
+    min-inline-size: 0;
+    gap: var(--space-0-5);
+  }
+
+  .meeting-row__title {
+    overflow: hidden;
+    font-weight: var(--weight-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meeting-row__meta {
+    display: flex;
+    gap: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+    font-variant-numeric: tabular-nums;
+  }
+}

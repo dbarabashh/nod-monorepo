@@ -1,7 +1,7 @@
 # Shared contracts (`src/shared`)
 
 Types and constants that more than one process imports: the IPC contract
-(`ipc.ts`: channel names, payload and result types, and the `AppApi` the preload
+(`ipc.ts`: channel names, payload and result types, and the API type the preload
 exposes) and plain domain types the UI shows.
 
 ## Rules

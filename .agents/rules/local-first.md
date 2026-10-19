@@ -8,6 +8,7 @@ alwaysApply: true
 - Sync only end-to-end encrypted data. Content leaves a device only as ciphertext that the sync server or relay cannot read. Never design a server feature that needs plaintext user content.
 - Never add a central store of readable user data, including "temporary" ones: server-side logs, queues, caches, search indexes or analytics. Centralized plaintext is what leaks in a breach.
 - Process audio in memory only. Never write it to disk, temp files, caches, debug dumps or crash reports. Persist only what the user chooses to keep.
+- Save the transcript incrementally while recording, so a crash or quit loses seconds, not the conversation. Audio can't be reprocessed later, so only steps that run on the saved transcript (summaries) may fail and be retried.
 - Let the user decide what is kept. Every stored item can be deleted, and deletion propagates to the user's other synced devices.
 - Keep data exportable in open formats (JSON, Markdown) that are readable without the app. Never introduce a format only this app can open.
 - Send content to a third-party service (for example an AI provider) only when the user has enabled it. Send the minimum needed, never to a service that retains it or trains on it, and make the destination visible to the user.
