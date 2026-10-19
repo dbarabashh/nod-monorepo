@@ -1,5 +1,7 @@
 import {
   appendTranscript,
+  editSummary,
+  editTranscriptLine,
   extendMeeting,
   finishMeeting,
   meetingStartedAt,
@@ -7,6 +9,7 @@ import {
   resumeMeeting,
   setSummary,
   startMeeting,
+  type LineKey,
   type Meeting,
   type TranscriptLine,
 } from '../../core/meetings/index.ts';
@@ -33,6 +36,8 @@ export type Recorder = {
   setSummaryStatus: (id: string, status: SummaryStatus) => void;
   setProblem: (id: string, problem: string | null) => void;
   saveSummary: (id: string, summary: string) => Promise<void>;
+  editSummary: (id: string, markdown: string) => Promise<void>;
+  editLine: (id: string, key: LineKey, text: string) => Promise<void>;
 };
 
 type Active = { id: string; previousMs: number; segmentStartedAt: number };
@@ -51,6 +56,7 @@ export function createRecorder(options: {
   const summaryStatus = new Map<string, SummaryStatus>();
   const problems = new Map<string, string>();
   let saveFailed = false;
+  const revisions = new Map<string, number>();
 
   async function load() {
     meetings = await store.load();
@@ -74,6 +80,10 @@ export function createRecorder(options: {
       throw new Error('Unknown meeting');
     }
     return meeting;
+  }
+
+  function touch(id: string) {
+    revisions.set(id, (revisions.get(id) ?? 0) + 1);
   }
 
   function replace(meeting: Meeting) {
@@ -113,6 +123,12 @@ export function createRecorder(options: {
     } finally {
       onChange();
     }
+  }
+
+  async function update(id: string, change: (meeting: Meeting) => Meeting) {
+    replace(change(find(id)));
+    touch(id);
+    await persist();
   }
 
   function extendActive() {
@@ -187,12 +203,7 @@ export function createRecorder(options: {
             : meeting.finishedAt === null
               ? 'paused'
               : 'finished',
-        contentVersion: [
-          meeting.transcript.length,
-          meeting.summary?.length ?? 0,
-          summaryStatus.get(meeting.id) ?? 'idle',
-          problemOf(meeting.id) ?? '',
-        ].join(':'),
+        contentVersion: `${revisions.get(meeting.id) ?? 0}:${problemOf(meeting.id) ?? ''}`,
       }));
   }
 
@@ -204,19 +215,19 @@ export function createRecorder(options: {
         id,
         transcript: meeting.transcript,
         summary: meeting.summary,
+        summaryEdited: meeting.summaryEdited,
         summaryStatus: summaryStatus.get(id) ?? 'idle',
         problem: problemOf(id),
       };
     },
     transcriptOf: lookup,
     appendLines: async (id, lines) => {
-      const meeting = lookup(id);
-      if (meeting) {
-        replace(appendTranscript(meeting, lines));
-        await persist();
+      if (lookup(id)) {
+        await update(id, (meeting) => appendTranscript(meeting, lines));
       }
     },
     setSummaryStatus: (id, status) => {
+      touch(id);
       if (status === 'idle') {
         summaryStatus.delete(id);
       } else {
@@ -225,6 +236,7 @@ export function createRecorder(options: {
       onChange();
     },
     setProblem: (id, problem) => {
+      touch(id);
       if (problem === null) {
         problems.delete(id);
       } else {
@@ -232,10 +244,15 @@ export function createRecorder(options: {
       }
       onChange();
     },
-    saveSummary: async (id, summary) => {
-      replace(setSummary(find(id), summary));
-      await persist();
-    },
+    // A summary the user corrected while a new one was being written wins.
+    saveSummary: (id, summary) =>
+      update(id, (meeting) =>
+        meeting.summaryEdited ? meeting : setSummary(meeting, summary),
+      ),
+    editSummary: (id, markdown) =>
+      update(id, (meeting) => editSummary(meeting, markdown)),
+    editLine: (id, key, text) =>
+      update(id, (meeting) => editTranscriptLine(meeting, key, text)),
     list: async () => {
       if (!meetings) {
         await load();

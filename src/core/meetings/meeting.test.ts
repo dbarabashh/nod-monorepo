@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import {
   appendTranscript,
   cleanSummary,
+  editSummary,
+  editTranscriptLine,
   extendMeeting,
   finishMeeting,
   meetingStartedAt,
@@ -70,6 +72,7 @@ describe('the stored meetings file', () => {
           finishedAt: null,
           transcript: [],
           summary: null,
+          summaryEdited: false,
         },
       ],
     );
@@ -101,6 +104,7 @@ describe('the stored meetings file', () => {
       finishedAt: 7,
       transcript: [],
       summary: null,
+      summaryEdited: false,
     };
     assert.deepEqual(parseMeetings({ version: 1, meetings: [good] }), [good]);
     for (const damaged of [
@@ -157,6 +161,52 @@ describe('the transcript', () => {
     assert.equal(
       meetingText(meeting, 'transcript'),
       '[0:01] Me: Shall we start?\n[1:05] Others: Yes.\n[1:02:05] Me: Bye.',
+    );
+  });
+
+  it('keeps a hand-edited summary and marks it so a new one won’t replace it unasked', () => {
+    const written = setSummary(startMeeting('m1', 'A', 0), 'We met Jon Smth.');
+    const edited = editSummary(written, '  We met **John Smith**.\n');
+    assert.equal(edited.summary, 'We met **John Smith**.');
+    assert.equal(edited.summaryEdited, true);
+    assert.equal(setSummary(edited, 'Rewritten.').summaryEdited, false);
+    assert.deepEqual(
+      parseMeetings(JSON.parse(JSON.stringify(serializeMeetings([edited])))),
+      [edited],
+    );
+  });
+
+  it('treats a summary cleared by hand as no summary', () => {
+    const edited = editSummary(
+      setSummary(startMeeting('m1', 'A', 0), 'Text.'),
+      '   ',
+    );
+    assert.equal(edited.summary, null);
+    assert.equal(edited.summaryEdited, false);
+  });
+
+  it('corrects one transcript line, and removes a line emptied by hand', () => {
+    const meeting = appendTranscript(startMeeting('m1', 'A', 0), [
+      { speaker: 'me', startMs: 1_000, endMs: 2_000, text: 'Ask Jon.' },
+      { speaker: 'others', startMs: 1_000, endMs: 2_000, text: 'Jon here.' },
+      { speaker: 'me', startMs: 3_000, endMs: 4_000, text: 'Когда тебе.' },
+    ]);
+    const fixed = editTranscriptLine(
+      meeting,
+      { speaker: 'others', startMs: 1_000 },
+      ' John here. ',
+    );
+    assert.deepEqual(
+      editTranscriptLine(fixed, { speaker: 'me', startMs: 3_000 }, '')
+        .transcript,
+      [
+        { speaker: 'me', startMs: 1_000, endMs: 2_000, text: 'Ask Jon.' },
+        { speaker: 'others', startMs: 1_000, endMs: 2_000, text: 'John here.' },
+      ],
+    );
+    assert.throws(
+      () => editTranscriptLine(fixed, { speaker: 'others', startMs: 9 }, 'x'),
+      /no longer in the transcript/,
     );
   });
 

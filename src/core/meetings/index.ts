@@ -1,6 +1,8 @@
 export {
   appendTranscript,
   cleanSummary,
+  editSummary,
+  editTranscriptLine,
   extendMeeting,
   finishMeeting,
   meetingStartedAt,
@@ -12,6 +14,7 @@ export {
   setSummary,
   startMeeting,
   transcriptText,
+  type LineKey,
   type Meeting,
   type MeetingPart,
   type Speaker,

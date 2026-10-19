@@ -30,12 +30,7 @@ export function CopyButton({
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="meeting-detail__copy"
-      onClick={copy}
-    >
+    <Button variant="ghost" size="sm" onClick={copy}>
       <Icon name={status === 'copied' ? 'check' : 'copy'} />
       <span aria-live="polite">
         {status === 'copied'

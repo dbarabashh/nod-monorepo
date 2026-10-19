@@ -127,6 +127,7 @@ export function createMeetingSession(options: {
       !meeting ||
       meeting.finishedAt === null ||
       meeting.transcript.length === 0 ||
+      meeting.summaryEdited ||
       recorder.detail(id).summaryStatus === 'writing'
     ) {
       return;

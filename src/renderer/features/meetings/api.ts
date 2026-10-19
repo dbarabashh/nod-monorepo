@@ -2,6 +2,7 @@ import type {
   MeetingDetail,
   MeetingPart,
   MeetingSummary,
+  TranscriptLineKey,
 } from '../../../shared/ipc.ts';
 import type { Meeting } from './types.ts';
 
@@ -38,4 +39,16 @@ export function copyMeeting(id: string, part: MeetingPart): Promise<void> {
 
 export function summarizeMeeting(id: string): Promise<void> {
   return window.api.summarizeMeeting(id);
+}
+
+export function editSummary(id: string, markdown: string): Promise<void> {
+  return window.api.editSummary(id, markdown);
+}
+
+export function editTranscriptLine(
+  id: string,
+  line: TranscriptLineKey,
+  text: string,
+): Promise<void> {
+  return window.api.editTranscriptLine(id, line, text);
 }

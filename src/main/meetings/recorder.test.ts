@@ -64,6 +64,7 @@ describe('createRecorder', () => {
         finishedAt: null,
         transcript: [],
         summary: null,
+        summaryEdited: false,
       },
     ]);
   });
@@ -88,6 +89,7 @@ describe('createRecorder', () => {
       finishedAt: null,
       transcript: [],
       summary: null,
+      summaryEdited: false,
     };
     const { recorder, advance, saved } = setup([earlier]);
     await recorder.load();
@@ -122,6 +124,7 @@ describe('createRecorder', () => {
       finishedAt: 31_000,
       transcript: [],
       summary: null,
+      summaryEdited: false,
     });
     assert.equal(recorder.summaries()[0]?.status, 'finished');
     await assert.rejects(recorder.resume(id), /cannot be resumed/);
@@ -257,6 +260,56 @@ describe('createRecorder', () => {
     assert.equal(recorder.detail('x').problem, null);
   });
 
+  it('saves a corrected summary and line, and tells windows to reload them', async () => {
+    const { recorder, saved } = setup();
+    await recorder.load();
+    const id = await recorder.start('A');
+    await recorder.appendLines(id, [
+      { speaker: 'others', startMs: 500, endMs: 900, text: 'Jon here.' },
+    ]);
+    await recorder.finish(id);
+    await recorder.saveSummary(id, 'Met Jon.');
+    const before = recorder.summaries()[0]?.contentVersion;
+
+    await recorder.editSummary(id, 'Met Ann.');
+    const afterSummary = recorder.summaries()[0]?.contentVersion;
+    await recorder.editLine(
+      id,
+      { speaker: 'others', startMs: 500 },
+      'Ann here.',
+    );
+
+    assert.notEqual(afterSummary, before);
+    assert.notEqual(recorder.summaries()[0]?.contentVersion, afterSummary);
+    assert.equal(saved()[0]?.summary, 'Met Ann.');
+    assert.equal(saved()[0]?.summaryEdited, true);
+    assert.equal(saved()[0]?.transcript[0]?.text, 'Ann here.');
+  });
+
+  it('keeps a summary corrected while a new one was being written', async () => {
+    const { recorder } = setup();
+    await recorder.load();
+    const id = await recorder.start('A');
+    await recorder.finish(id);
+    await recorder.saveSummary(id, 'Met Jon.');
+    await recorder.editSummary(id, 'Met John.');
+
+    await recorder.saveSummary(id, 'A newer summary from the model.');
+
+    assert.equal(recorder.transcriptOf(id)?.summary, 'Met John.');
+    assert.equal(recorder.transcriptOf(id)?.summaryEdited, true);
+  });
+
+  it('leaves the content version alone while only the clock moves', async () => {
+    const { recorder, advance, tick } = setup();
+    await recorder.load();
+    await recorder.start('A');
+    const before = recorder.summaries()[0]?.contentVersion;
+    advance(5_000);
+    tick();
+    assert.equal(recorder.summaries()[0]?.contentVersion, before);
+  });
+
   it('records one meeting at a time', async () => {
     const { recorder } = setup();
     await recorder.load();
@@ -294,6 +347,7 @@ describe('createRecorder', () => {
         finishedAt: null,
         transcript: [],
         summary: null,
+        summaryEdited: false,
       },
     ]);
     await recorder.load();

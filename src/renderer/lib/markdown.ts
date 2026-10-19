@@ -89,3 +89,40 @@ export function parseMarkdown(source: string): Block[] {
   closeParagraph();
   return blocks;
 }
+
+function inlineMarkdown(inline: Inline): string {
+  if (!inline.bold && !inline.italic) {
+    return inline.text;
+  }
+  const [, before = '', core = '', after = ''] =
+    /^(\s*)([\s\S]*?)(\s*)$/.exec(inline.text) ?? [];
+  if (core === '') {
+    return inline.text;
+  }
+  const mark = inline.bold ? '**' : '*';
+  return `${before}${mark}${core}${mark}${after}`;
+}
+
+function inlinesMarkdown(inlines: Inline[]): string {
+  return inlines.map(inlineMarkdown).join('').trim();
+}
+
+export function toMarkdown(blocks: Block[]): string {
+  return blocks
+    .map((block) => {
+      switch (block.type) {
+        case 'heading':
+          return `## ${block.text}`;
+        case 'paragraph':
+          return inlinesMarkdown(block.inlines);
+        case 'list':
+          return block.items
+            .map(
+              (item, index) =>
+                `${block.ordered ? `${index + 1}.` : '-'} ${inlinesMarkdown(item)}`,
+            )
+            .join('\n');
+      }
+    })
+    .join('\n\n');
+}

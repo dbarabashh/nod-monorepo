@@ -210,4 +210,22 @@ describe('createMeetingSession', () => {
     assert.equal(calls.at(-1), 'flush');
     assert.equal(session.acceptsAudio(), false);
   });
+
+  it('never writes a new summary over one corrected by hand', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    await recorder.appendLines('m1', [
+      { speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+    ]);
+    await session.finish('m1');
+    await settle();
+    await recorder.editSummary('m1', 'We agreed with Ann.');
+    calls.length = 0;
+
+    await session.summarize('m1');
+
+    assert.equal(calls.includes('summarize'), false);
+    assert.equal(recorder.transcriptOf('m1')?.summary, 'We agreed with Ann.');
+  });
 });

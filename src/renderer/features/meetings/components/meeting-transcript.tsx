@@ -1,11 +1,17 @@
 import { useCallback, useState } from 'react';
 import type { MeetingDetail } from '../../../../shared/ipc.ts';
-import { Button, Prose, Tabs } from '../../../components/ui/index.ts';
-import { formatClock } from '../../../lib/format-clock.ts';
+import { Button, Tabs } from '../../../components/ui/index.ts';
 import { useAsync } from '../../../lib/use-async.ts';
-import { getMeeting, onMeetingsChanged, summarizeMeeting } from '../api.ts';
+import {
+  editSummary,
+  getMeeting,
+  onMeetingsChanged,
+  summarizeMeeting,
+} from '../api.ts';
 import type { MeetingStatus } from '../types.ts';
 import { CopyButton } from './copy-button.tsx';
+import { SummaryEditor } from './summary-editor.tsx';
+import { TranscriptLine } from './transcript-line.tsx';
 
 export function MeetingTranscript({
   meetingId,
@@ -69,8 +75,16 @@ export function MeetingTranscript({
                 </>
               ) : detail.summary ? (
                 <>
-                  <CopyButton meetingId={meetingId} part="summary" />
-                  <Prose markdown={detail.summary} data-selectable />
+                  <div className="meeting-detail__toolbar">
+                    {detail.summaryEdited && (
+                      <span className="meeting-detail__note">Edited</span>
+                    )}
+                    <CopyButton meetingId={meetingId} part="summary" />
+                  </div>
+                  <SummaryEditor
+                    markdown={detail.summary}
+                    onSave={(markdown) => editSummary(meetingId, markdown)}
+                  />
                 </>
               ) : status === 'finished' && detail.transcript.length > 0 ? (
                 <>
@@ -109,21 +123,16 @@ export function MeetingTranscript({
                 </p>
               ) : (
                 <>
-                  <CopyButton meetingId={meetingId} part="transcript" />
+                  <div className="meeting-detail__toolbar">
+                    <CopyButton meetingId={meetingId} part="transcript" />
+                  </div>
                   <ol className="meeting-detail__transcript" data-selectable>
                     {detail.transcript.map((line) => (
-                      <li
+                      <TranscriptLine
                         key={`${line.speaker}-${line.startMs}`}
-                        className="meeting-detail__line"
-                      >
-                        <span className="meeting-detail__speaker">
-                          {line.speaker === 'me' ? 'Me' : 'Others'}
-                          <time className="meeting-detail__time">
-                            {formatClock(line.startMs)}
-                          </time>
-                        </span>
-                        <span>{line.text}</span>
-                      </li>
+                        meetingId={meetingId}
+                        line={line}
+                      />
                     ))}
                   </ol>
                 </>

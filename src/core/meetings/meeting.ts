@@ -19,6 +19,7 @@ export type Meeting = {
   finishedAt: number | null;
   transcript: TranscriptLine[];
   summary: string | null;
+  summaryEdited: boolean;
 };
 
 export function startMeeting(id: string, title: string, now: number): Meeting {
@@ -29,6 +30,7 @@ export function startMeeting(id: string, title: string, now: number): Meeting {
     finishedAt: null,
     transcript: [],
     summary: null,
+    summaryEdited: false,
   };
 }
 
@@ -83,7 +85,38 @@ export function appendTranscript(
 }
 
 export function setSummary(meeting: Meeting, summary: string): Meeting {
-  return { ...meeting, summary: cleanSummary(summary) };
+  return { ...meeting, summary: cleanSummary(summary), summaryEdited: false };
+}
+
+export function editSummary(meeting: Meeting, markdown: string): Meeting {
+  const summary = markdown.trim();
+  return summary === ''
+    ? { ...meeting, summary: null, summaryEdited: false }
+    : { ...meeting, summary, summaryEdited: true };
+}
+
+export type LineKey = Pick<TranscriptLine, 'speaker' | 'startMs'>;
+
+export function editTranscriptLine(
+  meeting: Meeting,
+  key: LineKey,
+  text: string,
+): Meeting {
+  const index = meeting.transcript.findIndex(
+    (line) => line.speaker === key.speaker && line.startMs === key.startMs,
+  );
+  const line = meeting.transcript[index];
+  if (!line) {
+    throw new Error('That line is no longer in the transcript');
+  }
+  const trimmed = text.trim();
+  return {
+    ...meeting,
+    transcript:
+      trimmed === ''
+        ? meeting.transcript.toSpliced(index, 1)
+        : meeting.transcript.with(index, { ...line, text: trimmed }),
+  };
 }
 
 // The summary is shown under its own "Summary" title, so a model that starts
@@ -98,9 +131,13 @@ export function cleanSummary(summary: string): string {
     .trim();
 }
 
+function speakerLabel(speaker: Speaker): string {
+  return speaker === 'me' ? 'Me' : 'Others';
+}
+
 export function transcriptText(meeting: Meeting): string {
   return meeting.transcript
-    .map((line) => `${line.speaker === 'me' ? 'Me' : 'Others'}: ${line.text}`)
+    .map((line) => `${speakerLabel(line.speaker)}: ${line.text}`)
     .join('\n');
 }
 
@@ -123,7 +160,7 @@ export function meetingText(meeting: Meeting, part: MeetingPart): string {
   return meeting.transcript
     .map(
       (line) =>
-        `[${formatOffset(line.startMs)}] ${line.speaker === 'me' ? 'Me' : 'Others'}: ${line.text}`,
+        `[${formatOffset(line.startMs)}] ${speakerLabel(line.speaker)}: ${line.text}`,
     )
     .join('\n');
 }
@@ -201,13 +238,15 @@ function parseMeeting(raw: unknown): Meeting | null {
   const finishedAt = field(raw, 'finishedAt') ?? null;
   const transcript = field(raw, 'transcript') ?? [];
   const summary = field(raw, 'summary') ?? null;
+  const summaryEdited = field(raw, 'summaryEdited') ?? false;
   if (
     typeof id !== 'string' ||
     typeof title !== 'string' ||
     !Array.isArray(segments) ||
     !(finishedAt === null || typeof finishedAt === 'number') ||
     !Array.isArray(transcript) ||
-    !(summary === null || typeof summary === 'string')
+    !(summary === null || typeof summary === 'string') ||
+    typeof summaryEdited !== 'boolean'
   ) {
     return null;
   }
@@ -227,6 +266,7 @@ function parseMeeting(raw: unknown): Meeting | null {
     finishedAt,
     transcript: lines.filter((line) => line !== null),
     summary,
+    summaryEdited,
   };
 }
 

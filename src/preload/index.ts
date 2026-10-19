@@ -26,6 +26,10 @@ const api: AppApi = {
   onModelsChanged: (callback) => subscribe(IpcEvent.onModelsChanged, callback),
   listMeetings: () => ipcRenderer.invoke(IpcChannel.listMeetings),
   getMeeting: (id) => ipcRenderer.invoke(IpcChannel.getMeeting, id),
+  editSummary: (id, markdown) =>
+    ipcRenderer.invoke(IpcChannel.editSummary, id, markdown),
+  editTranscriptLine: (id, line, text) =>
+    ipcRenderer.invoke(IpcChannel.editTranscriptLine, id, line, text),
   summarizeMeeting: (id) => ipcRenderer.invoke(IpcChannel.summarizeMeeting, id),
   copyMeeting: (id, part) =>
     ipcRenderer.invoke(IpcChannel.copyMeeting, id, part),

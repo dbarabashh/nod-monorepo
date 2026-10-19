@@ -61,11 +61,17 @@ export type MeetingDetail = {
     text: string;
   }>;
   summary: string | null;
+  summaryEdited: boolean;
   summaryStatus: SummaryStatus;
   problem: string | null;
 };
 
 export type SummaryStatus = 'idle' | 'writing' | 'failed';
+
+export type TranscriptLineKey = Pick<
+  MeetingDetail['transcript'][number],
+  'speaker' | 'startMs'
+>;
 
 export type RecordingState =
   | { status: 'idle' }
@@ -102,6 +108,8 @@ export const IpcChannel = {
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
   summarizeMeeting: 'meetings:summarize',
+  editSummary: 'meetings:edit-summary',
+  editTranscriptLine: 'meetings:edit-line',
   sendRecordingAudio: 'recording:send-audio',
   getRecording: 'recording:get',
   startRecording: 'recording:start',
@@ -133,6 +141,12 @@ export type AppApi = {
   getMeeting: (id: string) => Promise<MeetingDetail>;
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
   summarizeMeeting: (id: string) => Promise<void>;
+  editSummary: (id: string, markdown: string) => Promise<void>;
+  editTranscriptLine: (
+    id: string,
+    line: TranscriptLineKey,
+    text: string,
+  ) => Promise<void>;
   sendRecordingAudio: (speaker: Speaker, samples: Int16Array) => void;
   getRecording: () => Promise<RecordingState>;
   startRecording: (title: string) => Promise<void>;
