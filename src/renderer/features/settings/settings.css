@@ -1,0 +1,42 @@
+@layer app {
+  .settings {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    block-size: 100%;
+    min-block-size: 0;
+  }
+
+  .settings__header {
+    padding: var(--space-4) var(--space-6);
+    border-block-end: var(--border-width) solid var(--color-border);
+  }
+
+  .settings__title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+    letter-spacing: var(--tracking-xl);
+  }
+
+  .settings__body {
+    min-block-size: 0;
+    padding: var(--space-6);
+  }
+
+  .settings__section {
+    display: grid;
+    gap: var(--space-3);
+    max-inline-size: var(--measure-wide);
+  }
+
+  .settings__section-title {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-lg);
+    letter-spacing: var(--tracking-lg);
+  }
+
+  .settings__section-hint {
+    color: var(--color-text-muted);
+  }
+}

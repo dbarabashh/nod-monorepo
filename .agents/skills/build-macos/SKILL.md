@@ -9,9 +9,25 @@ description: Build the desktop app for macOS locally, producing the DMG and ZIP 
 Forge packages the `.app` with asar and fuses; then the DMG and ZIP makers run.
 Artifacts land in `out/make/`.
 
-Signing and notarization are not configured yet. Builds from this skill are for
-local testing only. Never hand an unsigned build to users, because macOS shows
-"developer cannot be verified" on every other machine.
+Signing and notarization are driven by two environment variables, and both
+stay out of the repo:
+
+- `APPLE_SIGNING_IDENTITY`: a "Developer ID Application" identity in the
+  keychain (`security find-identity -v -p codesigning`). Forge signs the app
+  with the hardened runtime and `build/entitlements.mac.plist`.
+- `APPLE_NOTARY_PROFILE`: a notarytool keychain profile, created once with
+  `xcrun notarytool store-credentials <profile> --apple-id <id> --team-id <team> --password <app-specific-password>`.
+  With both set, Forge notarizes and staples the app (so the ZIP is covered),
+  and the `postMake` hook signs, notarizes and staples the DMG. With only the
+  identity set, the app and DMG are signed but not notarized.
+
+Without them the build is unsigned and for local testing only. Never hand an
+unsigned or unnotarized build to users, because macOS shows "developer cannot
+be verified" on every other machine. Notarization uploads the build to Apple
+and blocks until Apple answers (minutes), so run it only for a release.
+
+An ad-hoc identity (`-`) can't test the signed build: under the hardened
+runtime macOS refuses to load the Electron framework without a team ID.
 
 ## Preconditions
 
@@ -24,7 +40,8 @@ local testing only. Never hand an unsigned build to users, because macOS shows
 ## Steps
 
 1. Clean old output: `rm -rf out`.
-2. Build: `pnpm make`. To build for the other architecture, use
+2. Build: `pnpm make`, or for a release
+   `APPLE_SIGNING_IDENTITY="Developer ID Application" APPLE_NOTARY_PROFILE=<profile> pnpm make`. To build for the other architecture, use
    `pnpm make --arch=x64` or `--arch=universal`.
 3. Check the artifacts exist:
 

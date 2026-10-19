@@ -10,7 +10,7 @@
   "author": "Dima Barabash",
   "main": ".vite/build/main.cjs",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "node scripts/start.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "release": "electron-forge release",

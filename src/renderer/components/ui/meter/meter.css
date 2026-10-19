@@ -1,0 +1,38 @@
+.ui-meter {
+  display: block;
+  inline-size: 100%;
+  block-size: var(--meter-height);
+  border-radius: var(--radius-full);
+  background: var(--color-field);
+  appearance: none;
+  overflow: hidden;
+
+  &::-webkit-meter-inner-element {
+    display: block;
+    block-size: 100%;
+  }
+
+  &::-webkit-meter-bar {
+    block-size: 100%;
+    border: 0;
+    border-radius: inherit;
+    background: var(--color-field);
+  }
+
+  &::-webkit-meter-optimum-value,
+  &::-webkit-meter-suboptimum-value,
+  &::-webkit-meter-even-less-good-value {
+    border-radius: inherit;
+    background: var(--color-accent);
+  }
+
+  @media (forced-colors: active) {
+    border: var(--border-width) solid CanvasText;
+
+    &::-webkit-meter-optimum-value,
+    &::-webkit-meter-suboptimum-value,
+    &::-webkit-meter-even-less-good-value {
+      background: Highlight;
+    }
+  }
+}

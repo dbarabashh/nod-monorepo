@@ -7,7 +7,9 @@ export type IconName =
   | 'list'
   | 'settings'
   | 'clock'
-  | 'calendar';
+  | 'calendar'
+  | 'speaker'
+  | 'download';
 
 const paths: Record<IconName, string> = {
   search: 'M11 11l3 3M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Z',
@@ -18,6 +20,9 @@ const paths: Record<IconName, string> = {
   clock: 'M8 4.5V8l2.5 1.5M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12Z',
   calendar:
     'M2.5 6.5h11M5 1.5v2M11 1.5v2M3.5 3h9a1 1 0 0 1 1 1v8.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z',
+  download: 'M8 2v8M4.5 6.5 8 10l3.5-3.5M2.5 13.5h11',
+  speaker:
+    'M2 6v4h2.5L8 13V3L4.5 6H2ZM10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.5 6.5 0 0 1 0 9',
 };
 
 type IconProps = Omit<ComponentProps<'svg'>, 'children'> & {

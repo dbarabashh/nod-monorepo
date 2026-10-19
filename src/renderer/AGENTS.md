@@ -36,7 +36,9 @@ something to put in them.
 ## Rules
 
 - Import a feature only through its barrel. Never import one feature from
-  another. Promote anything shared to `components/ui` or `lib` first.
+  another. Promote anything shared to `components/ui` or `lib` first. When one
+  feature's view belongs inside another (an audio panel inside onboarding and
+  settings), the app shell composes them by passing it in as a prop.
 - Read data only through the feature's `api.ts`, never by calling `window.api`
   from a view. Treat data from main like server state: cache it, refetch it, and
   handle loading, error and empty states.

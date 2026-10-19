@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Electron-Forge
 out/
+
+# Renamed Electron bundle for `pnpm start` on macOS
+.dev-electron/

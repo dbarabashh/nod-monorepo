@@ -6,4 +6,5 @@ export { Field, Input } from './field/field.tsx';
 export { Icon, type IconName } from './icon/icon.tsx';
 export { InputGroup } from './input-group/input-group.tsx';
 export { List, ListRow } from './list/list.tsx';
+export { Meter } from './meter/meter.tsx';
 export { Nav, NavItem } from './nav/nav.tsx';

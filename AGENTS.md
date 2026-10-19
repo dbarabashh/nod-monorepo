@@ -77,7 +77,8 @@ src/
   core/        platform-neutral data model, migrations, sync, crypto
   declarations.d.ts  ambient types (Forge Vite globals, window.api)
 build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Windows)
-               and icon.png (Linux, 1024 px), wired in forge.config.mts
+               and icon.png (Linux, 1024 px), plus entitlements.mac.plist for
+               the signed macOS build, all wired in forge.config.mts
 ```
 
 Dependencies point one way: `renderer → shared ← preload ← main → core`.
