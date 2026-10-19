@@ -20,6 +20,11 @@ const steps: Step[] = [
       'Your meetings stay on your devices, encrypted. Twenty-four words are the key to them: enter the same words on each of your devices to sync them, or on a new one if you lose this one.',
   },
   {
+    title: 'Sync your devices',
+    description:
+      'The words decide which meetings belong together; a shared place carries them between your devices. Choose the same place on each one. Meetings travel through it encrypted, so whoever runs it can’t read them.',
+  },
+  {
     title: 'Allow audio access',
     description:
       'Conversations are captured on this computer, without a bot joining the call. Allow the microphone for your side and system audio for everyone else.',
@@ -33,6 +38,7 @@ const steps: Step[] = [
 
 type OnboardingViewProps = {
   RecoveryKey: ComponentType<{ onDone: () => void }>;
+  SyncPlace: ComponentType<{ onDone: () => void }>;
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
@@ -42,6 +48,7 @@ type OnboardingViewProps = {
 
 export function OnboardingView({
   RecoveryKey,
+  SyncPlace,
   audio,
   speechModels,
   summaryModels,
@@ -95,6 +102,8 @@ export function OnboardingView({
           {index === 0 ? (
             <RecoveryKey onDone={() => go(1)} />
           ) : index === 1 ? (
+            <SyncPlace onDone={() => go(2)} />
+          ) : index === 2 ? (
             audio
           ) : (
             <>
@@ -113,7 +122,7 @@ export function OnboardingView({
         )}
 
         <footer className="onboarding__footer">
-          {index > 1 ? (
+          {index > 2 ? (
             <Button variant="ghost" onClick={() => go(index - 1)}>
               Back
             </Button>
@@ -122,7 +131,7 @@ export function OnboardingView({
               You can change this later in Settings.
             </span>
           )}
-          {index === 0 ? null : last ? (
+          {index < 2 ? null : last ? (
             <Button
               key="finish"
               variant="primary"

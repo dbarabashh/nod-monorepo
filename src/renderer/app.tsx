@@ -9,7 +9,12 @@ import {
   RecordButton,
 } from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
-import { KeySetup, RecoveryPanel, SyncPanel } from './features/sync/index.ts';
+import {
+  KeySetup,
+  RecoveryPanel,
+  SyncPanel,
+  SyncStep,
+} from './features/sync/index.ts';
 import './app.css';
 
 type Page = 'meetings' | 'settings';
@@ -18,6 +23,7 @@ export function App() {
   return (
     <OnboardingGate
       RecoveryKey={KeySetup}
+      SyncPlace={SyncStep}
       audio={<AudioAccessPanel />}
       speechModels={<ModelsPanel kind="speech" />}
       summaryModels={<ModelsPanel kind="summary" />}

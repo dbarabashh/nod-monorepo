@@ -12,6 +12,7 @@ type GateState =
 
 type OnboardingGateProps = {
   RecoveryKey: ComponentType<{ onDone: () => void }>;
+  SyncPlace: ComponentType<{ onDone: () => void }>;
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
@@ -20,6 +21,7 @@ type OnboardingGateProps = {
 
 export function OnboardingGate({
   RecoveryKey,
+  SyncPlace,
   audio,
   speechModels,
   summaryModels,
@@ -79,6 +81,7 @@ export function OnboardingGate({
       return (
         <OnboardingView
           RecoveryKey={RecoveryKey}
+          SyncPlace={SyncPlace}
           audio={audio}
           speechModels={speechModels}
           summaryModels={summaryModels}
