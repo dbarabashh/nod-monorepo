@@ -2,7 +2,13 @@ import { useId, useState, type ReactNode } from 'react';
 import { Nav, NavItem, type IconName } from '../../components/ui/index.ts';
 import './settings.css';
 
-type PageId = 'audio' | 'transcription' | 'summaries' | 'sync' | 'recovery';
+type PageId =
+  | 'audio'
+  | 'transcription'
+  | 'summaries'
+  | 'assistants'
+  | 'sync'
+  | 'recovery';
 
 type Page = {
   id: PageId;
@@ -40,6 +46,18 @@ const groups: Array<{ label: string; pages: Page[] }> = [
         icon: 'summary',
         description:
           'A summary is written when a meeting is finished, without sending the transcript anywhere.',
+      },
+    ],
+  },
+  {
+    label: 'Connections',
+    pages: [
+      {
+        id: 'assistants',
+        label: 'AI assistants',
+        icon: 'summary',
+        description:
+          'Let assistants on this computer search and read your meetings, with the parts you allow.',
       },
     ],
   },

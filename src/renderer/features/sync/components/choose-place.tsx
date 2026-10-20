@@ -2,7 +2,7 @@ import { useState, type SubmitEvent } from 'react';
 import type { SyncState } from '../../../../shared/ipc.ts';
 import { Button, Field, Input } from '../../../components/ui/index.ts';
 import { chooseSyncFolder, connectSyncRelay } from '../api.ts';
-import { useAction } from '../lib/use-action.ts';
+import { useAction } from '../../../lib/use-action.ts';
 
 type Ready = Extract<SyncState, { status: 'ready' }>;
 

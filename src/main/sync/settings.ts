@@ -1,8 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { isSyncId } from '../../core/sync/index.ts';
 import { keyLength, vaultIdOf } from '../../core/crypto/index.ts';
 import type { KeyWrap } from '../security/data-key.ts';
+import { writeAtomically } from '../storage/write-atomically.ts';
 
 export type TransportSettings =
   | { kind: 'folder'; folder: string }
@@ -39,13 +40,6 @@ function parseTransport(raw: unknown): TransportSettings | null {
     return { kind, url };
   }
   return null;
-}
-
-async function writeAtomically(file: string, data: Buffer | string) {
-  await mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.tmp`;
-  await writeFile(temporary, data);
-  await rename(temporary, file);
 }
 
 export function createSyncSettings(options: {

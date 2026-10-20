@@ -1,6 +1,6 @@
 import { Button } from '../../../components/ui/index.ts';
 import { showRecoveryPhrase } from '../api.ts';
-import { useAction } from '../lib/use-action.ts';
+import { useAction } from '../../../lib/use-action.ts';
 
 type RecoveryPhraseProps = {
   confirming: boolean;

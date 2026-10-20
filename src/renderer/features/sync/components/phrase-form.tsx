@@ -2,7 +2,7 @@ import { useState, type SubmitEvent } from 'react';
 import { Button, Field, Textarea } from '../../../components/ui/index.ts';
 import { enterRecoveryPhrase } from '../api.ts';
 import { countWords, phraseLength } from '../lib/count-words.ts';
-import { useAction } from '../lib/use-action.ts';
+import { useAction } from '../../../lib/use-action.ts';
 
 type PhraseFormProps = {
   submitLabel: string;

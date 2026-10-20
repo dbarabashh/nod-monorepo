@@ -36,6 +36,7 @@ export type Recorder = {
   finish: (id: string) => Promise<void>;
   detail: (id: string) => MeetingDetail;
   transcriptOf: (id: string) => Meeting | undefined;
+  meetings: () => readonly Meeting[];
   appendLines: (id: string, lines: TranscriptLine[]) => Promise<void>;
   setSummaryStatus: (id: string, status: SummaryStatus) => void;
   setProblem: (id: string, problem: string | null) => void;
@@ -330,6 +331,7 @@ export function createRecorder(options: {
       return summaries();
     },
     summaries,
+    meetings: () => meetings ?? [],
     state: () =>
       active
         ? {

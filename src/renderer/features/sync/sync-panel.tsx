@@ -7,7 +7,7 @@ import { KeySetup } from './components/key-setup.tsx';
 import { PhraseChanged } from './components/phrase-changed.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
 import { Unavailable } from './components/unavailable.tsx';
-import { useAction } from './lib/use-action.ts';
+import { useAction } from '../../lib/use-action.ts';
 import './sync.css';
 
 type Ready = Extract<SyncState, { status: 'ready' }>;

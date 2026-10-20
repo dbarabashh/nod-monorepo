@@ -101,6 +101,44 @@ export type SyncState =
       closed: boolean;
     };
 
+export type McpScope = 'summaries' | 'transcripts';
+
+export const mcpNameMaxLength = 60;
+export const mcpActivityLimit = 50;
+
+export type McpClientInfo = {
+  id: string;
+  name: string;
+  scopes: McpScope[];
+  createdAt: number;
+  lastUsedAt: number | null;
+  // Disconnected and refused already, but not yet saved: shown so it can be
+  // retried, since a restart would bring it back.
+  revoking: boolean;
+};
+
+export type McpActivity = {
+  at: number;
+  client: string;
+  tool: string;
+  meetings: string[];
+};
+
+export type McpState = {
+  enabled: boolean;
+  status: 'off' | 'running' | 'failed';
+  problem: string | null;
+  port: number;
+  url: string;
+  command: string;
+  args: string[];
+  setupNote: string | null;
+  clients: McpClientInfo[];
+  activity: McpActivity[];
+};
+
+export type McpConnection = { key: string; client: McpClientInfo };
+
 export type AppState = {
   onboardingCompleted: boolean;
 };
@@ -111,9 +149,15 @@ export const IpcEvent = {
   onRecordingChanged: 'recording:changed',
   onRecordingLevel: 'recording:level',
   onSyncChanged: 'sync:changed',
+  onMcpChanged: 'mcp:changed',
 } satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
+  getMcpState: 'mcp:get',
+  setMcpEnabled: 'mcp:set-enabled',
+  addMcpClient: 'mcp:add-client',
+  revokeMcpClient: 'mcp:revoke-client',
+  copyMcpSetup: 'mcp:copy-setup',
   getAppState: 'app-state:get',
   completeOnboarding: 'app-state:complete-onboarding',
   getAudioAccess: 'audio-access:get',
@@ -212,4 +256,10 @@ export type AppApi = {
   changeRecoveryPhrase: () => Promise<void>;
   syncNow: () => Promise<void>;
   onSyncChanged: (callback: (state: SyncState) => void) => () => void;
+  getMcpState: () => Promise<McpState>;
+  setMcpEnabled: (enabled: boolean) => Promise<void>;
+  addMcpClient: (name: string, scopes: McpScope[]) => Promise<McpConnection>;
+  revokeMcpClient: (id: string) => Promise<void>;
+  copyMcpSetup: (text: string) => Promise<void>;
+  onMcpChanged: (callback: (state: McpState) => void) => () => void;
 };

@@ -7,7 +7,7 @@ import { PhraseChanged } from './components/phrase-changed.tsx';
 import { PhraseForm } from './components/phrase-form.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
 import { Unavailable } from './components/unavailable.tsx';
-import { useAction } from './lib/use-action.ts';
+import { useAction } from '../../lib/use-action.ts';
 import './sync.css';
 
 export function RecoveryPanel() {

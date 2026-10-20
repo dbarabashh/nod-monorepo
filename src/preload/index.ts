@@ -9,8 +9,8 @@ function subscribe<T>(channel: string, callback: (value: T) => void) {
   };
 }
 
-// The vault key unlocks every synced meeting, so a page script can't create,
-// replace, reveal or move it on its own; each of these takes the user's click.
+// The vault key and an assistant's key each unlock meetings, so a page script
+// can't create, reveal, move or hand them out on its own; each takes a click.
 function clicked<T>(call: () => Promise<T>): Promise<T> {
   if (!navigator.userActivation.isActive) {
     return Promise.reject(new Error('This needs a click'));
@@ -87,6 +87,15 @@ const api: AppApi = {
   showRecoveryPhrase: () =>
     clicked(() => ipcRenderer.invoke(IpcChannel.showRecoveryPhrase)),
   onSyncChanged: (callback) => subscribe(IpcEvent.onSyncChanged, callback),
+  getMcpState: () => ipcRenderer.invoke(IpcChannel.getMcpState),
+  setMcpEnabled: (enabled) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.setMcpEnabled, enabled)),
+  addMcpClient: (name, scopes) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.addMcpClient, name, scopes)),
+  revokeMcpClient: (id) => ipcRenderer.invoke(IpcChannel.revokeMcpClient, id),
+  copyMcpSetup: (text) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.copyMcpSetup, text)),
+  onMcpChanged: (callback) => subscribe(IpcEvent.onMcpChanged, callback),
   expectSystemAudioCapture: () => {
     // Main can't see user activation, so the click is checked here, out of
     // reach of page scripts, before main opens the screen-capture gate.

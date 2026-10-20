@@ -1,6 +1,6 @@
 import { Button } from '../../../components/ui/index.ts';
 import { changeRecoveryPhrase, disconnectSync } from '../api.ts';
-import { useAction } from '../lib/use-action.ts';
+import { useAction } from '../../../lib/use-action.ts';
 import { PhraseForm } from './phrase-form.tsx';
 
 type PhraseChangedProps = {

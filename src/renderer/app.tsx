@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Button, Icon, Nav, NavItem } from './components/ui/index.ts';
+import { AssistantsPanel } from './features/assistants/index.ts';
 import { AudioAccessPanel } from './features/audio-access/index.ts';
 import {
   FolderNav,
@@ -129,6 +130,7 @@ function Shell() {
             audio={<AudioAccessPanel />}
             transcription={<ModelsPanel kind="speech" />}
             summaries={<ModelsPanel kind="summary" />}
+            assistants={<AssistantsPanel />}
             sync={<SyncPanel />}
             recovery={<RecoveryPanel />}
           />

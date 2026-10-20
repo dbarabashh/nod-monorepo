@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '../../../components/ui/index.ts';
 import { useAsync } from '../../../lib/use-async.ts';
 import { createRecoveryPhrase, getSyncState, onSyncChanged } from '../api.ts';
-import { useAction } from '../lib/use-action.ts';
+import { useAction } from '../../../lib/use-action.ts';
 import { Unavailable } from './unavailable.tsx';
 import { PhraseForm } from './phrase-form.tsx';
 import { RecoveryPhrase } from './recovery-phrase.tsx';
