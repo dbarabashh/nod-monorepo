@@ -8,6 +8,7 @@ import {
   session,
   type MessageBoxOptions,
   type OpenDialogOptions,
+  type WebContents,
 } from 'electron';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -18,6 +19,7 @@ import { modelCatalog } from '../core/models/index.ts';
 import { createAppStateStore } from './app-state/store.ts';
 import { ignoreClosedOutput } from './closed-output.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
+import { registerMeetingSuggestionIpc } from './ipc/meeting-suggestion.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastMcp, registerMcpIpc } from './ipc/mcp.ts';
 import { registerMeetingImportIpc } from './ipc/meeting-import.ts';
@@ -29,6 +31,10 @@ import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
 import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
 import { createSyncHandlers } from './sync/handlers.ts';
 import { processAlive, quitWithParent } from './dev/quit-with-parent.ts';
+import { createMeetingDetection } from './meeting-detection/service.ts';
+import { platformMonitor } from './meeting-detection/monitor.ts';
+import type { MicUser } from './meeting-detection/parse.ts';
+import { createCapturePage } from './meetings/capture-page.ts';
 import { createMeetingImport } from './meetings/import-file.ts';
 import { createRecorder } from './meetings/recorder.ts';
 import { createMeetingSession } from './meetings/session.ts';
@@ -40,12 +46,15 @@ import { loadDataKey, type KeyWrap } from './security/data-key.ts';
 import { linuxPasswordStore } from './security/password-store.ts';
 import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
 import { secureSession } from './security/session.ts';
-import { IpcEvent } from '../shared/ipc.ts';
+import { recordingTitle } from '../core/meeting-detection/index.ts';
+import { IpcEvent, type AppState } from '../shared/ipc.ts';
 import { createMainWindow } from './windows/main-window.ts';
 import {
   createWidgetDrag,
   openRecordingWidget,
 } from './windows/recording-widget.ts';
+import { openSuggestionWindow } from './windows/meeting-suggestion.ts';
+import { createSuggestionWindowControl } from './meeting-detection/suggestion-window.ts';
 import { createSyncController } from './sync/controller.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
 import { relayBase } from './sync/relay-transport.ts';
@@ -190,7 +199,62 @@ const recorder = createRecorder({
   onChange: () => {
     broadcastRecording(recorder);
     syncWidget();
+    if (recording() !== wasRecording) {
+      wasRecording = recording();
+      meetingDetection.refresh();
+    }
   },
+});
+let wasRecording = false;
+
+const suggestionWindow = createSuggestionWindowControl({
+  open: () => openSuggestionWindow(appUrl),
+  capturing: (page) => capturePage.is(page),
+  onGone: () => meetingDetection.dismiss(),
+});
+
+const capturePage = createCapturePage<WebContents>({
+  watch: (page, onEnd) => {
+    page.on('did-start-loading', onEnd);
+    page.on('render-process-gone', onEnd);
+    page.on('destroyed', onEnd);
+    return () => {
+      page.removeListener('did-start-loading', onEnd);
+      page.removeListener('render-process-gone', onEnd);
+      page.removeListener('destroyed', onEnd);
+    };
+  },
+  recording,
+  pause: () => void pauseRecording().catch(() => undefined),
+  onChange: () => suggestionWindow.captureChanged(),
+});
+
+// Electron records from a helper process of its own, which the system
+// reports like any other app.
+function selfFilter(): (user: MicUser) => boolean {
+  const pids = new Set(app.getAppMetrics().map((metric) => metric.pid));
+  const executable = process.execPath.replaceAll('\\', '#').toLowerCase();
+  return (user) =>
+    user.pid !== null
+      ? pids.has(user.pid)
+      : process.platform === 'win32' && user.id.toLowerCase() === executable;
+}
+
+const meetingDetection = createMeetingDetection({
+  monitor: platformMonitor(
+    app.isPackaged
+      ? path.join(process.resourcesPath, 'nod-mic-monitor')
+      : path.join(app.getAppPath(), 'build', 'native', 'nod-mic-monitor'),
+  ),
+  now: Date.now,
+  selfFilter,
+  recording,
+  show: (meeting) =>
+    suggestionWindow.show({
+      appName: meeting.name,
+      title: recordingTitle(meeting),
+    }),
+  hide: () => suggestionWindow.hide(),
 });
 
 const mcpService = createMcpService({
@@ -272,7 +336,6 @@ function showMainWindow() {
   mainWindow = createMainWindow({
     appUrl,
     keepAlive: () => recording() && !quitting,
-    onReload: () => void pauseRecording(),
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -305,10 +368,31 @@ app.whenReady().then(async () => {
   const displayCapture = createDisplayCaptureGate(Date.now, 5000);
   secureSession(session.defaultSession, appUrl, displayCapture);
   registerAudioAccessIpc(appUrl, displayCapture);
-  registerAppStateIpc(
-    appUrl,
-    createAppStateStore(path.join(app.getPath('userData'), 'app-state.json')),
+  const applySuggestionSettings = (state: AppState) =>
+    meetingDetection.setSettings({
+      enabled: state.suggestMeetings,
+      quiet: state.quietMeetingApps,
+    });
+  const appState = createAppStateStore(
+    path.join(app.getPath('userData'), 'app-state.json'),
+    applySuggestionSettings,
   );
+  registerAppStateIpc(appUrl, appState);
+  registerMeetingSuggestionIpc(appUrl, {
+    owns: suggestionWindow.owns,
+    current: suggestionWindow.current,
+    dismiss: async (quietApp) => {
+      const app = meetingDetection.showing();
+      meetingDetection.dismiss();
+      suggestionWindow.hide();
+      if (quietApp && app) {
+        await appState.update((state) => ({
+          quietMeetingApps: [...state.quietMeetingApps, app.key],
+        }));
+      }
+    },
+  });
+  void appState.read().then(applySuggestionSettings);
   const models = createModelManager({
     catalog: modelCatalog,
     directory: path.join(app.getPath('userData'), 'models'),
@@ -330,6 +414,7 @@ app.whenReady().then(async () => {
     transcriber,
     now: Date.now,
     captureGraceMs: 1_000,
+    onCaptureFinished: () => capturePage.release(),
   });
   pauseRecording = meetingSession.pause;
   registerRecordingIpc({
@@ -347,6 +432,7 @@ app.whenReady().then(async () => {
     },
     dragWidget: createWidgetDrag(() => widget),
     copyText: (text) => clipboard.writeText(text),
+    capture: capturePage,
   });
   registerMeetingImportIpc(
     appUrl,

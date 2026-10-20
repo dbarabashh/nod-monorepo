@@ -151,8 +151,12 @@ export type MeetingImportResult =
 
 export type MeetingsDeleteResult = { deleted: number; failed: number };
 
+export type MeetingSuggestion = { appName: string; title: string };
+
 export type AppState = {
   onboardingCompleted: boolean;
+  suggestMeetings: boolean;
+  quietMeetingApps: string[];
 };
 
 export const IpcEvent = {
@@ -162,6 +166,7 @@ export const IpcEvent = {
   onRecordingLevel: 'recording:level',
   onSyncChanged: 'sync:changed',
   onMcpChanged: 'mcp:changed',
+  onMeetingSuggestion: 'meeting-suggestion:changed',
 } satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
@@ -172,6 +177,10 @@ export const IpcChannel = {
   copyMcpSetup: 'mcp:copy-setup',
   getAppState: 'app-state:get',
   completeOnboarding: 'app-state:complete-onboarding',
+  setSuggestMeetings: 'app-state:set-suggest-meetings',
+  clearQuietMeetingApps: 'app-state:clear-quiet-meeting-apps',
+  getMeetingSuggestion: 'meeting-suggestion:get',
+  dismissMeetingSuggestion: 'meeting-suggestion:dismiss',
   getAudioAccess: 'audio-access:get',
   requestMicrophoneAccess: 'audio-access:request-microphone',
   openAudioSettings: 'audio-access:open-settings',
@@ -221,6 +230,13 @@ export type AppApi = {
   platform: NodeJS.Platform;
   getAppState: () => Promise<AppState>;
   completeOnboarding: () => Promise<AppState>;
+  setSuggestMeetings: (enabled: boolean) => Promise<AppState>;
+  clearQuietMeetingApps: () => Promise<AppState>;
+  getMeetingSuggestion: () => Promise<MeetingSuggestion | null>;
+  dismissMeetingSuggestion: (quietApp: boolean) => Promise<void>;
+  onMeetingSuggestion: (
+    callback: (suggestion: MeetingSuggestion) => void,
+  ) => () => void;
   getAudioAccess: () => Promise<AudioAccess>;
   requestMicrophoneAccess: () => Promise<AudioAccess>;
   openAudioSettings: (source: AudioSource) => Promise<void>;

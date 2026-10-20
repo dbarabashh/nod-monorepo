@@ -1,4 +1,9 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron';
+import {
+  BrowserWindow,
+  ipcMain,
+  type IpcMainInvokeEvent,
+  type WebContents,
+} from 'electron';
 import { isAppUrl } from './navigation.ts';
 
 function assertAppSender(event: IpcMainInvokeEvent, appUrl: string): void {
@@ -18,6 +23,19 @@ export function listenFromApp(
     if (url !== undefined && isAppUrl(url, appUrl)) {
       listener(...args);
     }
+  });
+}
+
+// For a handler that has to know which page asked, such as the one that will
+// capture a recording's audio.
+export function handleFromAppPage(
+  appUrl: string,
+  channel: string,
+  handler: (sender: WebContents, ...args: unknown[]) => unknown,
+): void {
+  ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    assertAppSender(event, appUrl);
+    return handler(event.sender, ...args);
   });
 }
 

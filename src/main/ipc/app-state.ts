@@ -10,4 +10,13 @@ export function registerAppStateIpc(
   handleFromApp(appUrl, IpcChannel.completeOnboarding, () =>
     store.update({ onboardingCompleted: true }),
   );
+  handleFromApp(appUrl, IpcChannel.setSuggestMeetings, (enabled) => {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Expected on or off');
+    }
+    return store.update({ suggestMeetings: enabled });
+  });
+  handleFromApp(appUrl, IpcChannel.clearQuietMeetingApps, () =>
+    store.update({ quietMeetingApps: [] }),
+  );
 }

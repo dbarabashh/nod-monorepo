@@ -16,6 +16,8 @@ describe('createAppStateStore', () => {
   it('starts with onboarding not completed when nothing is saved', async () => {
     assert.deepEqual(await createAppStateStore(file).read(), {
       onboardingCompleted: false,
+      suggestMeetings: true,
+      quietMeetingApps: [],
     });
   });
 
@@ -23,8 +25,13 @@ describe('createAppStateStore', () => {
     await createAppStateStore(file).update({ onboardingCompleted: true });
     assert.deepEqual(await createAppStateStore(file).read(), {
       onboardingCompleted: true,
+      suggestMeetings: true,
+      quietMeetingApps: [],
     });
-    assert.equal(await readFile(file, 'utf8'), '{"onboardingCompleted":true}');
+    assert.equal(
+      await readFile(file, 'utf8'),
+      '{"onboardingCompleted":true,"suggestMeetings":true,"quietMeetingApps":[]}',
+    );
   });
 
   it('runs overlapping updates one after another', async () => {
@@ -34,7 +41,18 @@ describe('createAppStateStore', () => {
         store.update({ onboardingCompleted: true }),
         store.update({ onboardingCompleted: true }),
       ]),
-      [{ onboardingCompleted: true }, { onboardingCompleted: true }],
+      [
+        {
+          onboardingCompleted: true,
+          suggestMeetings: true,
+          quietMeetingApps: [],
+        },
+        {
+          onboardingCompleted: true,
+          suggestMeetings: true,
+          quietMeetingApps: [],
+        },
+      ],
     );
     assert.deepEqual(await readdir(dir()), ['app-state.json']);
   });
@@ -43,6 +61,24 @@ describe('createAppStateStore', () => {
     await writeFile(file, '{oops', 'utf8');
     assert.deepEqual(await createAppStateStore(file).read(), {
       onboardingCompleted: false,
+      suggestMeetings: true,
+      quietMeetingApps: [],
     });
+  });
+
+  it('applies changes that build on the saved state one after another', async () => {
+    const store = createAppStateStore(file);
+    await Promise.all([
+      store.update((state) => ({
+        quietMeetingApps: [...state.quietMeetingApps, 'zoom'],
+      })),
+      store.update((state) => ({
+        quietMeetingApps: [...state.quietMeetingApps, 'teams'],
+      })),
+    ]);
+    assert.deepEqual(
+      (await createAppStateStore(file).read()).quietMeetingApps,
+      ['zoom', 'teams'],
+    );
   });
 });

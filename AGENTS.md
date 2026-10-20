@@ -83,6 +83,8 @@ build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Window
 docs/decisions/  numbered decision records; read 0001-sync.md before
                  touching meetings storage or sync
 relay/         the optional self-hostable sync relay (no dependencies)
+native/macos/  the microphone monitor (C, CoreAudio) that notices a meeting
+               starting; Forge builds it into build/native on macOS
 ```
 
 Dependencies point one way: `renderer → shared ← preload ← main → core`.

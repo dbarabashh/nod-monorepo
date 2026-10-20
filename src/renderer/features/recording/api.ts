@@ -1,4 +1,6 @@
 import type {
+  AppState,
+  MeetingSuggestion,
   ModelInfo,
   RecordingState,
   Speaker,
@@ -70,4 +72,30 @@ export function sendRecordingAudio(
   samples: Int16Array,
 ): void {
   window.api.sendRecordingAudio(speaker, samples);
+}
+
+export function getMeetingSuggestion(): Promise<MeetingSuggestion | null> {
+  return window.api.getMeetingSuggestion();
+}
+
+export function onMeetingSuggestion(
+  callback: (suggestion: MeetingSuggestion) => void,
+): () => void {
+  return window.api.onMeetingSuggestion(callback);
+}
+
+export function dismissMeetingSuggestion(quietApp: boolean): Promise<void> {
+  return window.api.dismissMeetingSuggestion(quietApp);
+}
+
+export function getAppState(): Promise<AppState> {
+  return window.api.getAppState();
+}
+
+export function setSuggestMeetings(enabled: boolean): Promise<AppState> {
+  return window.api.setSuggestMeetings(enabled);
+}
+
+export function clearQuietMeetingApps(): Promise<AppState> {
+  return window.api.clearQuietMeetingApps();
 }

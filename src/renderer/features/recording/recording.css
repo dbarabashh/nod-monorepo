@@ -179,4 +179,186 @@
       transition: none;
     }
   }
+
+  :root[data-window='suggestion'] body {
+    background-color: var(--color-surface);
+  }
+
+  .meeting-suggestion {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    block-size: 100vh;
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+    overflow: hidden;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-size: var(--text-row-meta);
+    line-height: var(--leading-sm);
+    user-select: none;
+  }
+
+  .meeting-suggestion__icon {
+    flex: none;
+    inline-size: var(--control-height-md);
+    block-size: var(--control-height-md);
+  }
+
+  .meeting-suggestion__text {
+    display: grid;
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .meeting-suggestion__title {
+    overflow: hidden;
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meeting-suggestion__detail {
+    overflow: hidden;
+    color: var(--color-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .meeting-suggestion__actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .meeting-suggestion__quick {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface);
+  }
+
+  .meeting-suggestion__take,
+  .meeting-suggestion__more {
+    display: flex;
+    align-items: center;
+    color: var(--color-text);
+    cursor: default;
+    transition: background-color var(--duration-fast) var(--ease-out);
+
+    &:hover:not(:disabled) {
+      background-color: var(--color-surface-hover);
+    }
+
+    &:active:not(:disabled) {
+      background-color: var(--color-surface-active);
+    }
+
+    &:focus-visible {
+      outline-offset: calc(var(--focus-ring-width) * -1);
+    }
+
+    &:disabled {
+      color: var(--color-text-muted);
+    }
+  }
+
+  .meeting-suggestion__take {
+    padding: var(--space-2) var(--space-3);
+    border-start-start-radius: var(--radius-md);
+    border-end-start-radius: var(--radius-md);
+    font-weight: var(--weight-medium);
+  }
+
+  .meeting-suggestion__more {
+    justify-content: center;
+    padding-inline: var(--space-2);
+    border-inline-start: var(--border-width) solid var(--color-border);
+    border-start-end-radius: var(--radius-md);
+    border-end-end-radius: var(--radius-md);
+  }
+
+  .meeting-suggestion__track {
+    position: absolute;
+    inset-inline: var(--space-4);
+    inset-block-end: var(--space-0-5);
+    block-size: var(--space-1);
+  }
+
+  .meeting-suggestion__fill {
+    display: block;
+    block-size: 100%;
+    border-radius: var(--radius-full);
+    background-color: var(--color-border-strong);
+    transform-origin: left;
+  }
+
+  /* Shows the countdown the page keeps, held whenever the page holds it. */
+  .meeting-suggestion[data-counting='true'] .meeting-suggestion__fill {
+    animation: meeting-suggestion-countdown var(--duration-suggestion) linear
+      forwards;
+  }
+
+  :root[data-held='true'] .meeting-suggestion__fill {
+    animation-play-state: paused;
+  }
+
+  @keyframes meeting-suggestion-countdown {
+    to {
+      transform: scaleX(0);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .meeting-suggestion__quick,
+    .meeting-suggestion__more {
+      border-color: ButtonText;
+    }
+
+    .meeting-suggestion__fill {
+      background-color: Highlight;
+    }
+
+    .meeting-suggestion__take:disabled,
+    .meeting-suggestion__more:disabled {
+      color: GrayText;
+    }
+
+    .meeting-suggestion__take:hover:not(:disabled),
+    .meeting-suggestion__more:hover:not(:disabled) {
+      outline: var(--border-width) solid Highlight;
+    }
+  }
+
+  .suggest-meetings {
+    display: grid;
+    gap: var(--space-2);
+    margin-block-start: var(--space-6);
+    padding-block-start: var(--space-4);
+    border-block-start: var(--border-width) solid var(--color-border);
+  }
+
+  .suggest-meetings__option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-block-size: var(--control-height-sm);
+    font-size: var(--text-md);
+  }
+
+  .suggest-meetings__note {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+
+  .suggest-meetings__quiet {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
 }

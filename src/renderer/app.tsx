@@ -13,6 +13,7 @@ import { OnboardingGate } from './features/onboarding/index.ts';
 import {
   MeetingRecordingActions,
   RecordButton,
+  SuggestMeetingsSetting,
 } from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
 import {
@@ -129,7 +130,12 @@ function Shell() {
           />
         ) : (
           <SettingsView
-            audio={<AudioAccessPanel />}
+            audio={
+              <>
+                <AudioAccessPanel />
+                <SuggestMeetingsSetting />
+              </>
+            }
             transcription={<ModelsPanel kind="speech" />}
             summaries={<ModelsPanel kind="summary" />}
             assistants={<AssistantsPanel />}

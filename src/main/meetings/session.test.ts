@@ -76,17 +76,22 @@ function setup(captureGraceMs = 0) {
       return model ? { model, path: (name) => `/models/${name}` } : null;
     },
   };
+  let captureFinished = 0;
   const session = createMeetingSession({
     recorder,
     models,
     transcriber,
     now: () => time,
     captureGraceMs,
+    onCaptureFinished: () => {
+      captureFinished += 1;
+    },
   });
   return {
     recorder,
     session,
     calls,
+    captureFinished: () => captureFinished,
     advance: (ms: number) => {
       time += ms;
     },
@@ -441,7 +446,7 @@ describe('createMeetingSession', () => {
   });
 
   it('keeps taking audio after a pause until capture says it has stopped', async () => {
-    const { recorder, session, calls } = setup(60_000);
+    const { recorder, session, calls, captureFinished } = setup(60_000);
     await recorder.load();
     await session.start('A');
     const pausing = session.pause();
@@ -450,10 +455,12 @@ describe('createMeetingSession', () => {
     assert.deepEqual(recorder.state(), { status: 'idle' });
     assert.equal(session.acceptsAudio(), true);
     assert.equal(calls.includes('flush'), false);
+    assert.equal(captureFinished(), 0);
 
     session.captureStopped();
     await pausing;
     assert.equal(calls.at(-1), 'flush');
+    assert.equal(captureFinished(), 1);
     assert.equal(session.acceptsAudio(), false);
   });
 

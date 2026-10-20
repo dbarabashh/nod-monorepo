@@ -6,9 +6,8 @@ import { secureWindow } from '../security/window.ts';
 export function createMainWindow(options: {
   appUrl: string;
   keepAlive: () => boolean;
-  onReload: () => void;
 }): BrowserWindow {
-  const { appUrl, keepAlive, onReload } = options;
+  const { appUrl, keepAlive } = options;
   const window = new BrowserWindow({
     width: 1120,
     height: 760,
@@ -29,8 +28,6 @@ export function createMainWindow(options: {
       window.hide();
     }
   });
-  window.webContents.on('did-start-loading', onReload);
-  window.webContents.on('render-process-gone', onReload);
   void window.loadURL(appUrl);
 
   if (!app.isPackaged) {

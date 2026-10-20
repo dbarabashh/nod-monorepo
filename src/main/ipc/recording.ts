@@ -1,3 +1,4 @@
+import type { WebContents } from 'electron';
 import { meetingText } from '../../core/meetings/index.ts';
 import {
   IpcChannel,
@@ -9,8 +10,14 @@ import {
 } from '../../shared/ipc.ts';
 import { createAudioBudget } from '../meetings/audio-budget.ts';
 import type { Recorder } from '../meetings/recorder.ts';
+import type { CapturePage } from '../meetings/capture-page.ts';
 import type { MeetingSession } from '../meetings/session.ts';
-import { broadcast, handleFromApp, listenFromApp } from '../security/sender.ts';
+import {
+  broadcast,
+  handleFromApp,
+  handleFromAppPage,
+  listenFromApp,
+} from '../security/sender.ts';
 import type { Transcriber } from '../transcription/service.ts';
 
 const maxAudioSamples = pcmSampleRate;
@@ -79,6 +86,7 @@ export function registerRecordingIpc(options: {
   sendLevel: (level: number) => void;
   dragWidget: (phase: WidgetDragPhase, dx: number, dy: number) => void;
   copyText: (text: string) => void;
+  capture: CapturePage<WebContents>;
 }): void {
   const {
     appUrl,
@@ -89,6 +97,7 @@ export function registerRecordingIpc(options: {
     sendLevel,
     dragWidget,
     copyText,
+    capture,
   } = options;
   handleFromApp(appUrl, IpcChannel.listMeetings, recorder.list);
   handleFromApp(appUrl, IpcChannel.getMeeting, (id) =>
@@ -106,11 +115,25 @@ export function registerRecordingIpc(options: {
     copyText(text);
   });
   handleFromApp(appUrl, IpcChannel.getRecording, recorder.state);
-  handleFromApp(appUrl, IpcChannel.startRecording, (title) =>
-    session.start(text(title, 'Untitled meeting')),
+  // The page that starts or resumes a recording is the one capturing it.
+  const capturedBy = async (page: WebContents, begin: () => Promise<void>) => {
+    const undo = capture.claim(page);
+    try {
+      await begin();
+    } catch (error) {
+      undo();
+      throw error;
+    }
+    // The page went while the recording started, so nothing captures it.
+    if (!capture.is(page)) {
+      await session.pause();
+    }
+  };
+  handleFromAppPage(appUrl, IpcChannel.startRecording, (sender, title) =>
+    capturedBy(sender, () => session.start(text(title, 'Untitled meeting'))),
   );
-  handleFromApp(appUrl, IpcChannel.resumeRecording, (id) =>
-    session.resume(meetingId(id)),
+  handleFromAppPage(appUrl, IpcChannel.resumeRecording, (sender, id) =>
+    capturedBy(sender, () => session.resume(meetingId(id))),
   );
   handleFromApp(appUrl, IpcChannel.pauseRecording, session.pause);
   handleFromApp(appUrl, IpcChannel.finishMeeting, (id) =>

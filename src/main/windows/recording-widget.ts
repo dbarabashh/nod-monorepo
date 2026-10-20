@@ -1,7 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import type { WidgetDragPhase } from '../../shared/ipc.ts';
-import path from 'node:path';
-import { secureWindow } from '../security/window.ts';
+import { openFloatingPanel } from './floating-panel.ts';
 
 const width = 32;
 const height = 64;
@@ -9,49 +8,15 @@ const margin = 24;
 
 export function openRecordingWidget(appUrl: string): BrowserWindow {
   const { workArea } = screen.getPrimaryDisplay();
-  const widget = new BrowserWindow({
+  return openFloatingPanel(appUrl, {
+    hash: 'widget',
     width,
     height,
     x: workArea.x + workArea.width - width - margin,
     y: workArea.y + Math.round((workArea.height - height) / 2),
-    frame: false,
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    // Matches --color-widget-bg, so the window never flashes another colour.
+    // --color-widget-bg
     backgroundColor: '#0c0d10',
-    hasShadow: true,
-    // macOS: the panel never becomes the key window, so without this the
-    // press that should start a drag or hit a button only focuses it.
-    acceptFirstMouse: true,
-    // macOS: a panel floats over full-screen apps without stealing focus.
-    // Windows: a toolbar window stays out of Alt+Tab.
-    type:
-      process.platform === 'darwin'
-        ? 'panel'
-        : process.platform === 'win32'
-          ? 'toolbar'
-          : undefined,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      backgroundThrottling: false,
-    },
   });
-  widget.setAlwaysOnTop(true, 'floating');
-  if (process.platform === 'darwin') {
-    widget.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true,
-      skipTransformProcessType: true,
-    });
-  }
-  secureWindow(widget.webContents, appUrl);
-  widget.once('ready-to-show', () => widget.showInactive());
-  void widget.loadURL(`${appUrl}#widget`);
-  return widget;
 }
 
 // The widget has no free area to grab, so the page reports how far the

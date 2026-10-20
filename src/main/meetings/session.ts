@@ -38,6 +38,9 @@ export function createMeetingSession(options: {
   transcriber: Transcriber;
   now: () => number;
   captureGraceMs: number;
+  // The page that captured the recording sent its last audio, or stopped
+  // being waited for.
+  onCaptureFinished?: () => void;
 }): MeetingSession {
   const { recorder, models, transcriber, now, captureGraceMs } = options;
   let draining = false;
@@ -166,6 +169,7 @@ export function createMeetingSession(options: {
       if (state.status === 'recording') {
         await captured;
         draining = false;
+        options.onCaptureFinished?.();
         const id = state.meetingId;
         flushed = transcriber.flush().catch((error: unknown) => {
           recorder.setProblem(id, partLost(error));

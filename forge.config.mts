@@ -111,7 +111,12 @@ const config: ForgeConfig = {
     // Native addons can't be loaded from inside an archive.
     asar: { unpack: '**/*.node' },
     icon: 'build/icon',
-    extraResource: process.platform === 'linux' ? ['build/icon.png'] : [],
+    extraResource:
+      process.platform === 'linux'
+        ? ['build/icon.png']
+        : process.platform === 'darwin'
+          ? ['build/native/nod-mic-monitor']
+          : [],
     osxSign: signingIdentity
       ? {
           identity: signingIdentity,
@@ -120,10 +125,14 @@ const config: ForgeConfig = {
           optionsForFile: (filePath) =>
             /\((GPU|Renderer|Plugin)\)\.app$/.test(filePath)
               ? {}
-              : {
-                  hardenedRuntime: true,
-                  entitlements: 'build/entitlements.mac.plist',
-                },
+              : // The microphone monitor only reads which apps use audio, so it
+                // gets none of the app's entitlements.
+                filePath.endsWith('nod-mic-monitor')
+                ? { hardenedRuntime: true }
+                : {
+                    hardenedRuntime: true,
+                    entitlements: 'build/entitlements.mac.plist',
+                  },
         }
       : undefined,
     osxNotarize:
@@ -147,6 +156,11 @@ const config: ForgeConfig = {
   ],
   hooks: {
     prePackage: async () => checkRelayUrl(),
+    generateAssets: async (_config, platform) => {
+      if (platform === 'darwin') {
+        await run('node', ['scripts/build-mic-monitor.ts']);
+      }
+    },
     // Packaging edits Info.plist after Electron was signed, and macOS keeps an
     // app with a broken signature out of the keychain, so meetings could not
     // be encrypted. Builds without a signing identity get an ad-hoc signature.
@@ -159,6 +173,17 @@ const config: ForgeConfig = {
           name.endsWith('.app'),
         );
         for (const app of apps) {
+          // --deep signs nested bundles, not loose programs in Resources.
+          const monitor = path.join(
+            outputPath,
+            app,
+            'Contents',
+            'Resources',
+            'nod-mic-monitor',
+          );
+          if (existsSync(monitor)) {
+            await run('codesign', ['--force', '--sign', '-', monitor]);
+          }
           await run('codesign', [
             '--force',
             '--deep',

@@ -23,6 +23,16 @@ const api: AppApi = {
   platform: process.platform,
   getAppState: () => ipcRenderer.invoke(IpcChannel.getAppState),
   completeOnboarding: () => ipcRenderer.invoke(IpcChannel.completeOnboarding),
+  setSuggestMeetings: (enabled) =>
+    ipcRenderer.invoke(IpcChannel.setSuggestMeetings, enabled),
+  clearQuietMeetingApps: () =>
+    ipcRenderer.invoke(IpcChannel.clearQuietMeetingApps),
+  getMeetingSuggestion: () =>
+    ipcRenderer.invoke(IpcChannel.getMeetingSuggestion),
+  dismissMeetingSuggestion: (quietApp) =>
+    ipcRenderer.invoke(IpcChannel.dismissMeetingSuggestion, quietApp),
+  onMeetingSuggestion: (callback) =>
+    subscribe(IpcEvent.onMeetingSuggestion, callback),
   getAudioAccess: () => ipcRenderer.invoke(IpcChannel.getAudioAccess),
   requestMicrophoneAccess: () =>
     ipcRenderer.invoke(IpcChannel.requestMicrophoneAccess),

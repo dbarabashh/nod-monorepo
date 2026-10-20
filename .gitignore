@@ -148,5 +148,8 @@ out/
 # Renamed Electron bundle for `pnpm start` on macOS
 .dev-electron/
 
+# The macOS microphone monitor, built from native/macos
+build/native/
+
 # Vercel project link
 .vercel/
