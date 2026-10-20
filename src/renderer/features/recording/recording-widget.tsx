@@ -11,10 +11,10 @@ import {
   pauseRecording,
   showMainWindow,
 } from './api.ts';
+import { LevelBars } from './components/level-bars.tsx';
 import { NodMark } from './components/nod-mark.tsx';
 import './recording.css';
 
-const barScale = [0.375, 1, 0.5625];
 const clickSlop = 4;
 
 type Press = { x: number; y: number };
@@ -102,15 +102,7 @@ export function RecordingWidget() {
         aria-label="Pause recording"
         title="Pause recording"
       >
-        <span className="recording-widget__level" aria-hidden>
-          {barScale.map((scale, index) => (
-            <span
-              key={index}
-              className="recording-widget__bar"
-              style={{ transform: `scaleY(${Math.max(0.25, level * scale)})` }}
-            />
-          ))}
-        </span>
+        <LevelBars level={level} live className="recording-widget__level" />
         <span className="recording-widget__pause-icon" aria-hidden>
           <span />
           <span />

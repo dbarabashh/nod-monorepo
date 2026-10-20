@@ -286,10 +286,6 @@
     inline-size: fit-content;
     margin-inline: auto;
     max-inline-size: calc(100% - var(--space-8));
-    padding: var(--space-2);
-    border: var(--border-width) solid var(--color-border-strong);
-    border-radius: var(--radius-lg);
-    background-color: var(--color-surface);
   }
 
   .meeting-detail__note,

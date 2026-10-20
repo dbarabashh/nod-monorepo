@@ -236,8 +236,13 @@ app.whenReady().then(async () => {
     session: meetingSession,
     transcriber,
     showMainWindow,
-    sendLevel: (level) =>
-      widget?.webContents.send(IpcEvent.onRecordingLevel, level),
+    sendLevel: (level) => {
+      for (const window of [widget, mainWindow]) {
+        if (window && !window.isDestroyed()) {
+          window.webContents.send(IpcEvent.onRecordingLevel, level);
+        }
+      }
+    },
     dragWidget: createWidgetDrag(() => widget),
     copyText: (text) => clipboard.writeText(text),
   });

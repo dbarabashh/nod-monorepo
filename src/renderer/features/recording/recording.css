@@ -1,13 +1,55 @@
 @layer app {
   .record-button,
-  .meeting-recording-actions {
+  .voice-dock {
     display: flex;
     align-items: center;
     gap: var(--space-2);
   }
 
-  .meeting-recording-actions {
-    flex-wrap: wrap;
+  .voice-dock {
+    flex-direction: column;
+  }
+
+  .voice-pill {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-block-size: var(--control-height-lg);
+    padding-inline: var(--space-4) var(--space-1);
+    border: var(--border-width) solid var(--color-border-strong);
+    border-radius: var(--radius-full);
+    background-color: var(--color-surface);
+  }
+
+  .level-bars {
+    display: flex;
+    align-items: center;
+    gap: var(--space-0-5);
+    block-size: var(--space-4);
+
+    &[data-live] {
+      --_bar: var(--color-widget-level);
+    }
+  }
+
+  .level-bars__bar {
+    inline-size: var(--space-0-5);
+    block-size: 100%;
+    border-radius: var(--radius-full);
+    background-color: var(--_bar, var(--color-text-muted));
+    transform-origin: center;
+    transition: transform var(--duration-fast) var(--ease-out);
+  }
+
+  .voice-pill__stop-mark {
+    inline-size: var(--space-3);
+    block-size: var(--space-3);
+    border-radius: var(--radius-xs);
+    background-color: var(--color-text-muted);
+  }
+
+  .voice-pill__resume:not(:disabled) .voice-pill__resume-label {
+    color: var(--color-tone-success-fg);
   }
 
   .start-notice {
@@ -15,6 +57,13 @@
     color: var(--color-text-muted);
     font-size: var(--text-sm);
     line-height: var(--leading-sm);
+
+    .voice-dock & {
+      padding: var(--space-2) var(--space-3);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--radius-lg);
+      background-color: var(--color-surface);
+    }
   }
 
   .record-button__dot {
@@ -80,18 +129,12 @@
   .recording-widget__level,
   .recording-widget__pause-icon {
     grid-area: 1 / 1;
+  }
+
+  .recording-widget__pause-icon {
     display: flex;
     align-items: center;
     gap: var(--space-0-5);
-  }
-
-  .recording-widget__bar {
-    inline-size: var(--space-0-5);
-    block-size: var(--space-4);
-    border-radius: var(--radius-full);
-    background-color: var(--color-widget-level);
-    transform-origin: center;
-    transition: transform var(--duration-fast) var(--ease-out);
   }
 
   .recording-widget__pause-icon {
@@ -116,9 +159,14 @@
   }
 
   @media (forced-colors: active) {
-    .recording-widget__bar,
+    .level-bars__bar,
+    .voice-pill__stop-mark,
     .recording-widget__pause-icon > span {
       background-color: ButtonText;
+    }
+
+    .voice-pill {
+      border-color: CanvasText;
     }
 
     .recording-widget__mark {
@@ -127,7 +175,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .recording-widget__bar {
+    .level-bars__bar {
       transition: none;
     }
   }

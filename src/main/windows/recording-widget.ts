@@ -25,6 +25,9 @@ export function openRecordingWidget(appUrl: string): BrowserWindow {
     // Matches --color-widget-bg, so the window never flashes another colour.
     backgroundColor: '#0c0d10',
     hasShadow: true,
+    // macOS: the panel never becomes the key window, so without this the
+    // press that should start a drag or hit a button only focuses it.
+    acceptFirstMouse: true,
     // macOS: a panel floats over full-screen apps without stealing focus.
     // Windows: a toolbar window stays out of Alt+Tab.
     type:
