@@ -102,6 +102,7 @@ const forge = spawn(forgeBin, ['start', ...process.argv.slice(2)], {
   shell: process.platform === 'win32',
 });
 forge.on('exit', (code) => process.exit(code ?? 1));
-for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+const forwarded: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+for (const signal of forwarded) {
   process.on(signal, () => forge.kill(signal));
 }
