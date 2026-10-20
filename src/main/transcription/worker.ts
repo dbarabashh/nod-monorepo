@@ -42,6 +42,7 @@ type Engine = {
 
 type Stream = {
   meetingId: string;
+  segment: number;
   speaker: Speaker;
   buffer: AudioBuffer;
   unprocessedMs: number;
@@ -230,12 +231,29 @@ async function summarize(
   }
 }
 
-function failure(requestId: number | null, error: unknown): WorkerEvent {
+const unloadable =
+  'If this keeps happening, delete it in Settings → Transcription and download it again.';
+
+function failure(requestId: number, error: unknown): WorkerEvent {
+  return { type: 'failed', requestId, message: messageOf(error) };
+}
+
+function trouble(
+  stream: Pick<Stream, 'meetingId' | 'segment'>,
+  kind: 'part-lost' | 'unloadable',
+  message: string,
+): WorkerEvent {
   return {
-    type: 'failed',
-    requestId,
-    message: error instanceof Error ? error.message : String(error),
+    type: 'trouble',
+    meetingId: stream.meetingId,
+    segment: stream.segment,
+    kind,
+    message,
   };
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function handle(request: WorkerRequest) {
@@ -246,6 +264,7 @@ function handle(request: WorkerRequest) {
           speaker,
           {
             meetingId: request.meetingId,
+            segment: request.segment,
             speaker,
             buffer: emptyBuffer(request.offsetMs),
             unprocessedMs: 0,
@@ -254,7 +273,15 @@ function handle(request: WorkerRequest) {
       );
       void transcription(() =>
         loadEngine(request.engine, request.modelPath, request.vadPath),
-      ).catch((error: unknown) => post(failure(null, error)));
+      ).catch((error: unknown) =>
+        post(
+          trouble(
+            request,
+            'unloadable',
+            `The speech model couldn’t be loaded (${messageOf(error)}). ${unloadable}`,
+          ),
+        ),
+      );
       break;
     }
     case 'audio': {
@@ -267,7 +294,7 @@ function handle(request: WorkerRequest) {
       if (stream.unprocessedMs >= processEveryMs) {
         stream.unprocessedMs = 0;
         void transcription(() => drain(stream, false)).catch((error: unknown) =>
-          post(failure(null, error)),
+          post(trouble(stream, 'part-lost', messageOf(error))),
         );
       }
       break;

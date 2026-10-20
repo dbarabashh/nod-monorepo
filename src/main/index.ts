@@ -299,8 +299,8 @@ app.whenReady().then(async () => {
     onLines: (meetingId, lines) => {
       recorder.appendLines(meetingId, lines).catch(() => undefined);
     },
-    onFailure: (message, stopped) =>
-      meetingSession.transcriptionFailed(message, stopped),
+    onFailure: (meetingId, trouble, message, current) =>
+      meetingSession.transcriptionFailed(meetingId, trouble, message, current),
   });
   const meetingSession = createMeetingSession({
     recorder,

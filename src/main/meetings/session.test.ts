@@ -13,6 +13,9 @@ function setup(captureGraceMs = 0) {
   let summaryResult = () =>
     Promise.resolve({ summary: 'We agreed.', title: 'Shipping plan' });
   let flushResult = () => Promise.resolve();
+  let speechInstalled = true;
+  let speechDownloading = false;
+  let startFailure: Error | null = null;
   const recorder = createRecorder({
     store: {
       load: async () => [],
@@ -26,6 +29,9 @@ function setup(captureGraceMs = 0) {
   });
   const transcriber: Transcriber = {
     start: (meetingId, offsetMs) => {
+      if (startFailure) {
+        throw startFailure;
+      }
       calls.push(`start ${meetingId} ${offsetMs}`);
     },
     audio: () => {},
@@ -39,11 +45,31 @@ function setup(captureGraceMs = 0) {
     },
   };
   const models: ModelManager = {
-    list: async () => [],
+    list: async () =>
+      speechDownloading
+        ? [
+            {
+              id: 'parakeet-tdt-0.6b-v3',
+              kind: 'speech',
+              name: 'Parakeet',
+              description: '',
+              languages: '',
+              license: '',
+              recommended: true,
+              sizeBytes: 100,
+              downloadedBytes: 40,
+              status: 'downloading',
+              error: null,
+            },
+          ]
+        : [],
     download: async () => {},
     cancel: () => {},
     remove: async () => {},
     installed: async (kind) => {
+      if (kind === 'speech' && !speechInstalled) {
+        return null;
+      }
       const model = modelCatalog.find((entry) => entry.kind === kind);
       return model ? { model, path: (name) => `/models/${name}` } : null;
     },
@@ -67,6 +93,16 @@ function setup(captureGraceMs = 0) {
     },
     setFlush: (result: () => Promise<void>) => {
       flushResult = result;
+    },
+    removeSpeech: () => {
+      speechInstalled = false;
+    },
+    failStart: (error: Error) => {
+      startFailure = error;
+    },
+    downloadSpeech: () => {
+      speechInstalled = false;
+      speechDownloading = true;
     },
   };
 }
@@ -154,22 +190,221 @@ describe('createMeetingSession', () => {
     assert.equal(recorder.detail('m1').summaryStatus, 'failed');
   });
 
-  it('restarts transcription that crashed, but not forever', async () => {
+  it('refuses to record without a speech model, since the audio would be lost', async () => {
+    const { recorder, session, calls, removeSpeech } = setup();
+    await recorder.load();
+    await session.start('A');
+    await session.pause();
+    removeSpeech();
+    calls.length = 0;
+    await assert.rejects(session.start('B'), /needs a speech model/);
+    await assert.rejects(session.resume('m1'), /needs a speech model/);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => [meeting.title, meeting.status]),
+      [['A', 'paused']],
+    );
+    assert.equal(recorder.state().status, 'idle');
+  });
+
+  it('pauses and refuses a start whose transcription can’t begin', async () => {
+    const { recorder, session, calls, failStart } = setup();
+    await recorder.load();
+    failStart(new Error('model file is damaged'));
+    await assert.rejects(
+      session.start('A'),
+      /couldn’t start: model file is damaged/,
+    );
+    assert.deepEqual(calls, ['flush']);
+    assert.equal(recorder.state().status, 'idle');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Recording paused because transcription couldn’t start: model file is damaged',
+    );
+  });
+
+  it('tells a recording started during the speech model download to wait for it', async () => {
+    const { recorder, session, downloadSpeech } = setup();
+    await recorder.load();
+    downloadSpeech();
+    await assert.rejects(session.start('A'), /still downloading/);
+    assert.deepEqual(recorder.summaries(), []);
+  });
+
+  it('pauses when the speech model is gone by the time transcription restarts', async () => {
+    const { recorder, session, calls, removeSpeech } = setup();
+    await recorder.load();
+    await session.start('A');
+    removeSpeech();
+    calls.length = 0;
+    session.transcriptionFailed('m1', 'crashed', 'crashed', true);
+    await settle();
+    await settle();
+    assert.deepEqual(calls, ['flush']);
+    assert.equal(recorder.state().status, 'idle');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Recording paused: transcription needs a speech model. Download one in Settings → Transcription, then resume.',
+    );
+  });
+
+  it('keeps recording when only part of the transcript was lost', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    calls.length = 0;
+    session.transcriptionFailed('m1', 'part-lost', 'out of memory', true);
+    await settle();
+    assert.deepEqual(calls, []);
+    assert.equal(recorder.state().status, 'recording');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Part of the transcript couldn’t be made: out of memory',
+    );
+  });
+
+  it('restarts transcription that crashed, then pauses the recording', async () => {
     const { recorder, session, calls, advance } = setup();
     await recorder.load();
     await session.start('A');
     calls.length = 0;
     for (let crash = 0; crash < 4; crash += 1) {
       advance(1_000);
-      session.transcriptionFailed('crashed', true);
+      session.transcriptionFailed('m1', 'crashed', 'crashed', true);
       await settle();
     }
+    await settle();
     assert.deepEqual(calls, [
       'start m1 1000',
       'start m1 2000',
       'start m1 3000',
+      'flush',
     ]);
-    assert.match(recorder.detail('m1').problem ?? '', /stopped/);
+    assert.equal(recorder.state().status, 'idle');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Recording paused because transcription stopped: crashed',
+    );
+  });
+
+  it('pauses at once when the speech model can’t be loaded, without retrying', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    calls.length = 0;
+    session.transcriptionFailed(
+      'm1',
+      'unloadable',
+      'The model is damaged.',
+      true,
+    );
+    await settle();
+    await settle();
+    assert.deepEqual(calls, ['flush']);
+    assert.equal(recorder.state().status, 'idle');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Recording paused because transcription stopped: The model is damaged.',
+    );
+  });
+
+  it('only notes trouble from a paused meeting’s last seconds', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    await session.pause();
+    await session.start('B');
+    calls.length = 0;
+    session.transcriptionFailed('m1', 'crashed', 'crashed', false);
+    session.transcriptionFailed(
+      'm1',
+      'unloadable',
+      'The model is damaged.',
+      false,
+    );
+    await settle();
+    await settle();
+    assert.deepEqual(calls, []);
+    const state = recorder.state();
+    assert.equal(state.status === 'recording' && state.meetingId, 'm2');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Part of the transcript couldn’t be made: The model is damaged.',
+    );
+    assert.equal(recorder.detail('m2').problem, null);
+  });
+
+  it('doesn’t pause the recording for trouble from an earlier segment', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    calls.length = 0;
+    session.transcriptionFailed('m1', 'crashed', 'crashed', false);
+    session.transcriptionFailed(
+      'm1',
+      'unloadable',
+      'The model is damaged.',
+      false,
+    );
+    await settle();
+    await settle();
+    assert.deepEqual(calls, []);
+    assert.equal(recorder.state().status, 'recording');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Part of the transcript couldn’t be made: The model is damaged.',
+    );
+  });
+
+  it('notes the lost tail instead of restarting once its meeting has been paused', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    const paused = session.pause();
+    session.transcriptionFailed('m1', 'crashed', 'crashed', true);
+    await paused;
+    await settle();
+    assert.deepEqual(calls, ['start m1 0', 'flush']);
+    assert.equal(recorder.state().status, 'idle');
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Part of the transcript couldn’t be made: crashed',
+    );
+  });
+
+  it('notes the lost tail when transcription stops while a pause is under way', async () => {
+    const { recorder, session, calls } = setup();
+    await recorder.load();
+    await session.start('A');
+    await session.pause();
+    calls.length = 0;
+    session.transcriptionFailed(
+      'm1',
+      'crashed',
+      'Transcription stopped unexpectedly',
+      true,
+    );
+    await settle();
+    assert.deepEqual(calls, []);
+    assert.equal(
+      recorder.detail('m1').problem,
+      'Part of the transcript couldn’t be made: Transcription stopped unexpectedly',
+    );
+  });
+
+  it('doesn’t restart transcription that a resume already started again', async () => {
+    const { recorder, session, calls, advance } = setup();
+    await recorder.load();
+    await session.start('A');
+    advance(1_000);
+    const paused = session.pause();
+    const resumed = session.resume('m1');
+    session.transcriptionFailed('m1', 'crashed', 'crashed', true);
+    await paused;
+    await resumed;
+    await settle();
+    assert.deepEqual(calls, ['start m1 0', 'flush', 'start m1 1000']);
+    assert.equal(recorder.detail('m1').problem, null);
   });
 
   it('starts the next meeting while the last one is still being transcribed', async () => {

@@ -1,4 +1,5 @@
 import type {
+  ModelInfo,
   RecordingState,
   Speaker,
   WidgetDragPhase,
@@ -12,6 +13,10 @@ export function onRecordingChanged(
   callback: (state: RecordingState) => void,
 ): () => void {
   return window.api.onRecordingChanged(callback);
+}
+
+export function listModels(): Promise<ModelInfo[]> {
+  return window.api.listModels();
 }
 
 export function startRecording(title: string): Promise<void> {

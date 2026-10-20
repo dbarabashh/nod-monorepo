@@ -1,10 +1,20 @@
 import { transcriptText } from '../../core/meetings/index.ts';
 import { vadFile } from '../../core/models/index.ts';
 import type { ModelManager } from '../models/manager.ts';
-import type { SpeechSetup, Transcriber } from '../transcription/service.ts';
+import type {
+  SpeechSetup,
+  Transcriber,
+  TranscriptionTrouble,
+} from '../transcription/service.ts';
 import type { Recorder } from './recorder.ts';
 
 const maxRestarts = 3;
+const noSpeechModel =
+  'Transcription needs a speech model. Download one in Settings → Transcription, then start again.';
+const pausedNoSpeechModel =
+  'Recording paused: transcription needs a speech model. Download one in Settings → Transcription, then resume.';
+const speechModelDownloading =
+  'The speech model is still downloading. Start recording once it is ready.';
 
 export type MeetingSession = {
   start: (title: string) => Promise<void>;
@@ -14,7 +24,12 @@ export type MeetingSession = {
   summarize: (id: string) => Promise<void>;
   acceptsAudio: () => boolean;
   captureStopped: () => void;
-  transcriptionFailed: (message: string, stopped: boolean) => void;
+  transcriptionFailed: (
+    meetingId: string,
+    trouble: TranscriptionTrouble,
+    message: string,
+    current: boolean,
+  ) => void;
 };
 
 export function createMeetingSession(options: {
@@ -29,6 +44,7 @@ export function createMeetingSession(options: {
   let releaseCapture = () => {};
   let tail: Promise<unknown> = Promise.resolve();
   let restarts = 0;
+  let listens = 0;
 
   // Start, pause and finish each await several steps; running them one at a
   // time keeps a resume from landing in the middle of a finish.
@@ -52,10 +68,13 @@ export function createMeetingSession(options: {
     };
   }
 
-  function listen(setup: SpeechSetup | null) {
+  function listen(setup: SpeechSetup | null): string | null {
     const state = recorder.state();
-    if (state.status !== 'recording' || !setup) {
-      return;
+    if (state.status !== 'recording') {
+      return null;
+    }
+    if (!setup) {
+      return pausedNoSpeechModel;
     }
     try {
       transcriber.start(
@@ -63,13 +82,43 @@ export function createMeetingSession(options: {
         state.previousMs + Math.max(0, now() - state.segmentStartedAt),
         setup,
       );
+      listens += 1;
+      return null;
     } catch (error) {
-      recorder.setProblem(state.meetingId, problemText(error));
+      return problemText(error);
+    }
+  }
+
+  // Audio is never kept, so a recording nothing transcribes is paused rather
+  // than left running with its words lost. Runs inside the lock.
+  async function halt(id: string, problem: string) {
+    const state = recorder.state();
+    if (state.status !== 'recording' || state.meetingId !== id) {
+      return;
+    }
+    const explain = () => {
+      const now = recorder.state();
+      if (now.status !== 'recording' || now.meetingId !== id) {
+        recorder.setProblem(id, problem);
+      }
+    };
+    try {
+      const { flushed } = await stop();
+      void flushed.then(explain);
+    } catch (error) {
+      explain();
+      throw error;
     }
   }
 
   async function begin(run: () => Promise<unknown>) {
     const setup = await speechSetup();
+    if (!setup) {
+      const downloading = (await models.list().catch(() => [])).some(
+        (model) => model.kind === 'speech' && model.status === 'downloading',
+      );
+      throw new Error(downloading ? speechModelDownloading : noSpeechModel);
+    }
     try {
       await run();
     } catch (error) {
@@ -77,11 +126,16 @@ export function createMeetingSession(options: {
       throw error;
     }
     const state = recorder.state();
-    if (state.status === 'recording') {
-      restarts = 0;
-      recorder.setProblem(state.meetingId, null);
+    if (state.status !== 'recording') {
+      return;
     }
-    listen(setup);
+    restarts = 0;
+    recorder.setProblem(state.meetingId, null);
+    const problem = listen(setup);
+    if (problem !== null) {
+      await halt(state.meetingId, problem);
+      throw new Error(problem);
+    }
   }
 
   // The renderer stops capturing only once it hears the recording paused, and
@@ -180,24 +234,45 @@ export function createMeetingSession(options: {
     summarize,
     acceptsAudio: () => draining || recorder.state().status === 'recording',
     captureStopped: () => releaseCapture(),
-    transcriptionFailed: (message, stopped) => {
+    transcriptionFailed: (meetingId, trouble, message, current) => {
       const state = recorder.state();
-      if (state.status !== 'recording') {
+      const live =
+        current &&
+        state.status === 'recording' &&
+        state.meetingId === meetingId;
+      if (trouble === 'part-lost' || !live) {
+        recorder.setProblem(meetingId, partLost(message));
         return;
       }
-      if (stopped && restarts < maxRestarts) {
-        restarts += 1;
-        recorder.setProblem(
-          state.meetingId,
-          'Transcription restarted after an error, so a few seconds may be missing.',
-        );
-        void exclusive(async () => listen(await speechSetup()));
+      if (trouble === 'crashed' && restarts < maxRestarts) {
+        const crashed = listens;
+        void exclusive(async () => {
+          const now = recorder.state();
+          if (now.status !== 'recording' || now.meetingId !== meetingId) {
+            recorder.setProblem(meetingId, partLost(message));
+            return;
+          }
+          if (listens !== crashed) {
+            return;
+          }
+          restarts += 1;
+          recorder.setProblem(
+            meetingId,
+            'Transcription restarted after an error, so a few seconds may be missing.',
+          );
+          const problem = listen(await speechSetup());
+          if (problem !== null) {
+            await halt(meetingId, problem);
+          }
+        }).catch(() => undefined);
         return;
       }
-      recorder.setProblem(
-        state.meetingId,
-        stopped ? `Transcription stopped: ${message}` : partLost(message),
-      );
+      void exclusive(() =>
+        halt(
+          meetingId,
+          `Recording paused because transcription stopped: ${message}`,
+        ),
+      ).catch(() => undefined);
     },
   };
 }
@@ -207,7 +282,7 @@ function messageOf(error: unknown): string {
 }
 
 function problemText(error: unknown): string {
-  return `Transcription couldn’t start: ${messageOf(error)}`;
+  return `Recording paused because transcription couldn’t start: ${messageOf(error)}`;
 }
 
 function partLost(error: unknown): string {

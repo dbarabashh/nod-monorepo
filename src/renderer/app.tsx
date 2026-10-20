@@ -30,7 +30,7 @@ export function App() {
       RecoveryKey={KeySetup}
       SyncPlace={SyncStep}
       audio={<AudioAccessPanel />}
-      speechModels={<ModelsPanel kind="speech" />}
+      speechModels={<ModelsPanel kind="speech" autoDownload />}
       summaryModels={<ModelsPanel kind="summary" />}
     >
       <Shell />

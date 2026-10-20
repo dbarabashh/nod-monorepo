@@ -25,6 +25,8 @@ export type Transcriber = {
   ) => Promise<{ summary: string; title: string }>;
 };
 
+export type TranscriptionTrouble = 'part-lost' | 'unloadable' | 'crashed';
+
 type Pending = {
   resolve: (event: WorkerEvent) => void;
   reject: (error: Error) => void;
@@ -33,11 +35,18 @@ type Pending = {
 export function createTranscriber(options: {
   workerPath: string;
   onLines: (meetingId: string, lines: TranscriptLine[]) => void;
-  onFailure: (message: string, stopped: boolean) => void;
+  onFailure: (
+    meetingId: string,
+    trouble: TranscriptionTrouble,
+    message: string,
+    current: boolean,
+  ) => void;
 }): Transcriber {
   const { workerPath, onLines, onFailure } = options;
   let worker: UtilityProcess | null = null;
-  let listening = false;
+  let listening: { meetingId: string; segment: number } | null = null;
+  let segments = 0;
+  const finishing = new Set<number>();
   let early: Array<{ speaker: Speaker; samples: Int16Array }> = [];
   let earlySamples = 0;
   let nextRequest = 1;
@@ -55,9 +64,10 @@ export function createTranscriber(options: {
         onLines(event.meetingId, event.lines);
         return;
       }
-      if (event.requestId === null) {
-        if (event.type === 'failed' && listening) {
-          onFailure(event.message, false);
+      if (event.type === 'trouble') {
+        const current = listening?.segment === event.segment;
+        if (current || finishing.has(event.segment)) {
+          onFailure(event.meetingId, event.kind, event.message, current);
         }
         return;
       }
@@ -70,9 +80,15 @@ export function createTranscriber(options: {
         request.reject(new Error('Transcription stopped unexpectedly'));
       }
       pending.clear();
-      if (listening) {
-        listening = false;
-        onFailure('Transcription stopped unexpectedly', true);
+      if (listening !== null) {
+        const { meetingId } = listening;
+        listening = null;
+        onFailure(
+          meetingId,
+          'crashed',
+          'Transcription stopped unexpectedly',
+          true,
+        );
       }
     });
     worker = child;
@@ -97,17 +113,25 @@ export function createTranscriber(options: {
   return {
     start: (meetingId, offsetMs, setup) => {
       const child = spawn();
-      child.postMessage({ type: 'start', meetingId, offsetMs, ...setup });
+      segments += 1;
+      const segment = segments;
+      child.postMessage({
+        type: 'start',
+        meetingId,
+        segment,
+        offsetMs,
+        ...setup,
+      });
       for (const { speaker, samples } of early) {
         child.postMessage({ type: 'audio', speaker, samples });
       }
       forgetEarly();
-      listening = true;
+      listening = { meetingId, segment };
     },
     // Audio that arrives while the model is being picked is kept for a few
     // seconds, so the first words of a meeting aren't lost.
     audio: (speaker, samples) => {
-      if (listening && worker) {
+      if (listening !== null && worker) {
         worker.postMessage({ type: 'audio', speaker, samples });
       } else if (earlySamples + samples.length <= maxEarlySamples) {
         early.push({ speaker, samples });
@@ -116,13 +140,19 @@ export function createTranscriber(options: {
     },
     flush: async () => {
       forgetEarly();
-      if (!listening || !worker) {
+      if (listening === null || !worker) {
         return;
       }
-      listening = false;
-      const event = await ask((requestId) => ({ type: 'flush', requestId }));
-      if (event.type === 'failed') {
-        throw new Error(event.message);
+      const { segment } = listening;
+      listening = null;
+      finishing.add(segment);
+      try {
+        const event = await ask((requestId) => ({ type: 'flush', requestId }));
+        if (event.type === 'failed') {
+          throw new Error(event.message);
+        }
+      } finally {
+        finishing.delete(segment);
       }
     },
     summarize: async (modelPath, transcript) => {
