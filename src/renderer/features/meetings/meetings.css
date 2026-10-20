@@ -38,6 +38,7 @@
 
   .folder-nav {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-0-5);
     margin-block-start: var(--space-3);
   }
@@ -52,6 +53,7 @@
 
   .folder-nav__list {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     padding: 0;
     list-style: none;
   }
@@ -111,9 +113,12 @@
     inline-size: var(--field-width-md);
   }
 
+  /* The space above the list sits inside the column, not the scroller,
+     because a sticky day title stops at the scroller's padding and rows
+     would show above it. */
   .meetings__body {
     min-block-size: 0;
-    padding: var(--space-6) var(--space-4) var(--space-12);
+    padding: 0 var(--space-4) var(--space-12);
   }
 
   /* Wide enough for the folder button (its name capped below) and the menu
@@ -125,6 +130,7 @@
     gap: var(--space-8);
     max-inline-size: var(--measure-wide);
     margin-inline: auto;
+    padding-block-start: var(--space-6);
   }
 
   .meetings__status {
@@ -144,7 +150,7 @@
     padding: var(--space-1) var(--space-3);
     background-color: var(--color-surface);
     color: var(--color-text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-row-meta);
     line-height: var(--leading-sm);
     font-weight: var(--weight-semibold);
   }
@@ -169,7 +175,7 @@
 
   .meeting-row__title {
     overflow: hidden;
-    font-size: var(--text-lg);
+    font-size: var(--text-row-title);
     line-height: var(--leading-lg);
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -180,7 +186,7 @@
     align-items: center;
     gap: var(--space-2);
     color: var(--color-text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-row-meta);
     line-height: var(--leading-sm);
     font-variant-numeric: tabular-nums;
   }
@@ -190,7 +196,7 @@
     align-items: center;
     gap: var(--space-2);
     color: var(--color-text-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-row-meta);
     line-height: var(--leading-sm);
     font-weight: var(--weight-medium);
     font-variant-numeric: tabular-nums;
@@ -452,5 +458,148 @@
     margin: var(--space-1) calc(var(--space-1) * -1);
     border: 0;
     border-block-start: var(--border-width) solid var(--color-border);
+  }
+
+  .select-box {
+    display: grid;
+    place-items: center;
+    inline-size: var(--control-height-sm);
+    block-size: var(--control-height-sm);
+    cursor: default;
+  }
+
+  .select-box__input {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .select-box__box {
+    display: grid;
+    place-items: center;
+    inline-size: var(--icon-size);
+    block-size: var(--icon-size);
+    border: var(--border-width) solid var(--color-border-strong);
+    border-radius: var(--radius-xs);
+    background-color: var(--color-surface);
+    color: var(--color-on-accent);
+    transition:
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out);
+
+    & .ui-icon {
+      grid-area: 1 / 1;
+      inline-size: var(--icon-size-sm);
+      block-size: var(--icon-size-sm);
+      visibility: hidden;
+    }
+  }
+
+  .select-box:hover .select-box__input:not(:disabled) + .select-box__box {
+    border-color: var(--color-text-muted);
+  }
+
+  .select-box__input:is(:checked, :indeterminate) + .select-box__box {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent);
+  }
+
+  .select-box__input:checked:not(:indeterminate) + .select-box__box .ui-icon {
+    visibility: visible;
+  }
+
+  .select-box__input:indeterminate + .select-box__box::after {
+    content: '';
+    inline-size: var(--icon-size-sm);
+    block-size: calc(var(--border-width) * 2);
+    grid-area: 1 / 1;
+    background-color: var(--color-on-accent);
+  }
+
+  .select-box__input:focus-visible + .select-box__box {
+    outline: var(--focus-ring-width) solid var(--color-focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .select-box__input:disabled + .select-box__box {
+    border-color: var(--color-border);
+    background-color: var(--color-field);
+  }
+
+  @media (forced-colors: active) {
+    .select-box__box {
+      border-color: ButtonText;
+    }
+
+    .select-box__input:is(:checked, :indeterminate) + .select-box__box {
+      border-color: Highlight;
+      background-color: Highlight;
+      color: HighlightText;
+    }
+
+    .select-box__input:indeterminate + .select-box__box::after {
+      background-color: HighlightText;
+    }
+
+    .select-box__input:disabled + .select-box__box {
+      border-color: GrayText;
+    }
+  }
+
+  .meetings__actions:has(> .meetings__selection) {
+    flex: 1;
+  }
+
+  /* While meetings are selected, the bar starts where the list's column
+     does, so its checkbox lines up with the rows' checkboxes at any width.
+     The header measures its own content box, with the same scrollbar gutter
+     the list keeps, and the folder name steps aside (it stays in the
+     sidebar and for screen readers) so the bar starts at the content edge. */
+  .meetings__header:has(.meetings__selection) {
+    container-type: inline-size;
+    overflow: hidden;
+    scrollbar-gutter: stable;
+
+    & .meetings__title {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    & .meetings__selection {
+      padding-inline-start: max(0px, calc((100cqi - var(--measure-wide)) / 2));
+    }
+  }
+
+  .meetings__selection {
+    min-inline-size: 0;
+    margin: 0;
+    padding-block: 0;
+    padding-inline-end: 0;
+    border: none;
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .meetings__selection-count {
+    min-inline-size: 0;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    line-height: var(--leading-md);
+  }
+
+  .meetings__selection-note {
+    min-inline-size: 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
   }
 }

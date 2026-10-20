@@ -40,6 +40,15 @@ function meetingId(value: unknown): string {
   return boundedString(value, maxIdLength, 'Unknown meeting');
 }
 
+const maxDeleteCount = 10_000;
+
+function meetingIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > maxDeleteCount) {
+    throw new Error('Unknown meetings');
+  }
+  return value.map(meetingId);
+}
+
 function meetingPart(value: unknown): MeetingPart {
   if (value !== 'summary' && value !== 'transcript') {
     throw new Error('Unknown part of a meeting');
@@ -130,6 +139,9 @@ export function registerRecordingIpc(options: {
   );
   handleFromApp(appUrl, IpcChannel.deleteMeeting, (id) =>
     recorder.remove(meetingId(id)),
+  );
+  handleFromApp(appUrl, IpcChannel.deleteMeetings, (ids) =>
+    recorder.removeMany(meetingIds(ids)),
   );
   handleFromApp(appUrl, IpcChannel.editSummary, (id, markdown) =>
     recorder.editSummary(

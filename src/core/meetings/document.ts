@@ -47,8 +47,8 @@ function linesOf(meeting: Meeting): Record<string, LineFields> {
   );
 }
 
-export function createDocument(meeting: Meeting): MeetingDocument {
-  return Automerge.from<MeetingFields>({
+function fieldsOf(meeting: Meeting): MeetingFields {
+  return {
     schema: documentSchema,
     id: meeting.id,
     title: new Automerge.ImmutableString(meeting.title),
@@ -61,12 +61,16 @@ export function createDocument(meeting: Meeting): MeetingDocument {
     generatedTitle: nameOf(meeting.generatedTitle),
     folder: nameOf(meeting.folder),
     deletedAt: null,
-  });
+  };
 }
 
-function fnvHex(text: string, seed: number): string {
+export function createDocument(meeting: Meeting): MeetingDocument {
+  return Automerge.from<MeetingFields>(fieldsOf(meeting));
+}
+
+function fnvHex(bytes: Uint8Array, seed: number): string {
   let hash = seed;
-  for (const byte of new TextEncoder().encode(text)) {
+  for (const byte of bytes) {
     hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
   }
   return hash.toString(16).padStart(8, '0');
@@ -75,11 +79,40 @@ function fnvHex(text: string, seed: number): string {
 // A fresh document with no history, so a deleted meeting's text doesn't live
 // on in the change log of every device that syncs it. Its author and time are
 // fixed, so every device builds the same bytes and they stop syncing it.
-export function tombstone(id: string, deletedAt: number): MeetingDocument {
-  const key = `${id}:${deletedAt}`;
-  const actor = [0x811c9dc5, 0x2f1a3b4c, 0x5e6d7c8b, 0x13572468]
-    .map((seed) => fnvHex(key, seed))
+function fixedActor(key: string): string {
+  const bytes = new TextEncoder().encode(key);
+  return [0x811c9dc5, 0x2f1a3b4c, 0x5e6d7c8b, 0x13572468]
+    .map((seed) => fnvHex(bytes, seed))
     .join('');
+}
+
+// Devices that import the same meeting before they sync build the same first
+// change, so their copies share history and later edits on either side merge
+// instead of one copy replacing the other. The clone writes as its own author
+// from then on: two devices writing as one would corrupt the history.
+// The same author with a different first change stops the meeting syncing for
+// good, so any change to how a meeting is written here (fields, schema, the
+// Automerge version) must bump the encoding, which the pinned test catches.
+const importEncoding = 'import-1';
+
+export function importedDocument(meeting: Meeting): MeetingDocument {
+  return Automerge.clone(
+    Automerge.change(
+      Automerge.init<MeetingFields>({
+        actor: fixedActor(
+          `${importEncoding}:${documentSchema}:${JSON.stringify(meeting)}`,
+        ),
+      }),
+      { time: 0 },
+      (fields) => {
+        Object.assign(fields, fieldsOf(meeting));
+      },
+    ),
+  );
+}
+
+export function tombstone(id: string, deletedAt: number): MeetingDocument {
+  const actor = fixedActor(`${id}:${deletedAt}`);
   return Automerge.change(
     Automerge.init<MeetingFields>({ actor }),
     { time: 0 },

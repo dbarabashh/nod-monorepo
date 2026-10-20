@@ -139,6 +139,18 @@ export type McpState = {
 
 export type McpConnection = { key: string; client: McpClientInfo };
 
+export type MeetingImportCounts = {
+  added: number;
+  present: number;
+  failed: number;
+};
+
+export type MeetingImportResult =
+  | { status: 'cancelled' }
+  | ({ status: 'imported'; skipped: number } & MeetingImportCounts);
+
+export type MeetingsDeleteResult = { deleted: number; failed: number };
+
 export type AppState = {
   onboardingCompleted: boolean;
 };
@@ -172,10 +184,12 @@ export const IpcChannel = {
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
   deleteMeeting: 'meetings:delete',
+  deleteMeetings: 'meetings:delete-many',
   renameMeeting: 'meetings:rename',
   moveMeetingToFolder: 'meetings:move-to-folder',
   renameFolder: 'folders:rename',
   removeFolder: 'folders:remove',
+  importMeetings: 'meetings:import',
   summarizeMeeting: 'meetings:summarize',
   editSummary: 'meetings:edit-summary',
   editTranscriptLine: 'meetings:edit-line',
@@ -220,10 +234,12 @@ export type AppApi = {
   getMeeting: (id: string) => Promise<MeetingDetail>;
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
+  deleteMeetings: (ids: string[]) => Promise<MeetingsDeleteResult>;
   renameMeeting: (id: string, title: string) => Promise<void>;
   moveMeetingToFolder: (id: string, folder: string | null) => Promise<void>;
   renameFolder: (from: string, to: string) => Promise<string>;
   removeFolder: (name: string) => Promise<void>;
+  importMeetings: () => Promise<MeetingImportResult>;
   summarizeMeeting: (id: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
   editTranscriptLine: (

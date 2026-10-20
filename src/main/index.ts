@@ -20,6 +20,7 @@ import { ignoreClosedOutput } from './closed-output.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastMcp, registerMcpIpc } from './ipc/mcp.ts';
+import { registerMeetingImportIpc } from './ipc/meeting-import.ts';
 import { loopbackExchange, runStdioBridge } from './mcp/bridge.ts';
 import { createMcpSettingsFile } from './mcp/settings-file.ts';
 import { createMcpService } from './mcp/service.ts';
@@ -27,6 +28,8 @@ import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
 import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
 import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
 import { createSyncHandlers } from './sync/handlers.ts';
+import { processAlive, quitWithParent } from './dev/quit-with-parent.ts';
+import { createMeetingImport } from './meetings/import-file.ts';
 import { createRecorder } from './meetings/recorder.ts';
 import { createMeetingSession } from './meetings/session.ts';
 import { createTranscriber } from './transcription/service.ts';
@@ -276,9 +279,28 @@ function showMainWindow() {
   });
 }
 
+async function choosePath(options: OpenDialogOptions): Promise<string | null> {
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? null : (result.filePaths[0] ?? null);
+}
+
 app.whenReady().then(async () => {
   if (mcpBridge) {
     return;
+  }
+  const launcher = Number(process.env.NOD_DEV_LAUNCHER);
+  if (!app.isPackaged && Number.isInteger(launcher) && launcher > 0) {
+    quitWithParent({
+      parent: launcher,
+      isAlive: processAlive,
+      every: (callback) => {
+        const timer = setInterval(callback, 1_000);
+        return () => clearInterval(timer);
+      },
+      quit: () => app.quit(),
+    });
   }
   const displayCapture = createDisplayCaptureGate(Date.now, 5000);
   secureSession(session.defaultSession, appUrl, displayCapture);
@@ -326,20 +348,27 @@ app.whenReady().then(async () => {
     dragWidget: createWidgetDrag(() => widget),
     copyText: (text) => clipboard.writeText(text),
   });
+  registerMeetingImportIpc(
+    appUrl,
+    createMeetingImport({
+      recorder,
+      chooseFile: () =>
+        choosePath({
+          title: 'Choose a meetings export to import',
+          properties: ['openFile'],
+          filters: [{ name: 'Meetings export', extensions: ['json'] }],
+        }),
+    }),
+  );
   registerSyncIpc(
     appUrl,
     createSyncHandlers({
       controller: syncController,
-      chooseFolder: async () => {
-        const options: OpenDialogOptions = {
+      chooseFolder: () =>
+        choosePath({
           title: 'Choose a folder to sync meetings through',
           properties: ['openDirectory', 'createDirectory'],
-        };
-        const result = mainWindow
-          ? await dialog.showOpenDialog(mainWindow, options)
-          : await dialog.showOpenDialog(options);
-        return result.canceled ? null : (result.filePaths[0] ?? null);
-      },
+        }),
       confirm: async ({ message, detail, confirmLabel, cancelLabel }) => {
         const options: MessageBoxOptions = {
           type: 'warning',

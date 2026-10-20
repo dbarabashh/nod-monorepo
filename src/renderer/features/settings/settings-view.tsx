@@ -8,7 +8,8 @@ type PageId =
   | 'summaries'
   | 'assistants'
   | 'sync'
-  | 'recovery';
+  | 'recovery'
+  | 'import';
 
 type Page = {
   id: PageId;
@@ -77,6 +78,13 @@ const groups: Array<{ label: string; pages: Page[] }> = [
         icon: 'key',
         description:
           'Twenty-four words that bring your synced meetings back on a new device if you lose all the others.',
+      },
+      {
+        id: 'import',
+        label: 'Import from Nod',
+        icon: 'download',
+        description:
+          'Move your meetings from the previous Nod app to this one: titles, summaries and transcripts.',
       },
     ],
   },

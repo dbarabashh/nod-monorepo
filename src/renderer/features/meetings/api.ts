@@ -1,4 +1,5 @@
 import type {
+  MeetingsDeleteResult,
   MeetingDetail,
   MeetingPart,
   MeetingSummary,
@@ -74,4 +75,8 @@ export function renameFolder(from: string, to: string): Promise<string> {
 
 export function removeFolder(name: string): Promise<void> {
   return window.api.removeFolder(name);
+}
+
+export function deleteMeetings(ids: string[]): Promise<MeetingsDeleteResult> {
+  return window.api.deleteMeetings(ids);
 }

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import * as Automerge from '@automerge/automerge';
 import {
   createDocument,
+  importedDocument,
   loadDocument,
   mergeDocuments,
   readDocument,
@@ -435,5 +436,66 @@ describe('meeting documents', () => {
       }
     });
     assert.equal(readDocument(damaged), null);
+  });
+});
+
+describe('an imported meeting', () => {
+  const imported: Meeting = {
+    ...finishMeeting(startMeeting('imported-a', 'Planning', 1_000), 9_000),
+    summary: 'Ship on Friday',
+    transcript: [
+      { id: 'l0', speaker: 'me', startMs: 0, endMs: 500, text: 'Hello.' },
+    ],
+  };
+
+  // Pinned on purpose: if this changes, devices on the old and new version
+  // would write different first changes as the same author. Bump the import
+  // encoding in document.ts, then update the hash.
+  it('writes the same first change as earlier versions', () => {
+    assert.deepEqual(Automerge.getHeads(importedDocument(imported)), [
+      'a204d28c9e6ed767e064c17bd97efb206a9f876d07c7716315ad18390e231287',
+    ]);
+  });
+
+  it('reads back as the meeting it was built from', () => {
+    assert.deepEqual(meetingOf(importedDocument(imported)), imported);
+  });
+
+  // Two devices import the same file before they first sync. Each run builds
+  // fresh copies, so an unlucky pick between unrelated histories would show.
+  it('keeps an edit made on one device after merging with the other', () => {
+    for (let run = 0; run < 20; run += 1) {
+      const here = importedDocument(imported);
+      const there = importedDocument(imported);
+      const edited = updateDocument(
+        here,
+        imported,
+        editSummary(imported, 'Ship on Monday'),
+      );
+      assert.equal(
+        meetingOf(mergeDocuments(there, edited)).summary,
+        'Ship on Monday',
+      );
+      assert.equal(
+        meetingOf(mergeDocuments(edited, there)).summary,
+        'Ship on Monday',
+      );
+    }
+  });
+
+  it('lets each device write as its own author afterwards', () => {
+    const here = updateDocument(
+      importedDocument(imported),
+      imported,
+      renameMeeting(imported, 'Here'),
+    );
+    const there = updateDocument(
+      importedDocument(imported),
+      imported,
+      editSummary(imported, 'There'),
+    );
+    const merged = meetingOf(mergeDocuments(here, there));
+    assert.equal(merged.title, 'Here');
+    assert.equal(merged.summary, 'There');
   });
 });

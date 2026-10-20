@@ -1,11 +1,21 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { startMeeting, type Meeting } from '../../core/meetings/index.ts';
+import {
+  finishMeeting,
+  startMeeting,
+  type Meeting,
+} from '../../core/meetings/index.ts';
 import { createRecorder, type RecorderStore } from './recorder.ts';
+
+const noImports: Pick<RecorderStore, 'isDeleted' | 'importMeeting'> = {
+  isDeleted: () => false,
+  importMeeting: async () => {},
+};
 
 function setup(initial: Meeting[] = []) {
   let time = 1_000;
   const saved = new Map(initial.map((meeting) => [meeting.id, meeting]));
+  const deleted = new Set<string>();
   let tick = () => {};
   let ticking = false;
   let ids = 0;
@@ -16,6 +26,11 @@ function setup(initial: Meeting[] = []) {
     },
     remove: async (id) => {
       saved.delete(id);
+      deleted.add(id);
+    },
+    isDeleted: (id) => deleted.has(id),
+    importMeeting: async (meeting) => {
+      saved.set(meeting.id, meeting);
     },
   };
   const recorder = createRecorder({
@@ -149,6 +164,7 @@ describe('createRecorder', () => {
           throw new Error('ENOSPC');
         },
         remove: async () => {},
+        ...noImports,
       },
       now: () => 0,
       newId: () => 'x',
@@ -175,6 +191,7 @@ describe('createRecorder', () => {
             saves.push(resolve);
           }),
         remove: async () => {},
+        ...noImports,
       },
       now: () => 0,
       newId: () => 'x',
@@ -220,6 +237,7 @@ describe('createRecorder', () => {
             : Promise.resolve();
         },
         remove: async () => {},
+        ...noImports,
       },
       now: () => 100,
       newId: () => 'b',
@@ -250,6 +268,7 @@ describe('createRecorder', () => {
           }
         },
         remove: async () => {},
+        ...noImports,
       },
       now: () => 0,
       newId: () => 'x',
@@ -418,6 +437,7 @@ describe('createRecorder', () => {
           throw new Error('should not save');
         },
         remove: async () => {},
+        ...noImports,
       },
       now: () => 0,
       newId: () => 'x',
@@ -532,6 +552,7 @@ describe('createRecorder', () => {
           disk.set(meeting.id, meeting);
         },
         remove: async () => {},
+        ...noImports,
       },
       now: () => 0,
       newId: () => 'new',
@@ -556,6 +577,96 @@ describe('createRecorder', () => {
     await assert.rejects(
       recorder.renameFolder('Clients', 'Customers'),
       /ENOSPC/,
+    );
+  });
+
+  it('deletes the chosen meetings, leaving the one being recorded', async () => {
+    const { recorder, saved } = setup([
+      finishMeeting(startMeeting('a', 'A', 0), 10),
+      finishMeeting(startMeeting('b', 'B', 0), 10),
+      finishMeeting(startMeeting('c', 'C', 0), 10),
+    ]);
+    await recorder.load();
+    const live = await recorder.start('Live');
+
+    assert.deepEqual(
+      await recorder.removeMany(['a', 'c', 'a', 'unknown', live]),
+      { deleted: 2, failed: 1 },
+    );
+    assert.deepEqual(
+      recorder
+        .summaries()
+        .map((meeting) => meeting.id)
+        .sort(),
+      ['b', live].sort(),
+    );
+    assert.deepEqual(
+      saved()
+        .map((meeting) => meeting.id)
+        .sort(),
+      ['b', live].sort(),
+    );
+  });
+
+  it('refuses to delete before saved meetings were read', async () => {
+    const { recorder } = setup([startMeeting('a', 'A', 0)]);
+    await assert.rejects(recorder.removeMany(['a']), /could not be read/);
+  });
+
+  it('keeps deleting the others when one meeting can’t be deleted', async () => {
+    const removed: string[] = [];
+    const recorder = createRecorder({
+      store: {
+        load: async () => [
+          startMeeting('a', 'A', 0),
+          startMeeting('b', 'B', 0),
+          startMeeting('c', 'C', 0),
+        ],
+        save: async () => {},
+        remove: async (id) => {
+          if (id === 'b') {
+            throw new Error('ENOSPC');
+          }
+          removed.push(id);
+        },
+        ...noImports,
+      },
+      now: () => 0,
+      newId: () => 'new',
+      every: () => () => {},
+      onChange: () => {},
+    });
+    await recorder.load();
+
+    assert.deepEqual(await recorder.removeMany(['a', 'b', 'c']), {
+      deleted: 2,
+      failed: 1,
+    });
+    assert.deepEqual(removed, ['a', 'c']);
+    assert.deepEqual(
+      recorder.summaries().map((meeting) => meeting.id),
+      ['b'],
+    );
+  });
+
+  it('counts a meeting deleted too many times as not imported', async () => {
+    const recorder = createRecorder({
+      store: {
+        load: async () => [],
+        save: async () => {},
+        remove: async () => {},
+        isDeleted: () => true,
+        importMeeting: async () => {},
+      },
+      now: () => 0,
+      newId: () => 'new',
+      every: () => () => {},
+      onChange: () => {},
+    });
+    await recorder.load();
+    assert.deepEqual(
+      await recorder.importMeetings([startMeeting('imported-a', 'A', 0)]),
+      { added: 0, present: 0, failed: 1 },
     );
   });
 });

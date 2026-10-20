@@ -8,6 +8,8 @@ import {
   meetingStartedAt,
   recordedMs,
   folderName,
+  importedCopyId,
+  maxImportCopies,
   moveToFolder,
   renameMeeting,
   resumeMeeting,
@@ -18,6 +20,8 @@ import {
   type TranscriptLine,
 } from '../../core/meetings/index.ts';
 import type {
+  MeetingImportCounts,
+  MeetingsDeleteResult,
   MeetingDetail,
   MeetingSummary,
   RecordingState,
@@ -44,14 +48,21 @@ export type Recorder = {
   editSummary: (id: string, markdown: string) => Promise<void>;
   editLine: (id: string, lineId: string, text: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  removeMany: (ids: readonly string[]) => Promise<MeetingsDeleteResult>;
   rename: (id: string, title: string) => Promise<void>;
   moveToFolder: (id: string, folder: string | null) => Promise<void>;
   renameFolder: (from: string, to: string) => Promise<string>;
   removeFolder: (name: string) => Promise<void>;
   applyRemote: (state: DocumentState) => void;
+  importMeetings: (
+    meetings: readonly Meeting[],
+  ) => Promise<MeetingImportCounts>;
 };
 
-export type RecorderStore = Pick<MeetingStore, 'load' | 'save' | 'remove'>;
+export type RecorderStore = Pick<
+  MeetingStore,
+  'load' | 'save' | 'remove' | 'isDeleted' | 'importMeeting'
+>;
 
 type Active = { id: string; previousMs: number; segmentStartedAt: number };
 
@@ -246,6 +257,19 @@ export function createRecorder(options: {
     revisions.delete(id);
   }
 
+  function importSlot(id: string): { id: string } | 'present' | 'failed' {
+    for (let copy = 1; copy <= maxImportCopies; copy += 1) {
+      const candidate = importedCopyId(id, copy);
+      if (lookup(candidate)) {
+        return 'present';
+      }
+      if (!store.isDeleted(candidate)) {
+        return { id: candidate };
+      }
+    }
+    return 'failed';
+  }
+
   function summaries(): MeetingSummary[] {
     return [...(meetings ?? [])]
       .sort((a, b) => meetingStartedAt(b) - meetingStartedAt(a))
@@ -368,6 +392,33 @@ export function createRecorder(options: {
       forget(id);
       onChange();
     },
+    // Each meeting is deleted on its own, so one that can't be still leaves
+    // the rest deleted; the one being recorded is left alone.
+    removeMany: async (ids) => {
+      loadedMeetings();
+      const result: MeetingsDeleteResult = { deleted: 0, failed: 0 };
+      try {
+        for (const id of ids) {
+          if (!lookup(id)) {
+            continue;
+          }
+          if (active?.id === id) {
+            result.failed += 1;
+            continue;
+          }
+          try {
+            await store.remove(id, now());
+            forget(id);
+            result.deleted += 1;
+          } catch {
+            result.failed += 1;
+          }
+        }
+      } finally {
+        onChange();
+      }
+      return result;
+    },
     applyRemote: (state) => {
       if (!meetings) {
         return;
@@ -391,6 +442,37 @@ export function createRecorder(options: {
         : [...meetings, state.meeting];
       touch(state.id);
       onChange();
+    },
+    // A meeting already here is left as it is, so importing a file twice never
+    // undoes edits or adds copies. One the user deleted comes back, because
+    // choosing the file again is asking for it.
+    importMeetings: async (incoming) => {
+      loadedMeetings();
+      const result: MeetingImportCounts = { added: 0, present: 0, failed: 0 };
+      try {
+        for (const original of incoming) {
+          const slot = importSlot(original.id);
+          if (typeof slot === 'string') {
+            result[slot] += 1;
+            continue;
+          }
+          const meeting =
+            slot.id === original.id ? original : { ...original, id: slot.id };
+          meetings = [...loadedMeetings(), meeting];
+          try {
+            await store.importMeeting(meeting);
+            result.added += 1;
+          } catch {
+            if (lookup(meeting.id) === meeting) {
+              forget(meeting.id);
+            }
+            result.failed += 1;
+          }
+        }
+      } finally {
+        onChange();
+      }
+      return result;
     },
   };
 }

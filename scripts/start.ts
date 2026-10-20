@@ -79,7 +79,10 @@ async function prepareMacBundle(): Promise<void> {
   await writeFile(stampFile, stamp, 'utf8');
 }
 
-const env = { ...process.env };
+const env: NodeJS.ProcessEnv = {
+  ...process.env,
+  NOD_DEV_LAUNCHER: String(process.pid),
+};
 if (process.platform === 'darwin') {
   await prepareMacBundle();
   env.ELECTRON_OVERRIDE_DIST_PATH = devDist;
@@ -99,3 +102,6 @@ const forge = spawn(forgeBin, ['start', ...process.argv.slice(2)], {
   shell: process.platform === 'win32',
 });
 forge.on('exit', (code) => process.exit(code ?? 1));
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  process.on(signal, () => forge.kill(signal));
+}

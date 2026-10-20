@@ -2,10 +2,13 @@ import { strict as assert } from 'node:assert';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import * as Automerge from '@automerge/automerge';
 import {
   appendTranscript,
   createDocument,
   editSummary,
+  loadDocument,
+  readDocument,
   setSummary,
   startMeeting,
   updateDocument,
@@ -152,6 +155,40 @@ describe('createMeetingStore', () => {
     const second = store();
     assert.deepEqual(await second.load(), []);
     assert.deepEqual(second.ids(), ['m1']);
+  });
+
+  it('leaves nothing of a deleted meeting in its file, not even in history', async () => {
+    const first = store();
+    await first.load();
+    await first.save(meeting);
+    await first.save(editSummary(meeting, 'We agreed on a bonus.'));
+    const stored = async () => {
+      const bytes = reversing().decrypt(
+        await readFile(join(dir(), 'meetings', 'm1.bin')),
+        'nod:meeting:m1',
+      );
+      return { bytes, text: Buffer.from(bytes).toString('latin1') };
+    };
+    const said = ['Salary', 'raise', 'Let us start'];
+    const before = await stored();
+    for (const words of said) {
+      assert.equal(before.text.includes(words), true, words);
+    }
+
+    await first.remove('m1', 5_000);
+    const { bytes: plainBytes, text } = await stored();
+    for (const words of said) {
+      assert.equal(text.includes(words), false, words);
+    }
+    const tomb = loadDocument(plainBytes);
+    assert.ok(tomb);
+    assert.equal(Automerge.getHistory(tomb).length, 1);
+    assert.deepEqual(readDocument(tomb), {
+      kind: 'deleted',
+      id: 'm1',
+      deletedAt: 5_000,
+    });
+    assert.deepEqual(await readdir(join(dir(), 'meetings')), ['m1.bin']);
   });
 
   it('merges a document from another device and only writes when it adds something', async () => {

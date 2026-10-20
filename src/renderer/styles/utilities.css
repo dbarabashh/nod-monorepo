@@ -1,5 +1,9 @@
+/* Pinned to a corner: left where it would flow, after a long label that is
+   cut off, it would still widen whatever scrolls around it. */
 .visually-hidden {
   position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
   inline-size: 1px;
   block-size: 1px;
   overflow: hidden;

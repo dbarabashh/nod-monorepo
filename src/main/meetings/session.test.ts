@@ -21,6 +21,8 @@ function setup(captureGraceMs = 0) {
       load: async () => [],
       save: async () => {},
       remove: async () => {},
+      isDeleted: () => false,
+      importMeeting: async () => {},
     },
     now: () => time,
     newId: () => `m${++ids}`,

@@ -45,7 +45,7 @@
 
   /* The action shows when the row is pointed at or reached with the
      keyboard. Clipping keeps it in the tab order, so focusing it reveals it. */
-  &:not(:hover, :focus-within, :has(:popover-open)) .ui-list__action {
+  & .ui-list__action {
     clip-path: inset(50%);
   }
 
@@ -57,16 +57,28 @@
     padding-inline-end: var(--space-3);
   }
 
-  &:has(.ui-list__action):is(:hover, :focus-within, :has(:popover-open)) {
-    .ui-list__row:has(.ui-list__trailing) {
-      padding-inline-end: max(
-        var(--space-3),
-        calc(var(--_action-size) - var(--_trailing-size))
-      );
+  &:has(
+    > .ui-list__row:hover,
+    > .ui-list__row:focus-visible,
+    > .ui-list__action:hover,
+    > .ui-list__action:focus-within,
+    :popover-open
+  ) {
+    .ui-list__action {
+      clip-path: none;
     }
 
-    .ui-list__trailing {
-      clip-path: inset(50%);
+    &:has(.ui-list__action) {
+      .ui-list__row:has(.ui-list__trailing) {
+        padding-inline-end: max(
+          var(--space-3),
+          calc(var(--_action-size) - var(--_trailing-size))
+        );
+      }
+
+      .ui-list__trailing {
+        clip-path: inset(50%);
+      }
     }
   }
 }
@@ -83,5 +95,24 @@
   inset-block: 0;
   inset-inline-end: var(--space-2);
   display: flex;
+  align-items: center;
+}
+
+/* A control beside the row, such as a checkbox, sits outside the row's own
+   highlight so pointing at it doesn't look like opening the row. */
+.ui-list__item:has(> .ui-list__leading) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+
+  & > .ui-list__row {
+    flex: 1;
+    min-inline-size: 0;
+  }
+}
+
+.ui-list__leading {
+  display: flex;
+  flex: none;
   align-items: center;
 }

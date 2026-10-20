@@ -34,6 +34,11 @@ const steps: Step[] = [
     description:
       'Transcripts and summaries are made on this device, so they need models stored locally. Nothing you say is sent anywhere. Downloads continue in the background.',
   },
+  {
+    title: 'Bring your meetings',
+    description:
+      'Used the previous Nod app? Move your meetings from it to this one. If not, finish setup.',
+  },
 ];
 
 type OnboardingViewProps = {
@@ -42,6 +47,7 @@ type OnboardingViewProps = {
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
+  importMeetings: ReactNode;
   finish: 'idle' | 'saving' | 'failed';
   onFinish: () => void;
 };
@@ -52,6 +58,7 @@ export function OnboardingView({
   audio,
   speechModels,
   summaryModels,
+  importMeetings,
   finish,
   onFinish,
 }: OnboardingViewProps) {
@@ -105,13 +112,15 @@ export function OnboardingView({
             <SyncPlace onDone={() => go(2)} />
           ) : index === 2 ? (
             audio
-          ) : (
+          ) : index === 3 ? (
             <>
               <h2 className="onboarding__subtitle">Speech</h2>
               {speechModels}
               <h2 className="onboarding__subtitle">Summary</h2>
               {summaryModels}
             </>
+          ) : (
+            importMeetings
           )}
         </div>
 

@@ -1,5 +1,6 @@
 .ui-nav {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-0);
 }
 
@@ -44,6 +45,7 @@
 }
 
 .ui-nav-item__label {
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

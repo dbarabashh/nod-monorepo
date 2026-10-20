@@ -2,6 +2,7 @@ import { mkdir, open, readdir, readFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import {
   createDocument,
+  importedDocument,
   loadDocument,
   mergeDocuments,
   readDocument,
@@ -23,6 +24,7 @@ export type Cipher = {
 export type MeetingStore = {
   load: () => Promise<Meeting[]>;
   save: (meeting: Meeting) => Promise<void>;
+  importMeeting: (meeting: Meeting) => Promise<void>;
   remove: (id: string, deletedAt: number) => Promise<void>;
   flush: () => Promise<void>;
   ids: () => string[];
@@ -205,6 +207,19 @@ export function createMeetingStore(options: {
           : createDocument(meeting),
       );
       bases.set(meeting.id, meeting);
+      await persist(meeting.id);
+    },
+    // A copy already here, from an earlier try whose write failed or from
+    // another device, is kept rather than replaced.
+    importMeeting: async (meeting) => {
+      assertWritable(meeting.id);
+      if (deleted.has(meeting.id)) {
+        throw new Error('This meeting was deleted');
+      }
+      if (!documents.has(meeting.id)) {
+        documents.set(meeting.id, importedDocument(meeting));
+        bases.set(meeting.id, meeting);
+      }
       await persist(meeting.id);
     },
     remove: async (id, deletedAt) => {

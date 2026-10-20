@@ -9,8 +9,9 @@ function subscribe<T>(channel: string, callback: (value: T) => void) {
   };
 }
 
-// The vault key and an assistant's key each unlock meetings, so a page script
-// can't create, reveal, move or hand them out on its own; each takes a click.
+// Calls that unlock meetings (the vault key, an assistant's key) or change many
+// at once (importing, deleting in bulk) each take a click, so a page script
+// can't make them on its own.
 function clicked<T>(call: () => Promise<T>): Promise<T> {
   if (!navigator.userActivation.isActive) {
     return Promise.reject(new Error('This needs a click'));
@@ -35,12 +36,16 @@ const api: AppApi = {
   onModelsChanged: (callback) => subscribe(IpcEvent.onModelsChanged, callback),
   listMeetings: () => ipcRenderer.invoke(IpcChannel.listMeetings),
   getMeeting: (id) => ipcRenderer.invoke(IpcChannel.getMeeting, id),
+  importMeetings: () =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.importMeetings)),
   editSummary: (id, markdown) =>
     ipcRenderer.invoke(IpcChannel.editSummary, id, markdown),
   editTranscriptLine: (id, lineId, text) =>
     ipcRenderer.invoke(IpcChannel.editTranscriptLine, id, lineId, text),
   summarizeMeeting: (id) => ipcRenderer.invoke(IpcChannel.summarizeMeeting, id),
   deleteMeeting: (id) => ipcRenderer.invoke(IpcChannel.deleteMeeting, id),
+  deleteMeetings: (ids) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.deleteMeetings, ids)),
   renameMeeting: (id, title) =>
     ipcRenderer.invoke(IpcChannel.renameMeeting, id, title),
   moveMeetingToFolder: (id, folder) =>

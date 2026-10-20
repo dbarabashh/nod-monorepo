@@ -7,11 +7,13 @@ export function List({ className, ...props }: ComponentProps<'ul'>) {
 
 type ListRowProps = ComponentProps<'button'> & {
   action?: ReactNode;
+  leading?: ReactNode;
   trailing?: ReactNode;
 };
 
 export function ListRow({
   action,
+  leading,
   trailing,
   className,
   type = 'button',
@@ -20,6 +22,7 @@ export function ListRow({
 }: ListRowProps) {
   return (
     <li className="ui-list__item">
+      {leading != null && <span className="ui-list__leading">{leading}</span>}
       <button type={type} className={cx('ui-list__row', className)} {...props}>
         {children}
         {trailing != null && (

@@ -16,6 +16,7 @@ type OnboardingGateProps = {
   audio: ReactNode;
   speechModels: ReactNode;
   summaryModels: ReactNode;
+  importMeetings: ReactNode;
   children: ReactNode;
 };
 
@@ -25,6 +26,7 @@ export function OnboardingGate({
   audio,
   speechModels,
   summaryModels,
+  importMeetings,
   children,
 }: OnboardingGateProps) {
   const [state, setState] = useState<GateState>({ status: 'loading' });
@@ -85,6 +87,7 @@ export function OnboardingGate({
           audio={audio}
           speechModels={speechModels}
           summaryModels={summaryModels}
+          importMeetings={importMeetings}
           finish={state.finish}
           onFinish={finish}
         />

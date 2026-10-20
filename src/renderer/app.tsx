@@ -7,6 +7,7 @@ import {
   MeetingsView,
   useMeetingList,
 } from './features/meetings/index.ts';
+import { ImportPanel } from './features/meeting-import/index.ts';
 import { ModelsPanel } from './features/models/index.ts';
 import { OnboardingGate } from './features/onboarding/index.ts';
 import {
@@ -32,6 +33,7 @@ export function App() {
       audio={<AudioAccessPanel />}
       speechModels={<ModelsPanel kind="speech" autoDownload />}
       summaryModels={<ModelsPanel kind="summary" />}
+      importMeetings={<ImportPanel />}
     >
       <Shell />
     </OnboardingGate>
@@ -133,6 +135,7 @@ function Shell() {
             assistants={<AssistantsPanel />}
             sync={<SyncPanel />}
             recovery={<RecoveryPanel />}
+            import={<ImportPanel />}
           />
         )}
       </main>

@@ -4,10 +4,14 @@ import type { Meeting } from '../types.ts';
 import { FolderPicker } from './folder-picker.tsx';
 import { MeetingMenu } from './meeting-menu.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
+import { SelectBox } from './select-box.tsx';
 
 type MeetingRowProps = {
   meeting: Meeting;
   folders: string[];
+  checked: boolean;
+  locked: boolean;
+  onCheck: (id: string, checked: boolean) => void;
   onSelect: (id: string) => void;
 };
 
@@ -16,11 +20,31 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit',
 });
 
-export function MeetingRow({ meeting, folders, onSelect }: MeetingRowProps) {
+export function MeetingRow({
+  meeting,
+  folders,
+  checked,
+  locked,
+  onCheck,
+  onSelect,
+}: MeetingRowProps) {
+  const recording = meeting.status === 'recording';
   return (
     <ListRow
       data-meeting-id={meeting.id}
       onClick={() => onSelect(meeting.id)}
+      leading={
+        <SelectBox
+          label={
+            recording
+              ? `${meeting.title} is being recorded`
+              : `Select ${meeting.title}`
+          }
+          checked={checked && !recording}
+          disabled={recording || locked}
+          onChange={(next) => onCheck(meeting.id, next)}
+        />
+      }
       trailing={
         <span className="meeting-row__when">
           {meeting.folder !== null && (
@@ -42,7 +66,7 @@ export function MeetingRow({ meeting, folders, onSelect }: MeetingRowProps) {
           <MeetingMenu
             meetingId={meeting.id}
             title={meeting.title}
-            recording={meeting.status === 'recording'}
+            recording={recording}
           />
         </div>
       }

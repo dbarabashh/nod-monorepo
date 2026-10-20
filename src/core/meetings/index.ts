@@ -25,6 +25,7 @@ export {
 } from './meeting.ts';
 export {
   createDocument,
+  importedDocument,
   loadDocument,
   mergeDocuments,
   readDocument,
@@ -35,3 +36,8 @@ export {
   type DocumentState,
   type MeetingDocument,
 } from './document.ts';
+export {
+  importedCopyId,
+  maxImportCopies,
+  readMeetingExport,
+} from './import.ts';
