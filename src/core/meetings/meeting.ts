@@ -23,6 +23,7 @@ export type Meeting = {
   summaryEdited: boolean;
   titleEdited: boolean;
   generatedTitle: string | null;
+  folder: string | null;
 };
 
 export function startMeeting(id: string, title: string, now: number): Meeting {
@@ -36,6 +37,7 @@ export function startMeeting(id: string, title: string, now: number): Meeting {
     summaryEdited: false,
     titleEdited: false,
     generatedTitle: null,
+    folder: null,
   };
 }
 
@@ -161,6 +163,27 @@ export function renameMeeting(meeting: Meeting, title: string): Meeting {
     throw new Error('A meeting needs a name');
   }
   return { ...meeting, title: capped(named), titleEdited: true };
+}
+
+// A folder is only a label, so a name from another device that this version
+// can't use files the meeting under no folder instead of hiding the meeting.
+export function folderName(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const named = plainName(value.normalize('NFC'));
+  return named === '' ? null : capped(named);
+}
+
+export function moveToFolder(meeting: Meeting, folder: string | null): Meeting {
+  if (folder === null) {
+    return { ...meeting, folder: null };
+  }
+  const named = folderName(folder);
+  if (named === null) {
+    throw new Error('A folder needs a name');
+  }
+  return { ...meeting, folder: named };
 }
 
 export function editSummary(meeting: Meeting, markdown: string): Meeting {
@@ -341,5 +364,6 @@ export function parseMeeting(raw: unknown): Meeting | null {
     summaryEdited,
     titleEdited,
     generatedTitle,
+    folder: folderName(field(raw, 'folder')),
   };
 }

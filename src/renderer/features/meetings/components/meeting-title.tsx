@@ -60,7 +60,7 @@ export function MeetingTitle({
 
   return (
     <>
-      <h2 id={id} className="meeting-detail__title">
+      <h1 id={id} className="meeting-detail__title">
         <span
           ref={name}
           className="ui-editable"
@@ -74,7 +74,7 @@ export function MeetingTitle({
           onKeyDown={keys}
           onBlur={save}
         />
-      </h2>
+      </h1>
       {failed && (
         <p className="meeting-detail__note" role="alert">
           The new name couldn’t be saved. Try again.

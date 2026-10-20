@@ -11,6 +11,7 @@ import {
   meetingName,
   meetingStartedAt,
   meetingText,
+  moveToFolder,
   parseMeeting,
   recordedMs,
   renameMeeting,
@@ -75,6 +76,7 @@ describe('reading a stored meeting', () => {
         summaryEdited: false,
         titleEdited: false,
         generatedTitle: null,
+        folder: null,
       },
     );
   });
@@ -360,6 +362,55 @@ describe('the transcript', () => {
       }),
       null,
     );
+  });
+});
+
+describe('folders', () => {
+  it('files a meeting under a cleaned name, and takes it out again', () => {
+    const meeting = startMeeting('m1', 'Design review', 1_000);
+    assert.equal(
+      moveToFolder(meeting, '  Client\u202e work\n ').folder,
+      'Client work',
+    );
+    assert.equal(
+      moveToFolder(moveToFolder(meeting, 'Design'), null).folder,
+      null,
+    );
+    assert.equal(meeting.folder, null);
+  });
+
+  it('reads a folder it can’t use as no folder, without losing the meeting', () => {
+    for (const folder of [3, { id: 'f1' }, '  ', ['Clients']]) {
+      assert.equal(
+        parseMeeting({
+          id: 'm1',
+          title: 'Kept',
+          segments: [{ startedAt: 1, endedAt: 2 }],
+          folder,
+        })?.folder,
+        null,
+        JSON.stringify(folder),
+      );
+    }
+  });
+
+  it('cleans a folder name that arrives from another device', () => {
+    const read = parseMeeting({
+      id: 'm1',
+      title: 'Kept',
+      segments: [{ startedAt: 1, endedAt: 2 }],
+      folder: `Cafe\u0301\u202e ${'x'.repeat(200)}`,
+    });
+    assert.equal(read?.folder, `Caf\u00e9 ${'x'.repeat(74)}…`);
+  });
+
+  it('caps a long folder name and refuses an empty one', () => {
+    const meeting = startMeeting('m1', 'Design review', 1_000);
+    assert.equal(
+      moveToFolder(meeting, 'x'.repeat(100)).folder,
+      `${'x'.repeat(79)}…`,
+    );
+    assert.throws(() => moveToFolder(meeting, ' \t '), /folder needs a name/);
   });
 });
 

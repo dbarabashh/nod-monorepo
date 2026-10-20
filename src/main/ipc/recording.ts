@@ -5,6 +5,7 @@ import {
   pcmSampleRate,
   type MeetingPart,
   type Speaker,
+  type WidgetDragPhase,
 } from '../../shared/ipc.ts';
 import { createAudioBudget } from '../meetings/audio-budget.ts';
 import type { Recorder } from '../meetings/recorder.ts';
@@ -50,6 +51,16 @@ function isSpeaker(value: unknown): value is Speaker {
   return value === 'me' || value === 'others';
 }
 
+const maxDragOffset = 20_000;
+
+function isOffset(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    Math.abs(value) <= maxDragOffset
+  );
+}
+
 export function registerRecordingIpc(options: {
   appUrl: string;
   recorder: Recorder;
@@ -57,6 +68,7 @@ export function registerRecordingIpc(options: {
   transcriber: Transcriber;
   showMainWindow: () => void;
   sendLevel: (level: number) => void;
+  dragWidget: (phase: WidgetDragPhase, dx: number, dy: number) => void;
   copyText: (text: string) => void;
 }): void {
   const {
@@ -66,6 +78,7 @@ export function registerRecordingIpc(options: {
     transcriber,
     showMainWindow,
     sendLevel,
+    dragWidget,
     copyText,
   } = options;
   handleFromApp(appUrl, IpcChannel.listMeetings, recorder.list);
@@ -100,6 +113,21 @@ export function registerRecordingIpc(options: {
       boundedString(title, maxTitleChars, tooLong),
     ),
   );
+  handleFromApp(appUrl, IpcChannel.moveMeetingToFolder, (id, folder) =>
+    recorder.moveToFolder(
+      meetingId(id),
+      folder === null ? null : boundedString(folder, maxTitleChars, tooLong),
+    ),
+  );
+  handleFromApp(appUrl, IpcChannel.renameFolder, (from, to) =>
+    recorder.renameFolder(
+      boundedString(from, maxTitleChars, tooLong),
+      boundedString(to, maxTitleChars, tooLong),
+    ),
+  );
+  handleFromApp(appUrl, IpcChannel.removeFolder, (name) =>
+    recorder.removeFolder(boundedString(name, maxTitleChars, tooLong)),
+  );
   handleFromApp(appUrl, IpcChannel.deleteMeeting, (id) =>
     recorder.remove(meetingId(id)),
   );
@@ -120,6 +148,15 @@ export function registerRecordingIpc(options: {
     session.summarize(meetingId(id)),
   );
   handleFromApp(appUrl, IpcChannel.showMainWindow, showMainWindow);
+  listenFromApp(appUrl, IpcChannel.dragRecordingWidget, (phase, dx, dy) => {
+    if (
+      (phase === 'start' || phase === 'move') &&
+      isOffset(dx) &&
+      isOffset(dy)
+    ) {
+      dragWidget(phase, Math.round(dx), Math.round(dy));
+    }
+  });
   let levelSentAt = -Infinity;
   listenFromApp(appUrl, IpcChannel.sendRecordingLevel, (level) => {
     const now = performance.now();

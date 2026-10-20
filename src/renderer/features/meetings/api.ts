@@ -11,6 +11,7 @@ function toMeeting(summary: MeetingSummary): Meeting {
     title: summary.title,
     startedAt: new Date(summary.startedAt),
     durationSeconds: Math.round(summary.recordedMs / 1000),
+    folder: summary.folder,
     status: summary.status,
     contentVersion: summary.contentVersion,
   };
@@ -58,4 +59,19 @@ export function deleteMeeting(id: string): Promise<void> {
 
 export function renameMeeting(id: string, title: string): Promise<void> {
   return window.api.renameMeeting(id, title);
+}
+
+export function moveMeetingToFolder(
+  id: string,
+  folder: string | null,
+): Promise<void> {
+  return window.api.moveMeetingToFolder(id, folder);
+}
+
+export function renameFolder(from: string, to: string): Promise<string> {
+  return window.api.renameFolder(from, to);
+}
+
+export function removeFolder(name: string): Promise<void> {
+  return window.api.removeFolder(name);
 }

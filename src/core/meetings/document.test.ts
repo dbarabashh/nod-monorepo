@@ -18,6 +18,7 @@ import {
   editTranscriptLine,
   finishMeeting,
   meetingName,
+  moveToFolder,
   renameMeeting,
   setSummary,
   startMeeting,
@@ -302,6 +303,96 @@ describe('meeting documents', () => {
     assert.equal(meeting.title, 'Typed as text');
     assert.equal(meeting.titleEdited, false);
     assert.equal(meeting.generatedTitle, null);
+  });
+
+  it('keeps a folder through saving, and reads none from a document written before folders', () => {
+    const filed = moveToFolder(base, 'Clients');
+    const loaded = loadDocument(saveDocument(createDocument(filed)));
+    assert.ok(loaded);
+    assert.equal(meetingOf(loaded).folder, 'Clients');
+
+    const older = Automerge.from({
+      schema: 1,
+      id: 'm1',
+      title: new Automerge.ImmutableString('Before folders'),
+      segments: [{ startedAt: 1, endedAt: 2 }],
+      finishedAt: null,
+      lines: {},
+      summary: '',
+      summaryEdited: false,
+      titleEdited: false,
+      generatedTitle: null,
+      deletedAt: null,
+    });
+    const before = loadDocument(Automerge.save(older));
+    assert.ok(before);
+    const unfiled = meetingOf(before);
+    assert.equal(unfiled.folder, null);
+
+    const filedHere = updateDocument(
+      Automerge.clone(before),
+      unfiled,
+      moveToFolder(unfiled, 'Clients'),
+    );
+    const editedOnOlderDevice = Automerge.change(
+      Automerge.clone(older),
+      (fields) => {
+        fields.summaryEdited = true;
+      },
+    );
+    for (const merged of [
+      mergeDocuments(filedHere, editedOnOlderDevice),
+      mergeDocuments(editedOnOlderDevice, filedHere),
+    ]) {
+      const meeting = meetingOf(merged);
+      assert.equal(meeting.folder, 'Clients');
+      assert.equal(meeting.summaryEdited, true);
+    }
+  });
+
+  it('keeps a move to a folder and a rename made on different devices', () => {
+    const shared = createDocument(base);
+    const laptop = updateDocument(
+      Automerge.clone(shared),
+      base,
+      moveToFolder(base, 'Clients'),
+    );
+    const phone = updateDocument(
+      Automerge.clone(shared),
+      base,
+      renameMeeting(base, 'Pricing call'),
+    );
+    for (const merged of [
+      mergeDocuments(laptop, phone),
+      mergeDocuments(phone, laptop),
+    ]) {
+      const meeting = meetingOf(merged);
+      assert.equal(meeting.folder, 'Clients');
+      assert.equal(meetingName(meeting), 'Pricing call');
+    }
+  });
+
+  it('settles on the same single folder when two devices file a meeting at once', () => {
+    const shared = createDocument(moveToFolder(base, 'Inbox'));
+    const filed = moveToFolder(base, 'Inbox');
+    const laptop = updateDocument(
+      Automerge.clone(shared),
+      filed,
+      moveToFolder(filed, 'Clients'),
+    );
+    const phone = updateDocument(
+      Automerge.clone(shared),
+      filed,
+      moveToFolder(filed, null),
+    );
+    const merged = mergeDocuments(laptop, phone);
+    assert.equal(
+      Object.keys(Automerge.getConflicts(merged, 'folder') ?? {}).length,
+      2,
+    );
+    const folder = meetingOf(merged).folder;
+    assert.ok(folder === 'Clients' || folder === null, String(folder));
+    assert.equal(meetingOf(mergeDocuments(phone, laptop)).folder, folder);
   });
 
   it('builds the same tombstone on every device, so it stops syncing', () => {

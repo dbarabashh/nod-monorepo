@@ -43,11 +43,14 @@ export type ModelInfo = {
   error: ModelError | null;
 };
 
+export type WidgetDragPhase = 'start' | 'move';
+
 export type MeetingSummary = {
   id: string;
   title: string;
   startedAt: number;
   recordedMs: number;
+  folder: string | null;
   status: 'recording' | 'paused' | 'finished';
   contentVersion: string;
 };
@@ -126,6 +129,9 @@ export const IpcChannel = {
   copyMeeting: 'meetings:copy',
   deleteMeeting: 'meetings:delete',
   renameMeeting: 'meetings:rename',
+  moveMeetingToFolder: 'meetings:move-to-folder',
+  renameFolder: 'folders:rename',
+  removeFolder: 'folders:remove',
   summarizeMeeting: 'meetings:summarize',
   editSummary: 'meetings:edit-summary',
   editTranscriptLine: 'meetings:edit-line',
@@ -138,6 +144,7 @@ export const IpcChannel = {
   sendRecordingLevel: 'recording:send-level',
   sendCaptureStopped: 'recording:capture-stopped',
   showMainWindow: 'app:show-main-window',
+  dragRecordingWidget: 'recording-widget:drag',
   getSyncState: 'sync:get',
   createRecoveryPhrase: 'sync:create-recovery-phrase',
   enterRecoveryPhrase: 'sync:enter-recovery-phrase',
@@ -170,6 +177,9 @@ export type AppApi = {
   copyMeeting: (id: string, part: MeetingPart) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
   renameMeeting: (id: string, title: string) => Promise<void>;
+  moveMeetingToFolder: (id: string, folder: string | null) => Promise<void>;
+  renameFolder: (from: string, to: string) => Promise<string>;
+  removeFolder: (name: string) => Promise<void>;
   summarizeMeeting: (id: string) => Promise<void>;
   editSummary: (id: string, markdown: string) => Promise<void>;
   editTranscriptLine: (
@@ -186,6 +196,7 @@ export type AppApi = {
   sendRecordingLevel: (level: number) => void;
   sendCaptureStopped: () => void;
   showMainWindow: () => Promise<void>;
+  dragRecordingWidget: (phase: WidgetDragPhase, dx: number, dy: number) => void;
   onMeetingsChanged: (
     callback: (meetings: MeetingSummary[]) => void,
   ) => () => void;

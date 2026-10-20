@@ -34,7 +34,10 @@ import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
 import { secureSession } from './security/session.ts';
 import { IpcEvent } from '../shared/ipc.ts';
 import { createMainWindow } from './windows/main-window.ts';
-import { openRecordingWidget } from './windows/recording-widget.ts';
+import {
+  createWidgetDrag,
+  openRecordingWidget,
+} from './windows/recording-widget.ts';
 import { createSyncController } from './sync/controller.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
 import { relayBase } from './sync/relay-transport.ts';
@@ -235,6 +238,7 @@ app.whenReady().then(async () => {
     showMainWindow,
     sendLevel: (level) =>
       widget?.webContents.send(IpcEvent.onRecordingLevel, level),
+    dragWidget: createWidgetDrag(() => widget),
     copyText: (text) => clipboard.writeText(text),
   });
   registerSyncIpc(

@@ -1,31 +1,46 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   Button,
   EmptyState,
+  Icon,
   InputGroup,
   List,
 } from '../../components/ui/index.ts';
-import { useAsync } from '../../lib/use-async.ts';
-import { listMeetings, onMeetingsChanged } from './api.ts';
 import { MeetingDetail } from './components/meeting-detail.tsx';
 import { MeetingRow } from './components/meeting-row.tsx';
 import { filterMeetings } from './lib/filter-meetings.ts';
 import { groupByDay } from './lib/group-by-day.ts';
 import type { Meeting } from './types.ts';
+import type { MeetingList } from './use-meeting-list.ts';
 import './meetings.css';
 
 type MeetingsViewProps = {
+  meetings: MeetingList;
+  homeSignal: number;
+  folder: string | null;
   recordButton: ReactNode;
   meetingActions: (meeting: Meeting) => ReactNode;
 };
 
 export function MeetingsView({
+  meetings,
+  homeSignal,
+  folder,
   recordButton,
   meetingActions,
 }: MeetingsViewProps) {
-  const { state, retry } = useAsync(listMeetings, onMeetingsChanged);
+  const { state, retry } = meetings;
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+  const list = useRef<HTMLElement>(null);
   const [now, setNow] = useState(() => new Date());
   const idPrefix = useId();
 
@@ -41,33 +56,92 @@ export function MeetingsView({
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    setSelectedId(null);
+  }, [homeSignal]);
+
+  useEffect(() => {
+    if (
+      selectedId !== null &&
+      state.status === 'ready' &&
+      !state.value.some((meeting) => meeting.id === selectedId)
+    ) {
+      setReturnTo(selectedId);
+      setSelectedId(null);
+    }
+  }, [selectedId, state]);
+
+  useEffect(() => {
+    if (selectedId === null && document.activeElement === document.body) {
+      list.current?.focus();
+    }
+  }, [state, selectedId]);
+
+  useEffect(() => {
+    if (selectedId === null && returnTo !== null) {
+      const row = list.current?.querySelector<HTMLElement>(
+        `[data-meeting-id="${CSS.escape(returnTo)}"]`,
+      );
+      (row ?? list.current)?.focus();
+      setReturnTo(null);
+    }
+  }, [selectedId, returnTo]);
+
   const selected =
     state.status === 'ready'
       ? state.value.find((meeting) => meeting.id === selectedId)
       : undefined;
 
+  const folders = useMemo(
+    () => meetings.folders.map((folder) => folder.name),
+    [meetings.folders],
+  );
+
   const groups = useMemo(() => {
     if (state.status !== 'ready') {
       return [];
     }
-    return groupByDay(
-      filterMeetings(state.value, query),
-      now,
-      navigator.language,
+    const shown =
+      folder === null
+        ? state.value
+        : state.value.filter((meeting) => meeting.folder === folder);
+    return groupByDay(filterMeetings(shown, query), now, navigator.language);
+  }, [state, query, now, folder]);
+
+  if (selected) {
+    return (
+      <MeetingDetail
+        key={selected.id}
+        meeting={selected}
+        folders={folders}
+        now={now}
+        actions={meetingActions(selected)}
+        onBack={() => {
+          setReturnTo(selected.id);
+          setSelectedId(null);
+        }}
+      />
     );
-  }, [state, query, now]);
+  }
 
   return (
-    <section className="meetings" aria-labelledby={`${idPrefix}-title`}>
+    <section
+      ref={list}
+      tabIndex={-1}
+      className="meetings"
+      aria-labelledby={`${idPrefix}-title`}
+    >
       <header className="meetings__header">
-        <div className="meetings__heading">
-          <h1 id={`${idPrefix}-title`} className="meetings__title">
+        {folder === null ? (
+          <h1 id={`${idPrefix}-title`} className="visually-hidden">
             Meetings
           </h1>
-          {state.status === 'ready' && (
-            <span className="meetings__count">{state.value.length}</span>
-          )}
-        </div>
+        ) : (
+          <h1 id={`${idPrefix}-title`} className="meetings__title">
+            <Icon name="folder" />
+            <span className="meetings__title-name">{folder}</span>
+          </h1>
+        )}
         <div className="meetings__actions">
           <InputGroup
             icon="search"
@@ -82,8 +156,8 @@ export function MeetingsView({
         </div>
       </header>
 
-      <div className="meetings__content">
-        <div className="meetings__body" data-scroll>
+      <div className="meetings__body" data-scroll>
+        <div className="meetings__column">
           {state.status === 'loading' && (
             <p className="meetings__status">Loading meetings…</p>
           )}
@@ -124,7 +198,7 @@ export function MeetingsView({
                   <MeetingRow
                     key={meeting.id}
                     meeting={meeting}
-                    selected={meeting.id === selectedId}
+                    folders={folders}
                     onSelect={setSelectedId}
                   />
                 ))}
@@ -132,13 +206,6 @@ export function MeetingsView({
             </section>
           ))}
         </div>
-        {selected && (
-          <MeetingDetail
-            key={selected.id}
-            meeting={selected}
-            actions={meetingActions(selected)}
-          />
-        )}
       </div>
     </section>
   );

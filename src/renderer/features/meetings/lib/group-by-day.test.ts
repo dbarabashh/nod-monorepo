@@ -11,6 +11,7 @@ function meeting(id: string, startedAt: Date): Meeting {
     title: id,
     startedAt,
     durationSeconds: 600,
+    folder: null,
     status: 'finished',
     contentVersion: '',
   };

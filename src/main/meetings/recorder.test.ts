@@ -68,6 +68,7 @@ describe('createRecorder', () => {
         summaryEdited: false,
         titleEdited: false,
         generatedTitle: null,
+        folder: null,
       },
     ]);
   });
@@ -95,6 +96,7 @@ describe('createRecorder', () => {
       summaryEdited: false,
       titleEdited: false,
       generatedTitle: null,
+      folder: null,
     };
     const { recorder, advance, saved } = setup([earlier]);
     await recorder.load();
@@ -132,6 +134,7 @@ describe('createRecorder', () => {
       summaryEdited: false,
       titleEdited: false,
       generatedTitle: null,
+      folder: null,
     });
     assert.equal(recorder.summaries()[0]?.status, 'finished');
     await assert.rejects(recorder.resume(id), /cannot be resumed/);
@@ -437,17 +440,122 @@ describe('createRecorder', () => {
         summaryEdited: false,
         titleEdited: false,
         generatedTitle: null,
+        folder: 'Clients',
       },
     ]);
     await recorder.load();
     advance(5_000);
     const id = await recorder.start('New');
     assert.deepEqual(
-      recorder.summaries().map((meeting) => [meeting.id, meeting.status]),
+      recorder
+        .summaries()
+        .map((meeting) => [meeting.id, meeting.status, meeting.folder]),
       [
-        [id, 'recording'],
-        ['old', 'paused'],
+        [id, 'recording', null],
+        ['old', 'paused', 'Clients'],
       ],
+    );
+  });
+
+  it('files a meeting in a folder and takes it out again', async () => {
+    const { recorder, saved } = setup([]);
+    await recorder.load();
+    const id = await recorder.start('Pricing');
+    await recorder.moveToFolder(id, ' Clients ');
+    assert.equal(saved().at(-1)?.folder, 'Clients');
+    await recorder.moveToFolder(id, null);
+    assert.equal(saved().at(-1)?.folder, null);
+    await assert.rejects(
+      recorder.moveToFolder(id, '  '),
+      /folder needs a name/,
+    );
+  });
+
+  it('renames a folder on every meeting in it, and leaves other folders alone', async () => {
+    const { recorder, saved } = setup([]);
+    await recorder.load();
+    const ids: string[] = [];
+    for (const title of ['One', 'Two', 'Three']) {
+      ids.push(await recorder.start(title));
+      await recorder.pause();
+    }
+    const [first = '', second = '', third = ''] = ids;
+    await recorder.moveToFolder(first, 'Clients');
+    await recorder.moveToFolder(second, 'Clients');
+    await recorder.moveToFolder(third, 'Design');
+    const folders = () =>
+      Object.fromEntries(
+        recorder.summaries().map((meeting) => [meeting.title, meeting.folder]),
+      );
+
+    assert.equal(
+      await recorder.renameFolder('Clients', ' Customers '),
+      'Customers',
+    );
+    assert.deepEqual(folders(), {
+      One: 'Customers',
+      Two: 'Customers',
+      Three: 'Design',
+    });
+    assert.equal(
+      saved().find((meeting) => meeting.id === second)?.folder,
+      'Customers',
+    );
+    await assert.rejects(
+      recorder.renameFolder('Customers', ' '),
+      /folder needs a name/,
+    );
+    assert.equal(folders().One, 'Customers');
+
+    await recorder.removeFolder('Customers');
+    assert.deepEqual(folders(), { One: null, Two: null, Three: 'Design' });
+    assert.equal(saved().find((meeting) => meeting.id === first)?.folder, null);
+  });
+
+  it('moves every meeting it can when one of them can’t be saved, and reports it', async () => {
+    const filed = (id: string, title: string): Meeting => ({
+      ...startMeeting(id, title, 0),
+      folder: 'Clients',
+    });
+    const disk = new Map([
+      ['a', filed('a', 'Alpha')],
+      ['b', filed('b', 'Beta')],
+      ['c', filed('c', 'Gamma')],
+    ]);
+    const recorder = createRecorder({
+      store: {
+        load: async () => [...disk.values()],
+        save: async (meeting) => {
+          if (meeting.id === 'b') {
+            throw new Error('ENOSPC');
+          }
+          disk.set(meeting.id, meeting);
+        },
+        remove: async () => {},
+      },
+      now: () => 0,
+      newId: () => 'new',
+      every: () => () => {},
+      onChange: () => {},
+    });
+    await recorder.load();
+
+    await assert.rejects(
+      recorder.renameFolder('Clients', 'Customers'),
+      /ENOSPC/,
+    );
+    assert.equal(disk.get('a')?.folder, 'Customers');
+    assert.equal(disk.get('b')?.folder, 'Clients');
+    assert.equal(disk.get('c')?.folder, 'Customers');
+    assert.deepEqual(
+      Object.fromEntries(
+        recorder.summaries().map((meeting) => [meeting.id, meeting.folder]),
+      ),
+      { a: 'Customers', b: 'Clients', c: 'Customers' },
+    );
+    await assert.rejects(
+      recorder.renameFolder('Clients', 'Customers'),
+      /ENOSPC/,
     );
   });
 });

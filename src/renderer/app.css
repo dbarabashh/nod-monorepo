@@ -3,15 +3,51 @@
     display: grid;
     grid-template-columns: var(--sidebar-width) 1fr;
     block-size: 100vh;
+
+    &[data-sidebar='closed'] {
+      grid-template-columns: auto 1fr;
+    }
   }
 
   .app-shell__sidebar {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    gap: var(--space-3);
     padding: var(--space-3) var(--space-2);
     border-inline-end: var(--border-width) solid var(--color-border);
     background-color: var(--color-bg);
+
+    [data-sidebar='closed'] > & {
+      border-inline-end: none;
+      background-color: var(--color-surface);
+    }
+  }
+
+  .app-shell__toggle {
+    align-self: flex-start;
+  }
+
+  .app-shell__nav {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-block-size: 0;
+
+    /* The scrolling list clips what overflows it, so it keeps room around
+       its items for their focus rings. */
+    & > :first-child {
+      align-content: start;
+      min-block-size: 0;
+      margin: calc(var(--space-1) * -1);
+      padding: var(--space-1);
+      overflow-y: auto;
+    }
+
+    &[hidden] {
+      display: none;
+    }
   }
 
   .app-shell__main {

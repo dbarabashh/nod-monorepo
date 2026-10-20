@@ -1,4 +1,8 @@
-import type { RecordingState, Speaker } from '../../../shared/ipc.ts';
+import type {
+  RecordingState,
+  Speaker,
+  WidgetDragPhase,
+} from '../../../shared/ipc.ts';
 
 export function getRecording(): Promise<RecordingState> {
   return window.api.getRecording();
@@ -24,6 +28,14 @@ export function pauseRecording(): Promise<void> {
 
 export function sendCaptureStopped(): void {
   window.api.sendCaptureStopped();
+}
+
+export function dragRecordingWidget(
+  phase: WidgetDragPhase,
+  dx: number,
+  dy: number,
+): void {
+  window.api.dragRecordingWidget(phase, dx, dy);
 }
 
 export function sendRecordingLevel(level: number): void {

@@ -34,7 +34,6 @@ export function RecordButton() {
         </>
       ) : (
         <Button
-          variant="primary"
           disabled={starting}
           onClick={() =>
             void start(() =>
@@ -42,7 +41,7 @@ export function RecordButton() {
             )
           }
         >
-          <Icon name="mic" />
+          <Icon name="plus" />
           {starting ? 'Starting…' : 'New recording'}
         </Button>
       )}

@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Nav, NavItem } from './components/ui/index.ts';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Button, Icon, Nav, NavItem } from './components/ui/index.ts';
 import { AudioAccessPanel } from './features/audio-access/index.ts';
-import { MeetingsView } from './features/meetings/index.ts';
+import {
+  FolderNav,
+  MeetingsView,
+  useMeetingList,
+} from './features/meetings/index.ts';
 import { ModelsPanel } from './features/models/index.ts';
 import { OnboardingGate } from './features/onboarding/index.ts';
 import {
@@ -35,37 +39,83 @@ export function App() {
 
 function Shell() {
   const [page, setPage] = useState<Page>('meetings');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [meetingsHome, setMeetingsHome] = useState(0);
+  const [folder, setFolder] = useState<string | null>(null);
+  const meetings = useMeetingList();
+
+  const showFolder = useCallback((next: string | null) => {
+    setFolder(next);
+    if (next !== null) {
+      setPage('meetings');
+      setMeetingsHome((count) => count + 1);
+    }
+  }, []);
+
+  const followRename = useCallback((from: string, to: string) => {
+    setFolder((shown) => (shown === from ? to : shown));
+  }, []);
   const main = useRef<HTMLElement>(null);
+  const sidebarId = useId();
 
   useEffect(() => {
     main.current?.focus();
   }, [page]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-sidebar={sidebarOpen ? 'open' : 'closed'}>
       <aside className="app-shell__sidebar">
-        <Nav aria-label="Main">
-          <NavItem
-            icon="list"
-            current={page === 'meetings'}
-            onClick={() => setPage('meetings')}
-          >
-            Meetings
-          </NavItem>
-        </Nav>
-        <Nav aria-label="App" className="app-shell__sidebar-footer">
-          <NavItem
-            icon="settings"
-            current={page === 'settings'}
-            onClick={() => setPage('settings')}
-          >
-            Settings
-          </NavItem>
-        </Nav>
+        <Button
+          variant="outline"
+          size="sm"
+          className="app-shell__toggle"
+          aria-label="Sidebar"
+          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+          aria-expanded={sidebarOpen}
+          aria-controls={sidebarId}
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
+          {sidebarOpen && <Icon name="chevron-left" />}
+          <Icon name="home" />
+          {!sidebarOpen && <Icon name="chevron-right" />}
+        </Button>
+        <div id={sidebarId} className="app-shell__nav" hidden={!sidebarOpen}>
+          <Nav aria-label="Main">
+            <NavItem
+              icon="list"
+              current={page === 'meetings' && folder === null}
+              onClick={() => {
+                setPage('meetings');
+                setFolder(null);
+                setMeetingsHome((count) => count + 1);
+              }}
+            >
+              Meetings
+            </NavItem>
+            <FolderNav
+              meetings={meetings}
+              current={page === 'meetings' ? folder : null}
+              onSelect={showFolder}
+              onRenamed={followRename}
+            />
+          </Nav>
+          <Nav aria-label="App">
+            <NavItem
+              icon="settings"
+              current={page === 'settings'}
+              onClick={() => setPage('settings')}
+            >
+              Settings
+            </NavItem>
+          </Nav>
+        </div>
       </aside>
       <main ref={main} tabIndex={-1} className="app-shell__main">
         {page === 'meetings' ? (
           <MeetingsView
+            meetings={meetings}
+            homeSignal={meetingsHome}
+            folder={folder}
             recordButton={<RecordButton />}
             meetingActions={(meeting) => (
               <MeetingRecordingActions

@@ -9,6 +9,7 @@ function meeting(id: string, title: string): Meeting {
     title,
     startedAt: new Date(2026, 9, 18),
     durationSeconds: 60,
+    folder: null,
     status: 'finished',
     contentVersion: '',
   };

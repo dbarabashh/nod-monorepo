@@ -7,6 +7,8 @@ import {
   meetingName,
   meetingStartedAt,
   recordedMs,
+  folderName,
+  moveToFolder,
   renameMeeting,
   resumeMeeting,
   setSummary,
@@ -42,6 +44,9 @@ export type Recorder = {
   editLine: (id: string, lineId: string, text: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   rename: (id: string, title: string) => Promise<void>;
+  moveToFolder: (id: string, folder: string | null) => Promise<void>;
+  renameFolder: (from: string, to: string) => Promise<string>;
+  removeFolder: (name: string) => Promise<void>;
   applyRemote: (state: DocumentState) => void;
 };
 
@@ -138,6 +143,40 @@ export function createRecorder(options: {
     await persist(id);
   }
 
+  // Every meeting is saved even when one can't be, so a full disk leaves as
+  // few meetings behind in the old folder as possible. A meeting whose save
+  // failed shows its old folder again, as it is on disk, so trying again finds
+  // it; only the folder is put back, never recorded content.
+  async function refile(folder: string, to: string | null) {
+    const filed = loadedMeetings().filter(
+      (meeting) => meeting.folder === folder,
+    );
+    for (const meeting of filed) {
+      replace(moveToFolder(meeting, to));
+      touch(meeting.id);
+    }
+    const results = await Promise.allSettled(
+      filed.map((meeting) => save(meeting.id)),
+    );
+    let failure: unknown = null;
+    results.forEach((result, index) => {
+      const id = filed[index]?.id;
+      if (result.status === 'fulfilled' || id === undefined) {
+        return;
+      }
+      failure ??= result.reason;
+      const current = lookup(id);
+      if (current && current.folder !== folder) {
+        replace({ ...current, folder });
+        touch(id);
+      }
+    });
+    onChange();
+    if (failure !== null) {
+      throw failure;
+    }
+  }
+
   function extendActive() {
     if (active) {
       replace(extendMeeting(find(active.id), now()));
@@ -214,6 +253,7 @@ export function createRecorder(options: {
         title: meetingName(meeting),
         startedAt: meetingStartedAt(meeting),
         recordedMs: recordedMs(meeting),
+        folder: meeting.folder,
         status:
           meeting.id === active?.id
             ? 'recording'
@@ -268,6 +308,17 @@ export function createRecorder(options: {
       ),
     rename: (id, title) =>
       update(id, (meeting) => renameMeeting(meeting, title)),
+    moveToFolder: (id, folder) =>
+      update(id, (meeting) => moveToFolder(meeting, folder)),
+    renameFolder: async (from, to) => {
+      const name = folderName(to);
+      if (name === null) {
+        throw new Error('A folder needs a name');
+      }
+      await refile(from, name);
+      return name;
+    },
+    removeFolder: (name) => refile(name, null),
     editSummary: (id, markdown) =>
       update(id, (meeting) => editSummary(meeting, markdown)),
     editLine: (id, lineId, text) =>

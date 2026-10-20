@@ -7,6 +7,7 @@ export type Meeting = {
   title: string;
   startedAt: Date;
   durationSeconds: number;
+  folder: string | null;
   status: MeetingStatus;
   contentVersion: string;
 };

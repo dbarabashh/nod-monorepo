@@ -11,6 +11,8 @@ export {
   meetingText,
   parseMeeting,
   recordedMs,
+  folderName,
+  moveToFolder,
   renameMeeting,
   resumeMeeting,
   setSummary,

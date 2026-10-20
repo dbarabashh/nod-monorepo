@@ -27,22 +27,15 @@
     background-color: var(--color-surface-active);
   }
 
-  &[aria-current='true'] {
-    background-color: var(--color-surface-selected);
-  }
-
   &:focus-visible {
     outline-offset: calc(var(--focus-ring-width) * -1);
-  }
-
-  @media (forced-colors: active) {
-    &[aria-current='true'] {
-      outline: var(--focus-ring-width) solid Highlight;
-    }
   }
 }
 
 .ui-list__item {
+  --_trailing-size: calc(var(--control-height-sm) * 3);
+  --_action-size: var(--ui-list-action-size, var(--_trailing-size));
+
   position: relative;
 
   /* Room for the action's widest state, so it never covers the row. */
@@ -52,9 +45,37 @@
 
   /* The action shows when the row is pointed at or reached with the
      keyboard. Clipping keeps it in the tab order, so focusing it reveals it. */
-  &:not(:hover, :focus-within) .ui-list__action {
+  &:not(:hover, :focus-within, :has(:popover-open)) .ui-list__action {
     clip-path: inset(50%);
   }
+
+  /* The action takes the trailing slot's place instead of reserving its
+     own room, so rows with and without an action line up; a wider action
+     makes room only while it shows. Clipping keeps the trailing text in the
+     row's accessible name while the action shows. */
+  &:has(.ui-list__trailing) .ui-list__row {
+    padding-inline-end: var(--space-3);
+  }
+
+  &:has(.ui-list__action):is(:hover, :focus-within, :has(:popover-open)) {
+    .ui-list__row:has(.ui-list__trailing) {
+      padding-inline-end: max(
+        var(--space-3),
+        calc(var(--_action-size) - var(--_trailing-size))
+      );
+    }
+
+    .ui-list__trailing {
+      clip-path: inset(50%);
+    }
+  }
+}
+
+.ui-list__trailing {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  min-inline-size: var(--_trailing-size);
 }
 
 .ui-list__action {

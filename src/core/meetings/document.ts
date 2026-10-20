@@ -21,6 +21,7 @@ type MeetingFields = {
   summaryEdited: boolean;
   titleEdited: boolean;
   generatedTitle: Automerge.ImmutableString | null;
+  folder?: Automerge.ImmutableString | null;
   deletedAt: number | null;
 };
 
@@ -58,6 +59,7 @@ export function createDocument(meeting: Meeting): MeetingDocument {
     summaryEdited: meeting.summaryEdited,
     titleEdited: meeting.titleEdited,
     generatedTitle: nameOf(meeting.generatedTitle),
+    folder: nameOf(meeting.folder),
     deletedAt: null,
   });
 }
@@ -142,6 +144,9 @@ function reconcile(fields: MeetingFields, previous: Meeting, next: Meeting) {
   }
   if (previous.generatedTitle !== next.generatedTitle) {
     fields.generatedTitle = nameOf(next.generatedTitle);
+  }
+  if (previous.folder !== next.folder) {
+    fields.folder = nameOf(next.folder);
   }
   next.segments.forEach((segment, index) => {
     if (sameSegment(previous.segments[index], segment)) {
@@ -242,6 +247,7 @@ export function readDocument(document: MeetingDocument): DocumentState | null {
     ...raw,
     title: plainValue(field(raw, 'title')),
     generatedTitle: plainValue(field(raw, 'generatedTitle')),
+    folder: plainValue(field(raw, 'folder')),
     transcript,
     summary: summary === '' ? null : summary,
   });

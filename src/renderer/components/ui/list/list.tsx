@@ -6,26 +6,27 @@ export function List({ className, ...props }: ComponentProps<'ul'>) {
 }
 
 type ListRowProps = ComponentProps<'button'> & {
-  selected?: boolean;
   action?: ReactNode;
+  trailing?: ReactNode;
 };
 
 export function ListRow({
-  selected = false,
   action,
+  trailing,
   className,
   type = 'button',
+  children,
   ...props
 }: ListRowProps) {
   return (
     <li className="ui-list__item">
-      <button
-        type={type}
-        className={cx('ui-list__row', className)}
-        aria-current={selected ? 'true' : undefined}
-        {...props}
-      />
-      {action && <span className="ui-list__action">{action}</span>}
+      <button type={type} className={cx('ui-list__row', className)} {...props}>
+        {children}
+        {trailing != null && (
+          <span className="ui-list__trailing">{trailing}</span>
+        )}
+      </button>
+      {action && <div className="ui-list__action">{action}</div>}
     </li>
   );
 }

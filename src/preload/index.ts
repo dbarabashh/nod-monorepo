@@ -43,6 +43,11 @@ const api: AppApi = {
   deleteMeeting: (id) => ipcRenderer.invoke(IpcChannel.deleteMeeting, id),
   renameMeeting: (id, title) =>
     ipcRenderer.invoke(IpcChannel.renameMeeting, id, title),
+  moveMeetingToFolder: (id, folder) =>
+    ipcRenderer.invoke(IpcChannel.moveMeetingToFolder, id, folder),
+  renameFolder: (from, to) =>
+    ipcRenderer.invoke(IpcChannel.renameFolder, from, to),
+  removeFolder: (name) => ipcRenderer.invoke(IpcChannel.removeFolder, name),
   copyMeeting: (id, part) =>
     ipcRenderer.invoke(IpcChannel.copyMeeting, id, part),
   sendRecordingAudio: (speaker, samples) =>
@@ -57,6 +62,8 @@ const api: AppApi = {
     ipcRenderer.send(IpcChannel.sendRecordingLevel, level),
   sendCaptureStopped: () => ipcRenderer.send(IpcChannel.sendCaptureStopped),
   showMainWindow: () => ipcRenderer.invoke(IpcChannel.showMainWindow),
+  dragRecordingWidget: (phase, dx, dy) =>
+    ipcRenderer.send(IpcChannel.dragRecordingWidget, phase, dx, dy),
   onMeetingsChanged: (callback) =>
     subscribe(IpcEvent.onMeetingsChanged, callback),
   onRecordingChanged: (callback) =>

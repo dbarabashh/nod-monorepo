@@ -38,6 +38,12 @@
     color: var(--color-text-muted);
   }
 
+  &[data-size='sm'] {
+    block-size: var(--control-height-sm);
+    padding-inline: var(--space-2);
+    border-radius: var(--radius-md);
+  }
+
   &:is(textarea) {
     block-size: auto;
     padding-block: var(--space-2);
