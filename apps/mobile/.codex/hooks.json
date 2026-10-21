@@ -1,0 +1,17 @@
+{
+  "description": "Keep Codex edits aligned with the shared agent formatter hook.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/.agents/hooks/format-edited-files.sh\"",
+            "statusMessage": "Formatting with oxlint + oxfmt"
+          }
+        ]
+      }
+    ]
+  }
+}
