@@ -1,0 +1,31 @@
+[package]
+name = "nod-automerge"
+version = "0.0.0"
+edition = "2021"
+publish = false
+rust-version = "1.90"
+license = "MIT"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+# The same source the JS package @automerge/automerge 3.5.0 is built from
+# (tag js/automerge-3.5.0), so both clients write identical bytes.
+automerge = { git = "https://github.com/automerge/automerge", rev = "4d2a8f6bfecfb7f1e4fca126e6d2122ac526f903", features = [
+  "utf16-indexing",
+] }
+base64 = "0.22"
+getrandom = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true

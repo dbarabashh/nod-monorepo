@@ -1,0 +1,16 @@
+export const scenarioFixtures: Record<string, string> = {
+  'initial values of every kind': 'b1a2346a2c882099',
+  'edits in a change': 'fd48e11af0a3c65f',
+  'fixed author and time': 'a0e51a326b5a869d',
+  'concurrent edits and conflicts': '77b8dc44484bf74f',
+  'load, view and changes': '40a8af16356ead37',
+  'patches reported to a callback': '5a00edeadd76cd4a',
+  'negative zero': 'c9a9ef8c2d4f9eff',
+  'broken surrogates in text, names and keys': '558f8be39ac31136',
+  'a long meeting': 'f504440c9f49900f',
+  'frozen documents': '1c39d44b433d1587',
+  'assignments to list positions': '0138eec18b53f044',
+  'numbers the raw API casts to indexes': 'ad6399f80c5cf399',
+  'extreme counts and times': '7e44406803954496',
+  'reads inside a change': '5c4d6b2281234bd3',
+};

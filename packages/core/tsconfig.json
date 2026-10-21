@@ -1,17 +1,5 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "preserve",
-    "moduleResolution": "bundler",
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "strict": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
-    "types": []
-  },
+  "extends": "../../tsconfig.base.json",
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts"]
 }

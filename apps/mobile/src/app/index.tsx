@@ -16,9 +16,14 @@ export default function MeetingsScreen() {
         description="Meetings you record here or sync from your computer show up in this list."
       >
         {__DEV__ && (
-          <Link href="/components" asChild>
-            <Button variant="outline">Design system</Button>
-          </Link>
+          <>
+            <Link href="/components" asChild>
+              <Button variant="outline">Design system</Button>
+            </Link>
+            <Link href="/diagnostics" asChild>
+              <Button variant="outline">Diagnostics</Button>
+            </Link>
+          </>
         )}
       </EmptyState>
     </View>

@@ -1,0 +1,4 @@
+rust/target/
+build/
+ios/NodAutomergeCore.xcframework/
+android/src/main/jniLibs/

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
@@ -26,6 +26,7 @@ jobs:
         with:
           runtime: node@24
           cache: true
+      - run: rustup toolchain install 1.90 --profile minimal --target wasm32-unknown-unknown
       - run: pnpm typecheck
       - run: pnpm install --dir apps/desktop/relay/vercel --ignore-workspace --frozen-lockfile
       - run: pnpm --dir apps/desktop exec tsc --noEmit -p relay/vercel

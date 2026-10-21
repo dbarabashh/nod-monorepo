@@ -1,0 +1,33 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.nodautomerge'
+version = '0.0.0'
+
+android {
+  namespace "expo.modules.nodautomerge"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.0"
+  }
+}
+
+def buildAutomergeLibrary = tasks.register('buildNodAutomergeLibrary', Exec) {
+  description = 'Builds the Rust Automerge library for every Android ABI'
+  workingDir projectDir
+  commandLine 'node', file('../scripts/build-android.ts').absolutePath
+  def abis = (findProperty('reactNativeArchitectures') ?: '').toString()
+  environment 'NOD_ANDROID_ABIS', abis
+  inputs.property('abis', abis)
+  inputs.dir('../rust/src')
+  inputs.files('../rust/Cargo.toml', '../rust/Cargo.lock', '../rust/rust-toolchain.toml')
+  inputs.files('../scripts/build-android.ts', '../scripts/android-ndk.ts', '../scripts/cargo.ts')
+  inputs.property('ndk', ['ANDROID_NDK_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT'].collect { System.getenv(it) ?: '' }.join(File.pathSeparator))
+  outputs.dir('src/main/jniLibs')
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach {
+  dependsOn buildAutomergeLibrary
+}

@@ -1,3 +1,4 @@
+import '../lib/automerge.ts';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { text, useColors, weight } from '../theme/index.ts';
@@ -18,6 +19,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" options={{ title: 'Meetings' }} />
         <Stack.Screen name="components" options={{ title: 'Design system' }} />
+        <Stack.Screen name="diagnostics" options={{ title: 'Diagnostics' }} />
       </Stack>
     </>
   );

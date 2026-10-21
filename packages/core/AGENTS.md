@@ -20,9 +20,13 @@ tsconfig.test.json   tests, with Node types for node:test and node:assert
 - Never import `electron`, React, React Native, Expo, Node built-ins (`node:*`
   or bare `fs`, `path`, …) or an app. The linter enforces this. The only
   exception is `node:test` and `node:assert` in `*.test.ts` files.
-- Get platform capabilities (storage, filesystem, clock, network, key storage,
-  the Automerge runtime) through interfaces declared here and implemented by
-  each app. Core receives them as arguments; it never reaches for a global.
+- Get platform capabilities (storage, filesystem, clock, network, key storage)
+  through interfaces declared here and implemented by each app. Core receives
+  them as arguments; it never reaches for a global.
+- Use `@automerge/automerge` only through what `src/meetings/document.ts` does
+  today. Mobile runs it on `@nod/automerge-native`, which implements the
+  backend methods this code needs and refuses the rest; a new Automerge
+  feature here needs a test there first.
 - Take cryptography from `src/crypto`, which wraps the audited noble and scure
   libraries so every client runs the same code. Never write a cryptographic
   primitive, and never use `node:crypto` or WebCrypto here. The one global these

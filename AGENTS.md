@@ -15,6 +15,8 @@ apps/desktop/    Electron app for macOS, Windows and Linux (Forge, Vite, React,
 apps/mobile/     Expo app for iOS and Android (Expo Router, React Native)
 packages/core/   @nod/core: the platform-neutral data model, migrations, sync
                  and crypto both apps run unchanged
+packages/automerge-native/  Automerge on a Rust backend for mobile, where
+                 Hermes has no WebAssembly (an Expo module plus a JS shim)
 docs/decisions/  numbered decision records; read 0001-sync.md before touching
                  meetings storage or sync
 scripts/         repository tooling shared by every package
@@ -22,10 +24,9 @@ scripts/         repository tooling shared by every package
 
 Dependencies point one way: `apps/* → @nod/core`. Core never imports an app,
 and it stays free of Electron, React Native, Expo and Node, so each app can run
-it. Its `.oxlintrc.json` enforces that. One gap remains: core's meeting
-documents use `@automerge/automerge`, which needs WebAssembly, and Hermes on
-mobile has none. Before mobile reads meetings, the Automerge runtime moves
-behind an interface each app implements (a native module on mobile).
+it. Its `.oxlintrc.json` enforces that. Core's documents use
+`@automerge/automerge`; desktop runs it on its wasm build, mobile on
+`@nod/automerge-native`, which writes the same bytes from the same Rust source.
 
 The project is meant to be open source and forkable. Keep code, docs and agent
 context free of personal or company identity: no names, emails, private URLs,
@@ -94,6 +95,7 @@ pnpm android     # the mobile app as a dev build on an Android emulator
 ```
 
 Run `pnpm typecheck && pnpm lint && pnpm test` before calling a change done.
+The tests build the native Automerge library, so they need Rust (`rustup`).
 One package only: `pnpm --filter <name> <script>` (`nod-desktop`,
 `nod-mobile`, `@nod/core`). CI (`.github/workflows/ci.yml`) runs the same three
 on every push to `main` and every pull request. Dependabot

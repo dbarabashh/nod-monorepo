@@ -1,8 +1,21 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
-const child = spawn('expo', process.argv.slice(2), {
+const require = createRequire(import.meta.url);
+
+// Android builds the library from Gradle; CocoaPods only runs on pod install,
+// so a run on iOS rebuilds it first when the Rust sources changed.
+if (process.argv[2] === 'run:ios') {
+  execFileSync(
+    process.execPath,
+    [require.resolve('@nod/automerge-native/scripts/build-ios')],
+    { stdio: 'inherit' },
+  );
+}
+
+const expoCli = require.resolve('expo/bin/cli');
+const child = spawn(process.execPath, [expoCli, ...process.argv.slice(2)], {
   stdio: 'inherit',
-  shell: process.platform === 'win32',
   env: { ...process.env, EXPO_NO_TELEMETRY: '1' },
 });
 

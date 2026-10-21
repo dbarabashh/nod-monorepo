@@ -7,12 +7,13 @@ never stored.
 - `apps/desktop`: the app for macOS, Windows and Linux (Electron)
 - `apps/mobile`: the app for iOS and Android (Expo)
 - `packages/core`: the data model, sync and crypto both apps share
+- `packages/automerge-native`: Automerge for mobile, on a Rust backend
 - `docs/decisions`: why things are built the way they are
 
 ## Develop
 
-Requires Node 24+ and pnpm. The mobile app also needs Xcode, or JDK 17 and the
-Android SDK; see `apps/mobile/README.md`.
+Requires Node 24+, pnpm and Rust (`rustup`). The mobile app also needs Xcode,
+or JDK 17 and the Android SDK; see `apps/mobile/README.md`.
 
 ```sh
 pnpm install

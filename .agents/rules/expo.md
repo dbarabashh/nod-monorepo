@@ -6,8 +6,8 @@ alwaysApply: false
 
 - Paths here are relative to `apps/mobile`.
 - Expo changes every SDK. Read the `expo` major in `package.json` and check `https://docs.expo.dev/versions/v<major>.0.0/` (or `https://docs.expo.dev/llms.txt`) before using an Expo, EAS or React Native API. Never write one from memory.
-- Never create or edit `ios/` or `android/` by hand. They are generated (Continuous Native Generation) and ignored by git. Configure native behavior in `app.json` and config plugins, and put custom native code in a local Expo module under `modules/`.
-- Run the app as a development build (`pnpm ios`, `pnpm android`, or an EAS development build). Expo Go lacks the native modules the app needs, so never design around it.
+- Never create or edit `ios/` or `android/` by hand. They are generated (Continuous Native Generation) and ignored by git. Configure native behavior in `app.json` and config plugins, and put custom native code in an Expo module: a workspace package with `expo-module.config.json` (`packages/automerge-native`) or a local one under `modules/`.
+- Run the app as a development build (`pnpm ios`, `pnpm android`, or an EAS development build, whose build image then needs Rust because `@nod/automerge-native` compiles its library during `pod install` and Gradle's `preBuild`). Expo Go lacks the native modules the app needs, so never design around it.
 - Request the narrowest permissions, only at the moment a feature needs them, with a usage string that says why (`NSMicrophoneUsageDescription`, `RECORD_AUDIO`). Never declare a permission no shipped feature uses; every one is reviewed by the stores and the user.
 - Declare background capabilities only for recording that is running: the iOS `audio` background mode and an Android foreground service of type `microphone` with a visible notification. Never keep the microphone or the process alive when nothing is recorded.
 - Store keys and tokens only with `expo-secure-store` (Keychain / Keystore). Never put secrets in source, `app.json`, `EXPO_PUBLIC_*` variables or the JS bundle; anyone can read them from the app binary.

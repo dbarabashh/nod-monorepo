@@ -1,0 +1,45 @@
+{
+  "name": "@nod/automerge-native",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Automerge on a native backend for runtimes without WebAssembly (Hermes)",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react-native": "./src/react-native/index.ts",
+    "./react-native/diagnostics": "./src/react-native/diagnostics.ts",
+    "./metro": "./metro.cjs",
+    "./node": "./src/testing/wasm-core.ts",
+    "./scripts/build-ios": "./scripts/build-ios.ts"
+  },
+  "scripts": {
+    "build:wasm": "node scripts/build-wasm.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "node scripts/build-wasm.ts && node --test \"src/**/*.test.ts\" && node --import ./src/testing/use-native.ts --test \"../core/src/**/*.test.ts\"",
+    "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts",
+    "lint:fix": "oxlint --fix && oxfmt --write",
+    "build:ios": "node scripts/build-ios.ts",
+    "build:android": "node scripts/build-android.ts",
+    "fixtures": "node scripts/write-fixtures.ts"
+  },
+  "peerDependencies": {
+    "@automerge/automerge": "3.5.0",
+    "expo-modules-core": "*"
+  },
+  "devDependencies": {
+    "@automerge/automerge": "3.5.0",
+    "@types/node": "^24.19.2",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.88.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "peerDependenciesMeta": {
+    "expo-modules-core": {
+      "optional": true
+    }
+  }
+}

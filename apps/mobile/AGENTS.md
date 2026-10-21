@@ -15,7 +15,10 @@ a small design system (`src/components/ui`) whose tokens and components mirror
 the desktop app's, so both clients look like one product.
 
 The data model, sync and crypto come from `@nod/core` (`packages/core`), the
-same code the desktop app runs.
+same code the desktop app runs. Its Automerge documents run on
+`@nod/automerge-native`: `src/lib/automerge.ts` installs it before anything
+else, and `metro.config.js` keeps Automerge's wasm build out of the bundle.
+The Diagnostics screen (dev builds) checks it against what desktop writes.
 
 Rules for this app: `expo.md` and `styling-mobile.md` in `.agents/rules`, plus
 the repository-wide ones listed in the root `AGENTS.md`. Skills:
