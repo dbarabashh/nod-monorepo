@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
-import { File, Paths } from 'expo-file-system';
 import { finishMeeting } from '@nod/core/meetings';
 import { initWhisper, initWhisperVad } from 'whisper.rn/index';
 import { fromBase64 } from '@nod/core/crypto';
 import { AudioCapture } from '../../../modules/audio-capture/index.ts';
 import { dateTimeFormat } from '../formats.ts';
+import { keepOutOfBackup, recordingFile } from '../storage.ts';
 import { meetingStore, setRecording, whenLoaded } from '../sync/sync.ts';
 import { installedModel, modelPath } from './models.ts';
 import {
@@ -93,7 +93,7 @@ async function loadEngine(): Promise<LoadedEngine> {
 // Names the meeting this phone is recording, so one the system cut short
 // with the app is finished at the next launch. Only this phone's: a meeting
 // the computer is recording or has paused is left alone.
-const marker = () => new File(Paths.document, 'recording.json');
+const marker = recordingFile;
 
 async function markRecording(meetingId: string | null) {
   try {
@@ -103,6 +103,7 @@ async function markRecording(meetingId: string | null) {
       }
     } else {
       await marker().write(JSON.stringify({ meetingId }));
+      await keepOutOfBackup(marker());
     }
   } catch {
     return;

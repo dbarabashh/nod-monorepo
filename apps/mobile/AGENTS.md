@@ -38,7 +38,11 @@ moves a file in only after its size and sha256 match. Two local modules in
 `modules/` do what no Expo module does: `audio-capture` hands the microphone to
 JavaScript as 16 kHz PCM in memory (an iOS audio session for the background,
 an Android foreground service of type `microphone`), and `file-digest` hashes
-model files off the JavaScript thread. Whisper runs on the CPU: iOS refuses GPU
+model files off the JavaScript thread. Nothing the app keeps goes into a
+backup: `src/lib/storage.ts` names every file and folder and marks them with
+the iOS-only `backup-exclusion` module at each launch, and
+`plugins/with-no-backup.js` gives Android backup rules that exclude
+everything, from the cloud and from a transfer to a new phone. Whisper runs on the CPU: iOS refuses GPU
 work from an app in the background. `buffer` is there only because whisper.rn
 imports it.
 

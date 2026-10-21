@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { finishInterrupted } from '../lib/recording/recording.ts';
+import { keepStorageOutOfBackup } from '../lib/storage.ts';
 import { useSyncLoop } from '../lib/sync/sync.ts';
 import { text, useColors, weight } from '../theme/index.ts';
 
@@ -11,6 +12,7 @@ export default function RootLayout() {
   const colors = useColors();
   useSyncLoop();
   useEffect(() => {
+    void keepStorageOutOfBackup();
     void finishInterrupted();
   }, []);
   return (

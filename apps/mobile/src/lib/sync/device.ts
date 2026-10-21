@@ -1,5 +1,5 @@
 import { fetch } from 'expo/fetch';
-import { Directory, File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import {
   fromBase64,
@@ -28,6 +28,13 @@ import {
   type CipherMode,
   type MeetingFiles,
 } from '@nod/core/meetings';
+import {
+  ensureDirectory,
+  keepOutOfBackup,
+  keySlotFile,
+  meetingsDirectory,
+  publishedFile,
+} from '../storage.ts';
 import type { StoredVault, VaultStorage } from './session.ts';
 
 const suffix = '.bin';
@@ -49,7 +56,7 @@ const keychain: SecureStore.SecureStoreOptions = {
 };
 
 export function meetingFiles(): MeetingFiles {
-  const directory = new Directory(Paths.document, 'meetings');
+  const directory = meetingsDirectory();
   const fileOf = (id: string) => new File(directory, `${id}${suffix}`);
   return {
     ids: async () => {
@@ -64,9 +71,7 @@ export function meetingFiles(): MeetingFiles {
     },
     read: (id) => fileOf(id).bytes(),
     write: async (id, data) => {
-      if (!directory.exists) {
-        directory.create({ intermediates: true });
-      }
+      await ensureDirectory(directory);
       const temporary = new File(directory, `${id}${suffix}.tmp`);
       await temporary.write(data);
       await temporary.move(fileOf(id), { overwrite: true });
@@ -90,7 +95,7 @@ function keyOf(encoded: string): Uint8Array {
 // Names the keychain entry that holds the current data key. Not secret: it
 // only lets a new key go in a new entry, so starting over never overwrites
 // a key that was only unreadable for a moment.
-const slotFile = () => new File(Paths.document, 'data-key-slot');
+const slotFile = keySlotFile;
 
 async function currentSlot(): Promise<string> {
   const file = slotFile();
@@ -106,6 +111,7 @@ export async function meetingCipher(mode: CipherMode): Promise<Cipher> {
     key = randomKey();
     await SecureStore.setItemAsync(slot, toBase64(key), keychain);
     await slotFile().write(slot);
+    await keepOutOfBackup(slotFile());
   } else {
     const slot = await currentSlot();
     const stored = await SecureStore.getItemAsync(slot, keychain);
@@ -193,7 +199,7 @@ export function relayTransportFor(vault: StoredVault): RelayTransport {
 export async function publishedLogFor(
   vault: StoredVault,
 ): Promise<PublishedLog> {
-  const file = new File(Paths.document, 'published.json');
+  const file = publishedFile();
   const scope = `${vaultIdOf(vault.key)}:${vault.deviceId}:${vault.relayUrl}`;
   let stored: unknown = null;
   try {
@@ -207,7 +213,10 @@ export async function publishedLogFor(
     delayMs: 1_000,
     // Losing it only costs writing each meeting once more.
     save: (data) => {
-      file.write(data).catch(() => undefined);
+      file
+        .write(data)
+        .then(() => keepOutOfBackup(file))
+        .catch(() => undefined);
     },
   });
 }

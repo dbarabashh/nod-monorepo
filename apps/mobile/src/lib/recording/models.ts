@@ -1,4 +1,4 @@
-import { Directory, File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import {
   modelSize,
   phoneSpeechModels,
@@ -7,6 +7,7 @@ import {
 } from '@nod/core/models';
 import { FileDigest } from '../../../modules/file-digest/index.ts';
 import { messageOf } from '../message-of.ts';
+import { ensureDirectory, modelsDirectory } from '../storage.ts';
 
 export type ModelState =
   | { status: 'missing' }
@@ -17,7 +18,7 @@ export type ModelState =
 
 export type ModelEntry = { model: SpeechModel; state: ModelState };
 
-const directory = new Directory(Paths.document, 'models');
+const directory = modelsDirectory();
 const fileOf = (file: ModelFile) => new File(directory, file.name);
 
 // A file was checked when it was moved in, so its size says it is whole.
@@ -41,9 +42,7 @@ async function fetchFile(
     onBytes(file.sizeBytes);
     return;
   }
-  if (!directory.exists) {
-    directory.create({ intermediates: true });
-  }
+  await ensureDirectory(directory);
   const partial = new File(directory, `${file.name}.partial`);
   await File.downloadFileAsync(file.url, partial, {
     idempotent: true,
