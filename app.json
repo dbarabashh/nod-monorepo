@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "nod-mobile",
+    "name": "Nod",
     "slug": "nod-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,10 @@
     "scheme": "nodmobile",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "UIDesignRequiresCompatibility": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -19,16 +22,15 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "web": {
-      "output": "server",
-      "favicon": "./assets/images/favicon.png"
-    },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F9FAFB",
+          "dark": {
+            "backgroundColor": "#0C0D10"
+          },
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
