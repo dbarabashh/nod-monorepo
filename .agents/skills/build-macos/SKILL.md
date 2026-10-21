@@ -5,6 +5,9 @@ description: Build the desktop app for macOS locally, producing the DMG and ZIP 
 
 # Build for macOS
 
+Paths are relative to `apps/desktop`, except those starting with `packages/`,
+and commands run from there.
+
 `pnpm make` runs `electron-forge make`: Vite builds main, preload and renderer;
 Forge packages the `.app` with asar and fuses; then the DMG and ZIP makers run.
 Artifacts land in `out/make/`.

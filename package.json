@@ -1,23 +1,20 @@
 {
-  "name": "nod-desktop",
-  "productName": "Nod",
-  "version": "1.0.0",
+  "name": "nod-monorepo",
   "private": true,
   "type": "module",
-  "description": "Nod desktop app for macOS, Windows and Linux",
-  "keywords": [],
+  "description": "Nod, a local-first meeting notetaker: desktop and mobile apps and their shared core",
   "license": "MIT",
-  "author": "Dima Barabash",
-  "main": ".vite/build/main.cjs",
   "scripts": {
-    "start": "node scripts/start.ts",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "release": "electron-forge release",
-    "lint": "oxlint && oxfmt --check && node scripts/check-no-type-assertions.ts",
-    "lint:fix": "oxlint --fix && oxfmt --write",
-    "typecheck": "tsc --noEmit",
-    "test": "node --test \"src/**/*.test.ts\" \"relay/**/*.test.ts\""
+    "typecheck": "pnpm -r typecheck && tsc --noEmit",
+    "lint": "pnpm -r lint && pnpm lint:root",
+    "lint:fix": "pnpm -r lint:fix && oxlint --fix scripts && oxfmt --write AGENTS.md README.md package.json pnpm-workspace.yaml tsconfig.json .oxlintrc.json .agents .claude .codex .github .vscode docs scripts",
+    "test": "pnpm -r test",
+    "desktop": "pnpm --filter nod-desktop start",
+    "make": "pnpm --filter nod-desktop make",
+    "ios": "pnpm --filter nod-mobile ios",
+    "android": "pnpm --filter nod-mobile android",
+    "mobile": "pnpm --filter nod-mobile start",
+    "lint:root": "oxlint scripts && oxfmt --check AGENTS.md README.md package.json pnpm-workspace.yaml tsconfig.json .oxlintrc.json .agents .claude .codex .github .vscode docs scripts && node scripts/check-no-type-assertions.ts scripts"
   },
   "devEngines": {
     "packageManager": {
@@ -25,39 +22,13 @@
       "version": "11.21.0"
     }
   },
-  "devDependencies": {
-    "@electron-forge/cli": "^8.0.1",
-    "@electron-forge/maker-deb": "^8.0.1",
-    "@electron-forge/maker-dmg": "^8.0.1",
-    "@electron-forge/maker-rpm": "^8.0.1",
-    "@electron-forge/maker-squirrel": "^8.0.1",
-    "@electron-forge/maker-zip": "^8.0.1",
-    "@electron-forge/plugin-fuses": "^8.0.1",
-    "@electron-forge/plugin-vite": "^8.0.1",
-    "@electron-forge/shared-types": "^8.0.1",
-    "@electron/fuses": "^2.1.3",
-    "@types/electron-squirrel-startup": "^1.0.2",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "electron": "^44.9.0",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.88.0",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.4"
-  },
-  "dependencies": {
-    "@automerge/automerge": "3.5.0",
-    "@fugood/llama.node": "1.7.15",
-    "@fugood/whisper.node": "1.1.3",
-    "@noble/ciphers": "2.4.0",
-    "@noble/hashes": "2.4.0",
-    "@scure/bip39": "2.4.0",
-    "electron-squirrel-startup": "^1.0.1",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
-  },
   "engines": {
     "node": ">=24"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.88.0",
+    "typescript": "^7.0.2"
   }
 }

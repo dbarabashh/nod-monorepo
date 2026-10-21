@@ -1,9 +1,10 @@
 ---
 description: Electron process boundaries, IPC, window security, and packaging.
-globs: 'src/**, forge.config.mts'
+globs: 'apps/desktop/src/**, apps/desktop/forge.config.mts'
 alwaysApply: false
 ---
 
+- Paths here are relative to `apps/desktop`.
 - Treat the renderer as untrusted web content. Never enable `nodeIntegration`, and never disable `contextIsolation`, `sandbox` or `webSecurity`. The defaults are the security model.
 - The renderer reaches the OS only through `src/preload/index.ts`. Expose narrow, named functions with `contextBridge.exposeInMainWorld`, and never expose `ipcRenderer`, `require`, or a generic `send(channel, ...)` passthrough.
 - Use `ipcRenderer.invoke` with `ipcMain.handle` for request/response, and use `webContents.send` for main → renderer events. Avoid `sendSync`, because it blocks the renderer.

@@ -27,7 +27,7 @@ jobs:
           runtime: node@24
           cache: true
       - run: pnpm typecheck
-      - run: pnpm install --dir relay/vercel --ignore-workspace --frozen-lockfile
-      - run: pnpm exec tsc --noEmit -p relay/vercel
+      - run: pnpm install --dir apps/desktop/relay/vercel --ignore-workspace --frozen-lockfile
+      - run: pnpm --dir apps/desktop exec tsc --noEmit -p relay/vercel
       - run: pnpm lint
       - run: pnpm test

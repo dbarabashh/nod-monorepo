@@ -16,13 +16,17 @@ while IFS= read -r file; do
     "$repo_root"/*) ;;
     *) continue ;;
   esac
+  package_dir="$(dirname "$path")"
+  while [ "$package_dir" != "$repo_root" ] && [ ! -f "$package_dir/.oxlintrc.json" ]; do
+    package_dir="$(dirname "$package_dir")"
+  done
   case "$path" in
     *.ts|*.tsx|*.mts|*.cts|*.js|*.jsx|*.mjs|*.cjs)
-      (cd "$repo_root" && pnpm exec oxlint --fix "$path" >/dev/null 2>&1) || true
-      (cd "$repo_root" && pnpm exec oxfmt --write "$path" >/dev/null 2>&1) || true
+      (cd "$package_dir" && pnpm exec oxlint --fix "$path" >/dev/null 2>&1) || true
+      (cd "$package_dir" && pnpm exec oxfmt --write "$path" >/dev/null 2>&1) || true
       ;;
     *.json|*.css|*.html|*.md|*.yaml|*.yml)
-      (cd "$repo_root" && pnpm exec oxfmt --write "$path" >/dev/null 2>&1) || true
+      (cd "$package_dir" && pnpm exec oxfmt --write "$path" >/dev/null 2>&1) || true
       ;;
   esac
 done < <(

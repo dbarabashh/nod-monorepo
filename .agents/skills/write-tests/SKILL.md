@@ -54,17 +54,21 @@ When unsure, prefer one strong test of the behavior that matters over several
 weak ones. A small set of tests that can really fail beats a large set that
 can't.
 
-### By layer
+### By package
 
 This usually works out as:
 
-- **`src/core`**: most of the tests, because silent, expensive breakage lives
-  here. Use known test vectors for crypto and serialization.
-- **`src/main`**: IPC input validation and handlers that make decisions. Pass
-  Electron, the filesystem and the clock in as parameters and use small fakes.
-  Not the wiring, and never import the main entry in a test.
-- **`src/renderer`**: pure helpers in `features/<feature>/lib/` that transform
-  or decide something. No DOM or component tests yet.
+- **`packages/core`**: most of the tests, because silent, expensive breakage
+  lives here and both apps depend on it. Use known test vectors for crypto and
+  serialization, so every client provably reads the same data.
+- **`apps/desktop/src/main`**: IPC input validation and handlers that make
+  decisions. Pass Electron, the filesystem and the clock in as parameters and
+  use small fakes. Not the wiring, and never import the main entry in a test.
+- **`apps/desktop/src/renderer`** and **`apps/mobile/src`**: pure helpers in
+  `features/<feature>/lib/` and `lib/` that transform or decide something. No
+  DOM, component, screen or native-module tests: Node can't load the DOM,
+  `react-native` or Expo modules. Keep decisions in a pure function next to
+  them, and check the rest by running the app.
 
 If code that is worth testing is hard to test because it reaches for a global
 (`Date.now()`, `Math.random()`, `app`, `fs`), fix the code by injecting the
@@ -72,8 +76,8 @@ dependency. Don't work around it in the test.
 
 ## Writing a test
 
-Place `foo.test.ts` next to `foo.ts`. Every relative import in `src`, in tests
-and in source, carries the `.ts` extension (`./merge.ts`, not `./merge`),
+Place `foo.test.ts` next to `foo.ts`. Every relative import, in tests and in
+source, carries the `.ts` extension (`./merge.ts`, not `./merge`),
 because Node resolves files exactly and doesn't guess extensions. The linter
 enforces this (`import/extensions`). Use `import type` for types:
 
@@ -133,7 +137,7 @@ Go through this for every test you write or change:
 1. Before editing, find the tests that cover the code:
 
    ```sh
-   grep -rln "<function or module name>" src --include='*.test.ts'
+   grep -rln "<function or module name>" apps packages --include='*.test.ts'
    ```
 
 2. Read them and note which expectations the change should affect.
@@ -153,7 +157,8 @@ you aren't sure, ask.
 ## Run
 
 ```sh
-pnpm test                                     # all src/**/*.test.ts
+pnpm test                                     # every package, from the root
+pnpm --filter @nod/core test                  # one package
 node --test <path>.test.ts                    # one file
 node --test --test-name-pattern="keeps edits" "src/**/*.test.ts"
 pnpm typecheck                                # tests aren't type-checked by the runner
@@ -164,12 +169,14 @@ Node runs the type-stripped code without type-checking it, so always run
 
 ## Limits
 
-- Tests run on system Node, not inside Electron. Native modules built for
-  Electron (for example SQLite bindings) won't load. Test core against an
-  in-memory fake of the storage interface, and test the real adapter separately
-  under Electron's Node (`ELECTRON_RUN_AS_NODE=1 node_modules/.bin/electron --test <file>`).
+- Tests run on system Node, not inside Electron or on Hermes. Native modules
+  built for Electron won't load: test core against an in-memory fake of the
+  storage interface, and test the real adapter separately under Electron's Node
+  (`ELECTRON_RUN_AS_NODE=1 pnpm exec electron --test <file>` from `apps/desktop`). A test
+  must not import `react-native`, `expo-*` or anything that does, directly or
+  through a barrel.
 - Code that uses Vite features (`import.meta.env`, CSS imports, `?raw`, the
   Forge `MAIN_WINDOW_VITE_*` globals) can't be imported in a test. Keep testable
   logic in modules without them.
 - No `enum`, `namespace`, decorators or constructor parameter properties.
-  `erasableSyntaxOnly` in `tsconfig.json` enforces this.
+  `erasableSyntaxOnly` in each `tsconfig.json` enforces this.

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@nod/core": "workspace:*",
     "expo": "~58.0.16",
     "expo-constants": "~58.0.12",
     "expo-font": "~58.0.9",
@@ -33,14 +34,8 @@
     "android": "node scripts/expo.mts run:android",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "node --test \"src/**/*.test.ts\"",
-    "lint": "oxlint && oxfmt --check && node scripts/check-no-type-assertions.mts",
+    "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts",
     "lint:fix": "oxlint --fix && oxfmt --write"
   },
-  "private": true,
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "11.8.0"
-    }
-  }
+  "private": true
 }

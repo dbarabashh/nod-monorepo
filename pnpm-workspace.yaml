@@ -1,3 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
 allowBuilds:
   '@fugood/llama.node': false
   '@fugood/whisper.node': false
@@ -9,16 +13,65 @@ allowBuilds:
 minimumReleaseAge: 10080
 
 minimumReleaseAgeExclude:
-  - electron@44.9.0
-  - oxlint@1.88.0
-  - '@oxlint/binding-*'
-  - '@oxc-project/types@0.154.0'
-  - rolldown@1.2.14
-  - '@rolldown/binding-*'
-  - listr2@11.3.0
-  - node-abi@4.38.0
-  - postcss@8.5.30
-  - undici@6.29.1
-  - undici@7.30.1
+  - 'babel-preset-expo@58.0.18'
+  - 'baseline-browser-mapping@2.11.30'
+  - 'browserslist@4.29.4'
+  - 'caniuse-lite@1.0.30001817'
+  - 'core-js-compat@3.51.0'
+  - 'electron-to-chromium@1.5.461'
+  - 'electron@44.9.0'
+  - 'expo-asset@58.0.17'
+  - 'expo-constants@58.0.12'
+  - 'expo-file-system@58.0.10'
+  - 'expo-font@58.0.9'
+  - 'expo-glass-effect@58.0.4'
+  - 'expo-linking@58.0.13'
+  - 'expo-modules-autolinking@58.0.13'
+  - 'expo-modules-cli@0.3.1'
+  - 'expo-modules-core@58.0.23'
+  - 'expo-modules-jsi@58.0.16'
+  - 'expo-modules-macros@0.21.0'
+  - 'expo-router@58.0.24'
+  - 'expo-splash-screen@58.0.10'
+  - 'expo-system-ui@58.0.6'
+  - '@expo/cli@58.1.13'
+  - '@expo/config-plugins@58.0.9'
+  - '@expo/config@58.0.6'
+  - '@expo/image-utils@0.12.5'
+  - '@expo/inline-modules@0.2.6'
+  - '@expo/local-build-cache-provider@58.0.6'
+  - '@expo/metro-config@58.0.15'
+  - '@expo/metro-file-map@58.0.5'
+  - '@expo/modules-macros-*'
+  - '@expo/package-manager@1.14.2'
+  - '@expo/prebuild-config@58.0.14'
+  - '@expo/require-utils@58.0.4'
+  - '@expo/router-server@58.0.15'
+  - '@expo/schema-utils@58.0.2'
+  - '@expo/xcpretty@4.4.7'
+  - 'expo@58.0.16'
+  - 'listr2@11.3.0'
+  - 'node-abi@4.38.0'
+  - 'node-releases@2.0.59'
+  - '@noxcturnal/noxcturnal-*'
+  - 'noxcturnal@0.1.5'
+  - 'react-is@19.3.1'
+  - '@react-native/asset-utils@0.88.0'
+  - '@react-native/babel-plugin-codegen@0.88.0'
+  - '@react-native/babel-preset@0.88.0'
+  - '@react-native/codegen@0.88.0'
+  - '@react-native/community-cli-plugin@0.88.0'
+  - '@react-native/debugger-frontend@0.88.0'
+  - '@react-native/debugger-shell@0.88.0'
+  - '@react-native/dev-middleware@0.88.0'
+  - '@react-native/gradle-plugin@0.88.0'
+  - '@react-native/js-polyfills@0.88.0'
+  - '@react-native/metro-babel-transformer@0.88.0'
+  - '@react-native/metro-config@0.88.0'
+  - '@react-native/normalize-colors@0.88.0'
+  - '@react-native/virtualized-lists@0.88.0'
+  - 'react-native@0.88.0'
+  - 'undici@6.29.1'
+  - 'undici@7.30.1'
 
 nodeLinker: hoisted

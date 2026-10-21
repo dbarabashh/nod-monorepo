@@ -1,42 +1,47 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const keyword = ['as', 'const'].join(' ');
 const pattern = new RegExp(String.raw`\bas\s+const\b`, 'g');
+const skipped = new Set([
+  'node_modules',
+  '.vite',
+  '.expo',
+  '.dev-electron',
+  'out',
+  'dist',
+  'ios',
+  'android',
+]);
 
-async function* sourceFiles(dir: string): AsyncGenerator<string> {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
+async function* sourceFiles(path: string): AsyncGenerator<string> {
+  if (!(await stat(path)).isDirectory()) {
+    yield path;
+    return;
+  }
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    const child = join(path, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name !== 'node_modules') {
-        yield* sourceFiles(path);
+      if (!skipped.has(entry.name)) {
+        yield* sourceFiles(child);
       }
     } else if (/\.(ts|tsx|mts)$/.test(entry.name)) {
-      yield path;
-    }
-  }
-}
-
-async function* checkedFiles(): AsyncGenerator<string> {
-  yield* sourceFiles('src');
-  yield* sourceFiles('scripts');
-  yield* sourceFiles('relay');
-  for (const entry of await readdir('.')) {
-    if (entry.endsWith('.mts')) {
-      yield entry;
+      yield child;
     }
   }
 }
 
 const findings: string[] = [];
-for await (const file of checkedFiles()) {
-  const lines = (await readFile(file, 'utf8')).split('\n');
-  lines.forEach((line, index) => {
-    if (pattern.test(line)) {
-      findings.push(`${file}:${index + 1}: ${line.trim()}`);
-    }
-    pattern.lastIndex = 0;
-  });
+for (const root of process.argv.slice(2)) {
+  for await (const file of sourceFiles(root)) {
+    const lines = (await readFile(file, 'utf8')).split('\n');
+    lines.forEach((line, index) => {
+      if (pattern.test(line)) {
+        findings.push(`${file}:${index + 1}: ${line.trim()}`);
+      }
+      pattern.lastIndex = 0;
+    });
+  }
 }
 
 if (findings.length > 0) {

@@ -1,4 +1,4 @@
-# Agent guide
+# Mobile app (`apps/mobile`)
 
 ## What this is
 
@@ -14,9 +14,12 @@ Architecture on Hermes, Expo Router and TypeScript in strict mode. The UI uses
 a small design system (`src/components/ui`) whose tokens and components mirror
 the desktop app's, so both clients look like one product.
 
-The project is meant to be open source and forkable. Keep code, docs and agent
-context free of personal or company identity: no names, emails, private URLs,
-internal service IDs or paths that exist only on one machine.
+The data model, sync and crypto come from `@nod/core` (`packages/core`), the
+same code the desktop app runs.
+
+Rules for this app: `expo.md` and `styling-mobile.md` in `.agents/rules`, plus
+the repository-wide ones listed in the root `AGENTS.md`. Skills:
+`add-mobile-feature`, `add-mobile-ui-component`.
 
 ## Expo has changed — do not trust your training data
 
@@ -31,40 +34,12 @@ React Native API:
    Expo docs with corrections to common LLM misconceptions. Follow its links to
    the page you need; never answer from memory.
 
-## Agent context layout
-
-`AGENTS.md` is canonical. `CLAUDE.md` is a **symlink** to it, so edit
-`AGENTS.md` and never the symlink. Shared agent behavior lives in `AGENTS.md` or
-`.agents/` and never only in one tool's config.
-
-- `.agents/rules/` holds one topic per file and is symlinked as `.claude/rules`.
-  The format is in `README.md` there. **Read the relevant rule before editing
-  matching files:**
-  - `local-first.md` (always): user data stays on the device, encrypted, works offline, syncs end to end
-  - `commits.md` (always): signed commits only; lowercase, 4–5 words, no AI attribution trailer
-  - `comments.md` (always): no narration comments; only a non-obvious WHY
-  - `testing.md` (always): tests must be able to fail; logic changes are checked against their tests
-  - `loop-engineering.md` (always): independent review/fix loops before material work is ready
-  - `dependencies.md` (`package.json`, `pnpm-*.yaml`, `app.json`, `.github/**`): every dependency is supply-chain risk to user data
-  - `expo.md` (`src/**`, `app.json`, `modules/**`): native config, permissions, background work, secrets
-  - `styling.md` (`src/**/*.tsx`, `src/theme/**`): tokens only, light and dark, no translucency, touch targets
-  - `typescript.md` (`*.ts`, `*.tsx`): strict types, no `any`, no assertions, pnpm only
-- `.agents/skills/<name>/SKILL.md` uses the [Agent Skills](https://agentskills.io)
-  format. Claude Code loads each skill through a symlink in `.claude/skills/`.
-  - `add-feature`: add a feature or extend one across core, native, feature and route
-  - `add-ui-component`: add or change a design-system primitive
-  - `write-tests`: write or update node:test unit tests without false positives
-
-  New skills go in `.agents/skills/<name>/` with a matching symlink.
-
-- `.agents/hooks/format-edited-files.sh` is the shared formatter hook. Claude
-  Code calls it from `.claude/settings.json` and Codex calls it from
-  `.codex/hooks.json`. Keep both adapters behaviorally equivalent.
-
 ## Commands
 
+Run from this folder, or from the root with `pnpm --filter nod-mobile <script>`
+(`pnpm ios` and `pnpm android` also work from the root):
+
 ```sh
-pnpm install
 pnpm ios           # dev build on the iOS simulator (expo run:ios)
 pnpm android       # dev build on an Android emulator or device (expo run:android)
 pnpm start         # Metro for an installed dev build
@@ -88,17 +63,17 @@ src/
   components/ui/  the design system (see its AGENTS.md)
   theme/          tokens (mirroring the desktop tokens.css), themed(), useScheme()
   lib/            helpers and hooks used by 2+ features
-  core/           platform-neutral data model, sync, crypto; shared with desktop
 modules/          local Expo modules for native capabilities (speech, audio)
 assets/           app icon, splash and bundled images
 ```
 
 Create a folder when the first file needs it; don't create empty ones.
 
-Dependencies point one way: `app → features → components/ui, theme, lib → core`.
-`core` stays free of React Native, Expo and Node, so the desktop app and this
-one can run the same code. `.oxlintrc.json` enforces it for `import`
-statements.
+Dependencies point one way:
+`app → features → components/ui, theme, lib → @nod/core`. Code under `src`
+imports `@nod/core/<domain>` by its package name, never through a relative
+path, and never an alias such as `@/`. `.oxlintrc.json` enforces the alias
+rule.
 
 A feature slice:
 
@@ -117,8 +92,9 @@ promote shared code to `components/ui` or `lib` first.
 
 ## Conventions
 
-- Use pnpm only. Native dependencies that run build scripts must be listed
-  under `allowBuilds` in `pnpm-workspace.yaml`, or they install unbuilt.
+- Add packages with `pnpm exec expo install <name>` from this folder, so the
+  version matches the Expo SDK. Native dependencies that run build scripts must
+  be listed under `allowBuilds` in the root `pnpm-workspace.yaml`.
 - The app targets iOS and Android. Gate platform behavior on `Platform.OS`;
   never assume one of them.
 - Never create or edit `ios/` or `android/`. They are generated from
@@ -127,5 +103,3 @@ promote shared code to `components/ui` or `lib` first.
   never restyle a primitive.
 - Don't call impure functions (`new Date()`, `Math.random()`) during render.
   Capture them once in state or pass them in.
-- Commit or push only when asked. Branch first if the change is non-trivial and
-  you're on `main`.

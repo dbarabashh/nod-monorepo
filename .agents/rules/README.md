@@ -5,7 +5,7 @@ alwaysApply: true
 
 # How to write rules
 
-Each rule file covers one topic (IPC, commits, TypeScript). Rules are the
+Each rule file covers one topic (Electron, commits, TypeScript). Rules are the
 _enforceable_ half of the agent context: short, scoped, actionable. Anything
 that explains architecture belongs in `AGENTS.md`, not here.
 
@@ -14,7 +14,7 @@ that explains architecture belongs in `AGENTS.md`, not here.
 ```
 ---
 description: One sentence summary of what the rule enforces.
-globs: '*.ts, *.mts'    # omit if the rule applies to all file types
+globs: 'apps/desktop/**'   # paths from the repository root; omit if the rule applies everywhere
 alwaysApply: false      # true only for rules that must always be in context
 ---
 ```

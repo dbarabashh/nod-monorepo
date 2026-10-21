@@ -1,5 +1,5 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
   "plugins": [
     "eslint",
     "typescript",
@@ -36,124 +36,16 @@
           {
             "group": ["@/**"],
             "message": "Use a relative import with its extension, so the file also runs under node --test."
+          },
+          {
+            "group": ["**/packages/core/**", "**/apps/desktop/**"],
+            "message": "Import @nod/core by its package name (@nod/core/<domain>), never through a relative path, and never import another app."
           }
         ]
       }
     ]
   },
   "overrides": [
-    {
-      "files": ["src/core/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "react-native",
-                  "react-native/*",
-                  "react-native-*",
-                  "expo",
-                  "expo-*",
-                  "expo/*",
-                  "@expo/*",
-                  "react",
-                  "react/*",
-                  "node:*",
-                  "node:*/**",
-                  "assert",
-                  "buffer",
-                  "child_process",
-                  "crypto",
-                  "events",
-                  "fs",
-                  "fs/promises",
-                  "os",
-                  "path",
-                  "process",
-                  "stream",
-                  "url",
-                  "util",
-                  "worker_threads",
-                  "zlib",
-                  "**/app",
-                  "**/app/**",
-                  "**/features",
-                  "**/features/**",
-                  "**/components",
-                  "**/components/**",
-                  "**/theme",
-                  "**/theme/**",
-                  "**/lib",
-                  "**/lib/**",
-                  "@/**"
-                ],
-                "message": "src/core is platform-neutral and shared with the desktop app: no React, React Native, Expo, Node or other-layer imports. Take what you need through an interface implemented outside core."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["src/core/**/*.test.ts"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": [
-                  "react-native",
-                  "react-native/*",
-                  "react-native-*",
-                  "expo",
-                  "expo-*",
-                  "expo/*",
-                  "@expo/*",
-                  "react",
-                  "react/*",
-                  "node:*",
-                  "node:*/**",
-                  "assert",
-                  "buffer",
-                  "child_process",
-                  "crypto",
-                  "events",
-                  "fs",
-                  "fs/promises",
-                  "os",
-                  "path",
-                  "process",
-                  "stream",
-                  "url",
-                  "util",
-                  "worker_threads",
-                  "zlib",
-                  "**/app",
-                  "**/app/**",
-                  "**/features",
-                  "**/features/**",
-                  "**/components",
-                  "**/components/**",
-                  "**/theme",
-                  "**/theme/**",
-                  "**/lib",
-                  "**/lib/**",
-                  "@/**",
-                  "!node:test",
-                  "!node:test/**",
-                  "!node:assert",
-                  "!node:assert/**"
-                ],
-                "message": "src/core is platform-neutral and shared with the desktop app: no React, React Native, Expo, Node or other-layer imports. Take what you need through an interface implemented outside core. Tests may also import node:test and node:assert."
-              }
-            ]
-          }
-        ]
-      }
-    },
     {
       "files": [
         "src/features/**",
@@ -169,6 +61,10 @@
               {
                 "group": ["@/**", "**/app", "**/app/**", "node:*", "node:*/**"],
                 "message": "Only routes in src/app import features; app code runs on Hermes without Node. Use relative imports with their extension."
+              },
+              {
+                "group": ["**/packages/core/**", "**/apps/desktop/**"],
+                "message": "Import @nod/core by its package name (@nod/core/<domain>), never through a relative path, and never import another app."
               }
             ]
           }
@@ -199,6 +95,10 @@
                   "!node:assert/**"
                 ],
                 "message": "Tests import the code they cover relatively. They may import node:test and node:assert, nothing else from Node."
+              },
+              {
+                "group": ["**/packages/core/**", "**/apps/desktop/**"],
+                "message": "Import @nod/core by its package name (@nod/core/<domain>), never through a relative path, and never import another app."
               }
             ]
           }

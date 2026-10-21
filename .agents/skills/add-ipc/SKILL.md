@@ -5,6 +5,9 @@ description: Add a typed channel between the Electron main process and the rende
 
 # Add an IPC channel
 
+Paths are relative to `apps/desktop`, except those starting with `packages/`,
+and commands run from there.
+
 Read `.agents/rules/electron.md` first. This skill is the checklist on top of
 it. Every channel touches four places, and skipping one leaves either a type
 hole or a security hole. Read how the existing channels do each step and

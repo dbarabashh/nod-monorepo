@@ -1,8 +1,7 @@
 # Design system (`src/components/ui`)
 
 The app's UI primitives, styled only from the tokens in `src/theme/tokens.ts`.
-They mirror the desktop app's design system (`src/renderer/components/ui` in
-the separate `nod-desktop` repository) with the same names, variants, sizes and
+They mirror the desktop app's design system (`apps/desktop/src/renderer/components/ui`) with the same names, variants, sizes and
 states, so a screen reads the same on both clients. Where touch or React
 Native needs it they differ, and the difference is deliberate:
 
@@ -14,7 +13,7 @@ Native needs it they differ, and the difference is deliberate:
 - `Button size="sm"` keeps the small face but a 44 pt hit area around it.
 - The type scale is one step larger than desktop's and `radius.xs` is 4, to
   keep proportions at the larger sizes. Styling rules live in
-  `.agents/rules/styling.md`.
+  `.agents/rules/styling-mobile.md`.
 
 ## Layout
 
@@ -57,4 +56,4 @@ working.
   for usages before renaming anything.
 - Never encode feature knowledge here: no feature names, no data loading.
 - Add every primitive to the showcase (`src/features/showcase`), and add a new
-  one with the `add-ui-component` skill.
+  one with the `add-mobile-ui-component` skill.

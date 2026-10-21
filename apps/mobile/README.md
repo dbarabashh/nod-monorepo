@@ -11,9 +11,10 @@ Android SDK with `JAVA_HOME` and `ANDROID_HOME` set in your shell. The app runs
 as a development build; Expo Go lacks its native modules.
 
 ```sh
-pnpm install
+pnpm install    # from the repository root
 pnpm ios        # or: pnpm android
 ```
 
 `pnpm typecheck && pnpm lint && pnpm test` must pass before a change is done.
-Agent and contributor rules live in `AGENTS.md` and `.agents/`.
+Agent and contributor rules live in `AGENTS.md` here and at the repository
+root, and in the root `.agents/`.

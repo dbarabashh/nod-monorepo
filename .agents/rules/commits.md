@@ -10,4 +10,4 @@ alwaysApply: true
 - Before pushing, check that the new commits are signed: `git log --show-signature origin/main..HEAD`, or `git verify-commit <sha>` for each one. Never push an unsigned commit.
 - Commit or push only when the user asks.
 - Branch first (`feature/<name>`, `fix/<name>`, `chore/<name>`) if the change is non-trivial and you're on `main`.
-- Never commit `out/`, `.vite/`, `node_modules/`, `.env`, signing certificates, or notarization credentials.
+- Never commit build output or secrets: `out/`, `.vite/`, `.dev-electron/`, `ios/`, `android/`, `.expo/`, `dist/`, `node_modules/`, `.env`, keystores, provisioning profiles, signing certificates, or notarization and store credentials.

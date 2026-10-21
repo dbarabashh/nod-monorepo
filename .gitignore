@@ -35,7 +35,7 @@ bower_components
 .lock-wscript
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
-build/Release
+**/build/Release
 
 # Dependency directories
 node_modules/
@@ -149,7 +149,7 @@ out/
 .dev-electron/
 
 # The macOS microphone monitor, built from native/macos
-build/native/
+**/build/native/
 
 # Vercel project link
 .vercel/
