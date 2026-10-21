@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@vercel/blob": "2.8.1"
+    "@vercel/blob": "2.8.2"
   },
   "devDependencies": {
     "@types/node": "26.6.5"
