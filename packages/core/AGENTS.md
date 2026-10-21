@@ -34,6 +34,11 @@ tsconfig.test.json   tests, with Node types for node:test and node:assert
   provides it (the mobile app through a polyfill).
 - Organize by domain (`src/<domain>/`), each with an `index.ts` barrel listed in
   `package.json` `exports`. Apps import a domain only as `@nod/core/<domain>`.
+- Shared logic that needs the filesystem takes it as an interface, the way
+  `createMeetingStore` takes `MeetingFiles`: both apps run the same store and
+  each supplies only its files. Test helpers other packages need live under
+  `src/<domain>/testing/` and are exported as `@nod/core/<domain>/testing`
+  (only tests import them).
 - Keep it pure and deterministic where possible. Most of the code worth
   unit-testing lives here, so put tests next to it (`*.test.ts`).
 - Treat the data format and sync protocol as contracts. Other devices may run an

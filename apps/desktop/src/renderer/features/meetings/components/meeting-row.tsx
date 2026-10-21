@@ -5,6 +5,7 @@ import { FolderPicker } from './folder-picker.tsx';
 import { MeetingMenu } from './meeting-menu.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
 import { SelectBox } from './select-box.tsx';
+import { clockFormat } from '../../../lib/formats.ts';
 
 type MeetingRowProps = {
   meeting: Meeting;
@@ -14,11 +15,6 @@ type MeetingRowProps = {
   onCheck: (id: string, checked: boolean) => void;
   onSelect: (id: string) => void;
 };
-
-const timeFormat = new Intl.DateTimeFormat(undefined, {
-  hour: 'numeric',
-  minute: '2-digit',
-});
 
 export function MeetingRow({
   meeting,
@@ -51,7 +47,7 @@ export function MeetingRow({
             <Icon name="folder" label={`In ${meeting.folder}`} />
           )}
           <time dateTime={meeting.startedAt.toISOString()}>
-            {timeFormat.format(meeting.startedAt)}
+            {clockFormat.format(meeting.startedAt)}
           </time>
         </span>
       }

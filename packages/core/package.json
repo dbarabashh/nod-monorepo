@@ -12,6 +12,7 @@
     "./meetings": "./src/meetings/index.ts",
     "./models": "./src/models/index.ts",
     "./sync": "./src/sync/index.ts",
+    "./sync/testing": "./src/sync/testing/index.ts",
     "./transcription": "./src/transcription/index.ts"
   },
   "scripts": {

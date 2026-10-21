@@ -22,7 +22,7 @@ import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController, UnreachableError } from './controller.ts';
 import type { SyncState } from '../../shared/ipc.ts';
-import { createRelayTransport, type Fetch } from './relay-transport.ts';
+import { createRelayTransport, type Fetch } from '@nod/core/sync';
 import { createSyncSettings } from './settings.ts';
 
 const reversing: KeyWrap = {
@@ -162,6 +162,67 @@ describe('sync controller', () => {
     assert.equal(state.status, 'ready');
     assert.equal(state.status === 'ready' && state.devices, 1);
     assert.equal(state.status === 'ready' && state.recoveryConfirmed, true);
+  });
+
+  it('forgets a device that left copies, keeping in the vault what only it had', async () => {
+    const shared = await sharedFolder();
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.store.save(startMeeting('m1', 'Launch', 0));
+    await laptop.controller.useFolder(shared);
+    await laptop.controller.refresh();
+    const words = laptop.controller.recoveryPhrase();
+    const join = async (name: string) => {
+      const next = await device(name);
+      await next.controller.enterPhrase(words, {
+        leaveCopies: false,
+        replaceUnreadable: false,
+      });
+      await next.controller.useFolder(shared);
+      return next;
+    };
+    const old = await join('old-phone');
+    await old.store.save(startMeeting('m2', 'Only on the old phone', 1));
+    await old.store.save(startMeeting('m3', 'Also only there', 2));
+    await old.controller.refresh();
+    const desktop = await join('desktop');
+    await desktop.controller.refresh();
+
+    const before = await desktop.controller.devices();
+    assert.deepEqual(before.map((entry) => entry.meetings).sort(), [1, 2]);
+    const lost = before.find((entry) => entry.meetings === 2)?.id ?? '';
+    await old.store.save(startMeeting('m4', 'Written after the last sync', 3));
+    await old.controller.refresh();
+    await assert.rejects(
+      desktop.controller.forgetDevice(lost),
+      /haven’t reached this computer/,
+    );
+    assert.deepEqual(
+      (await desktop.controller.devices())
+        .map((entry) => entry.meetings)
+        .sort(),
+      [1, 3],
+    );
+    await desktop.controller.refresh();
+    await desktop.controller.forgetDevice(lost);
+
+    // No sync round in between: the meetings only that device had must
+    // already be in the vault under this computer.
+    const after = await laptop.controller.devices();
+    assert.equal(
+      after.some((entry) => entry.id === lost),
+      false,
+    );
+    assert.deepEqual(
+      after.map((entry) => entry.meetings),
+      [3],
+    );
+    await laptop.controller.refresh();
+    assert.deepEqual(laptop.received.map((state) => state.id).sort(), [
+      'm2',
+      'm3',
+      'm4',
+    ]);
   });
 
   it('never mixes meetings of two keys that share one folder', async () => {
@@ -599,7 +660,7 @@ describe('sync controller', () => {
     assert.equal(results[0]?.status, 'fulfilled');
     assert.match(
       results[1]?.status === 'rejected' ? String(results[1].reason) : '',
-      /busy/,
+      /still finishing another change/,
     );
     const state = (await device('laptop')).controller.state();
     assert.deepEqual(state.status === 'ready' && state.transport, {

@@ -1,10 +1,13 @@
 import { assertSafePath, type Transport } from '../transport.ts';
 
-export function createMemoryTransport(): Transport {
+export function createMemoryTransport(): Transport & {
+  paths: () => string[];
+} {
   const files = new Map<string, { data: Uint8Array; changedAt: number }>();
   let writes = 0;
 
   return {
+    paths: () => [...files.keys()],
     list: async (prefix) =>
       [...files]
         .filter(([path]) => path.startsWith(prefix))

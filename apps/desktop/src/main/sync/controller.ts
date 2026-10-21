@@ -7,24 +7,29 @@ import {
   randomKey,
   recoveryPhrase,
   relayToken,
+  vaultCodeOf,
   vaultIdOf,
 } from '@nod/core/crypto';
 import {
+  assertPairingRelay,
+  guardedRound,
+  pausedMessage,
+  type RoundOutcome,
   closedPath,
   createSyncEngine,
   devicesPrefix,
   meetingPath,
-  openClosedNotice,
-  parseClosedPath,
   parseMeetingPath,
   sealClosedNotice,
+  type PairingOffer,
   type SyncEngine,
   type Transport,
 } from '@nod/core/sync';
-import type { SyncState } from '../../shared/ipc.ts';
+import type { SyncDevice, SyncState } from '../../shared/ipc.ts';
 import type { MeetingStore } from '../meetings/store.ts';
 import { createFolderTransport } from './folder-transport.ts';
-import { createRelayTransport, type Fetch } from './relay-transport.ts';
+import { createRelayTransport, type Fetch } from '@nod/core/sync';
+import type { PublishedLogs } from './published-log.ts';
 import type { SyncSettings, TransportSettings, Vault } from './settings.ts';
 
 const folderName = 'nod-sync';
@@ -35,7 +40,7 @@ type Connection = {
   checked: Map<string, string>;
 };
 
-const noticeMaxBytes = 4 * 1024;
+const forgetBatch = 8;
 
 export type PhrasePreview = {
   vaultCode: string;
@@ -46,12 +51,6 @@ export type PhrasePreview = {
 };
 
 export class UnreachableError extends Error {}
-
-// 64 bits of the vault id, short enough to compare by eye across devices and
-// far too many to find another key that gives the same code.
-export function vaultCodeOf(vaultId: string): string {
-  return vaultId.slice(0, 16).toUpperCase().match(/.{4}/g)?.join('-') ?? '';
-}
 
 // Two messages shown together read as two sentences.
 function sentences(...parts: Array<string | null>): string | null {
@@ -72,6 +71,7 @@ export type SyncController = ReturnType<typeof createSyncController>;
 
 export function createSyncController(options: {
   settings: SyncSettings;
+  publishedLogs?: PublishedLogs;
   store: Pick<MeetingStore, 'ids' | 'document' | 'merge' | 'isDeleted'>;
   onRemote: (state: DocumentState) => void;
   fetch: Fetch;
@@ -132,6 +132,11 @@ export function createSyncController(options: {
         store,
         onRemote,
         now,
+        // Scoped to the place too: copies left in another folder or relay
+        // are a different set, and may be older than what the log says.
+        publishedLog: await options.publishedLogs?.open(
+          `${next.id}:${next.deviceId}:${transport.kind === 'relay' ? transport.url : transport.folder}`,
+        ),
       }),
       checked: new Map(),
     };
@@ -180,47 +185,6 @@ export function createSyncController(options: {
     }
   }
 
-  // A vault stays closed even if its notice later disappears, since a device
-  // holding the old phrase could delete it. A notice that can't be read holds
-  // the round back rather than risk syncing into a closed vault.
-  async function checkClosed(current: Vault, at: Connection): Promise<boolean> {
-    const fileKey = fileKeyOf(current.key);
-    const files = await at.transport.list(devicesPrefix());
-    let readable = true;
-    for (const file of files) {
-      const deviceId = parseClosedPath(file.path);
-      if (
-        !deviceId ||
-        deviceId === current.deviceId ||
-        at.checked.get(file.path) === file.version
-      ) {
-        continue;
-      }
-      let data: Uint8Array | null;
-      try {
-        data = await at.transport.read(file.path, noticeMaxBytes);
-      } catch {
-        readable = false;
-        continue;
-      }
-      let closed = false;
-      try {
-        closed = data
-          ? openClosedNotice(fileKey, current.id, deviceId, data)
-          : false;
-      } catch {
-        closed = false;
-      }
-      if (closed && vault?.id === current.id) {
-        vault = { ...vault, closed: true };
-        closedUnsaved = true;
-        break;
-      }
-      at.checked.set(file.path, file.version);
-    }
-    return readable;
-  }
-
   async function saveClosed() {
     if (closedUnsaved && vault?.closed) {
       await settings.save(vault);
@@ -255,7 +219,9 @@ export function createSyncController(options: {
   async function change(action: () => Promise<void>) {
     try {
       if (busy) {
-        throw new Error('Sync is busy, try again in a moment');
+        throw new Error(
+          'Sync is still finishing another change, such as forgetting a device. Try again when it’s done.',
+        );
       }
       busy = true;
       generation += 1;
@@ -470,12 +436,112 @@ export function createSyncController(options: {
         await connect();
       }),
     recoveryPhrase: (): string => recoveryPhrase(requireVault().key),
+    // A phone can only reach a relay, never a folder on this computer.
+    pairingOffer: (): PairingOffer => {
+      const current = requireVault();
+      if (current.closed) {
+        throw new Error('Sync through this phrase has stopped');
+      }
+      if (current.transport?.kind !== 'relay') {
+        throw new Error('Connect a relay before pairing a phone');
+      }
+      return {
+        key: current.key,
+        relayUrl: assertPairingRelay(current.transport.url),
+      };
+    },
     confirmRecoveryPhrase: () =>
       change(async () => {
         await inFlight;
         vault = { ...requireVault(), recoveryConfirmed: true };
         await settings.save(vault);
       }),
+    // The other devices that have meetings in the vault, as the vault shows
+    // them: there is no name to show, only what they put there and when.
+    devices: async (): Promise<SyncDevice[]> => {
+      const current = requireVault();
+      if (!current.transport) {
+        return [];
+      }
+      await connect();
+      const at = connection;
+      if (!at) {
+        throw new Error(error ?? 'The relay or folder can’t be reached');
+      }
+      const byDevice = new Map<string, SyncDevice>();
+      for (const file of await at.transport.list(devicesPrefix())) {
+        const parsed = parseMeetingPath(file.path);
+        if (!parsed || parsed.deviceId === current.deviceId) {
+          continue;
+        }
+        const seen = byDevice.get(parsed.deviceId) ?? {
+          id: parsed.deviceId,
+          meetings: 0,
+          lastChangedAt: 0,
+        };
+        byDevice.set(parsed.deviceId, {
+          ...seen,
+          meetings: seen.meetings + 1,
+          lastChangedAt: Math.max(seen.lastChangedAt, file.changedAt),
+        });
+      }
+      return [...byDevice.values()].sort(
+        (a, b) => b.lastChangedAt - a.lastChangedAt,
+      );
+    },
+    // Removes what a lost or reinstalled device left in the vault. Run after
+    // a sync round, so its meetings are here first; this device then writes
+    // its own copy of any that only that device held. A device still in use
+    // writes its copies again as its meetings change; shutting one out is
+    // changing the phrase.
+    forgetDevice: async (deviceId: string) => {
+      await change(async () => {
+        const current = requireVault();
+        if (deviceId === current.deviceId) {
+          throw new Error('This device can’t forget itself');
+        }
+        await inFlight;
+        await connect();
+        const at = connection;
+        if (!at) {
+          throw new Error('The relay or folder can’t be reached');
+        }
+        const listing = await at.transport.list(devicesPrefix());
+        const files = listing.filter(
+          (file) => parseMeetingPath(file.path)?.deviceId === deviceId,
+        );
+        // Removing a file this device hasn't merged at that version could
+        // remove the only copy of a meeting, so nothing is removed until all
+        // of them are here.
+        if (
+          files.some((file) => at.engine.merged(file.path) !== file.version)
+        ) {
+          throw new Error(
+            'Some of that device’s meetings haven’t reached this computer yet. Sync, then try again.',
+          );
+        }
+        // Devices don't write back what another device holds, so this one
+        // may have no copy of its own of a meeting only that device had. A
+        // round that no longer counts that device's files writes those
+        // copies, and nothing is removed unless it did.
+        await at.engine.sync(listing.filter((file) => !files.includes(file)));
+        const failed = at.engine.status().error;
+        if (failed) {
+          throw new Error(
+            `This computer couldn’t put its own copies in the vault first, so nothing was removed: ${failed}`,
+          );
+        }
+        // A few at a time: one by one, a device with a hundred meetings
+        // takes a minute over the internet.
+        for (let index = 0; index < files.length; index += forgetBatch) {
+          await Promise.all(
+            files
+              .slice(index, index + forgetBatch)
+              .map((file) => at.transport.remove(file.path)),
+          );
+        }
+      });
+    },
     refresh: () => {
       const round = inFlight.then(async () => {
         if (busy) {
@@ -484,25 +550,35 @@ export function createSyncController(options: {
         await connect();
         const current = connection;
         const owner = vault;
-        if (current && owner) {
-          let checkFailed = false;
-          const readable =
-            owner.closed ||
-            (await checkClosed(owner, current).catch((failure: unknown) => {
-              checkFailed = true;
-              error = messageOf(failure);
-              return false;
-            }));
+        if (current && owner?.closed) {
           await saveClosed().catch(() => undefined);
-          if (!readable && !checkFailed && !vault?.closed) {
-            error =
-              'A sync file couldn’t be read, so sync is paused until it can be.';
-          }
-          if (vault?.closed || !readable) {
+        } else if (current && owner) {
+          let outcome: RoundOutcome;
+          try {
+            outcome = await guardedRound(current, {
+              fileKey: fileKeyOf(owner.key),
+              id: owner.id,
+              deviceId: owner.deviceId,
+            });
+          } catch (failure) {
+            error = messageOf(failure);
             onChange();
             return;
           }
-          await current.engine.sync();
+          // A vault stays closed even if its notice later disappears, since
+          // a device holding the old phrase could delete it.
+          if (outcome === 'closed' && vault?.id === owner.id) {
+            vault = { ...vault, closed: true };
+            closedUnsaved = true;
+          }
+          await saveClosed().catch(() => undefined);
+          if (outcome === 'paused') {
+            error = pausedMessage;
+          }
+          if (outcome !== 'synced') {
+            onChange();
+            return;
+          }
           if (current === connection) {
             error = null;
           }

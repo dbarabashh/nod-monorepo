@@ -20,6 +20,15 @@ same code the desktop app runs. Its Automerge documents run on
 else, and `metro.config.js` keeps Automerge's wasm build out of the bundle.
 The Diagnostics screen (dev builds) checks it against what desktop writes.
 
+A phone joins by scanning the pairing code the desktop app shows (Settings →
+Sync → Pair a phone; see "Pairing a phone by QR code" in
+`docs/decisions/0001-sync.md`) and syncs through that relay. `src/lib/sync`
+holds the sync layer both features use: meetings are kept by the store in
+`@nod/core/meetings`, the one the desktop app uses; `session.ts` is plain
+logic tested on Node; `device.ts` adapts both to Expo (`expo-file-system`,
+`expo-secure-store`, `expo/fetch`); and `sync.ts` runs them and exposes hooks. `src/lib/random.ts` backs `crypto.getRandomValues`
+with `expo-crypto` and is imported first.
+
 Rules for this app: `expo.md` and `styling-mobile.md` in `.agents/rules`, plus
 the repository-wide ones listed in the root `AGENTS.md`. Skills:
 `add-mobile-feature`, `add-mobile-ui-component`.
@@ -98,6 +107,11 @@ promote shared code to `components/ui` or `lib` first.
 - Add packages with `pnpm exec expo install <name>` from this folder, so the
   version matches the Expo SDK. Native dependencies that run build scripts must
   be listed under `allowBuilds` in the root `pnpm-workspace.yaml`.
+- `package.json` → `expo.autolinking.buildFromSource` builds `expo-camera`,
+  `expo-crypto` and `expo-secure-store` from source: their precompiled iOS
+  binaries were built against another `expo-modules-core` and crash at launch
+  with a missing symbol. Remove an entry once the precompiled module matches
+  the installed `expo-modules-core`.
 - The app targets iOS and Android. Gate platform behavior on `Platform.OS`;
   never assume one of them.
 - Never create or edit `ios/` or `android/`. They are generated from

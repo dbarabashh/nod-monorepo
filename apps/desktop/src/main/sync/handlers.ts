@@ -2,10 +2,21 @@ import {
   UnreachableError,
   type PhrasePreview,
   type SyncController,
-  vaultCodeOf,
 } from './controller.ts';
-import { phraseWords } from '@nod/core/crypto';
-import { relayBase } from './relay-transport.ts';
+import {
+  pairingProof,
+  phraseWords,
+  randomKey,
+  vaultCodeOf,
+  vaultIdOf,
+} from '@nod/core/crypto';
+import {
+  isSyncId,
+  pairingCode,
+  relayBase,
+  sealPairingOffer,
+} from '@nod/core/sync';
+import type { PairingListener } from './pairing-server.ts';
 
 export type Question = {
   message: string;
@@ -15,6 +26,24 @@ export type Question = {
 };
 
 export type Confirm = (question: Question) => Promise<boolean>;
+
+export type PairingScreen = {
+  code: string;
+  vaultCode: string;
+  relayHost: string;
+};
+
+// Resolves once the user closed what shows the code, or once `done` settles
+// (a device took the offer, or the listener closed).
+export type ShowPairing = (
+  screen: PairingScreen,
+  done: Promise<unknown>,
+) => Promise<void>;
+
+export type ListenForPairing = (offer: {
+  sealed: Uint8Array;
+  proof: string;
+}) => Promise<PairingListener>;
 
 const leftBehind =
   'The folder or relay can’t be reached, so the copies this device put there stay behind until you delete them.';
@@ -104,10 +133,20 @@ export function createSyncHandlers(options: {
   controller: SyncController;
   chooseFolder: () => Promise<string | null>;
   confirm: Confirm;
+  showPairing: ShowPairing;
+  listenForPairing: ListenForPairing;
   syncSoon: () => void;
   now: () => number;
 }) {
-  const { controller, chooseFolder, confirm, syncSoon, now } = options;
+  const {
+    controller,
+    chooseFolder,
+    confirm,
+    showPairing,
+    listenForPairing,
+    syncSoon,
+    now,
+  } = options;
   let asking = false;
   let declines = 0;
   let declinedAt = Number.NEGATIVE_INFINITY;
@@ -227,6 +266,65 @@ export function createSyncHandlers(options: {
       await controller.confirmRecoveryPhrase();
       return true;
     },
+    // Whoever scans the code gets the vault key, so it gets the same limits
+    // as the phrase, and both share one interval: a script can't alternate
+    // them.
+    showPairingCode: async () => {
+      assertFree();
+      if (now() - shownAt < showIntervalMs) {
+        throw new Error('Wait a moment before showing the code again');
+      }
+      const offer = controller.pairingOffer();
+      // The code carries a one-time secret, never the key: the phone gets the
+      // key sealed with it, over the local network, once. Listening starts
+      // inside the hold, so a second call can't open a second listener.
+      const secret = randomKey();
+      const taken = await holding(
+        async () => {
+          const listener = await listenForPairing({
+            sealed: sealPairingOffer(secret, offer),
+            proof: pairingProof(secret),
+          });
+          shownAt = now();
+          try {
+            await showPairing(
+              {
+                code: pairingCode({
+                  secret,
+                  port: listener.port,
+                  hosts: listener.hosts,
+                }),
+                vaultCode: vaultCodeOf(vaultIdOf(offer.key)),
+                relayHost: new URL(offer.relayUrl).host,
+              },
+              listener.outcome,
+            );
+          } finally {
+            listener.close();
+          }
+          return listener.outcome;
+        },
+        () => 'neutral',
+      );
+      // Whoever took the code got the key, so the user sees where it went
+      // and can tell if it wasn't their phone.
+      if (taken) {
+        await holding(
+          () =>
+            confirm({
+              message: 'A phone is paired',
+              detail: `The device at ${taken.by} on this network took the pairing code and now syncs with your meetings.\n\nIf that wasn’t your phone, change your recovery phrase in Settings → Recovery phrase right away.`,
+              confirmLabel: 'OK',
+              cancelLabel: null,
+            }),
+          () => 'neutral',
+        );
+      }
+      // The interval runs from when the code went away, so a window left open
+      // can't be put back up on the very next click.
+      shownAt = now();
+      syncSoon();
+    },
     chooseSyncFolder: async () => {
       const folder = await holding(chooseFolder, (chosen) =>
         chosen === null ? 'declined' : 'neutral',
@@ -250,6 +348,31 @@ export function createSyncHandlers(options: {
         return;
       }
       await controller.useRelay(url);
+      syncSoon();
+    },
+    listSyncDevices: () => controller.devices(),
+    forgetSyncDevice: async (value: unknown) => {
+      if (typeof value !== 'string' || !isSyncId(value)) {
+        throw new Error('Unknown device');
+      }
+      const device = (await controller.devices()).find(
+        (entry) => entry.id === value,
+      );
+      if (!device) {
+        throw new Error('That device has nothing in the vault');
+      }
+      await controller.refresh();
+      if (
+        !(await ask({
+          message: `Forget device ${value.slice(0, 8)}?`,
+          detail: `It put ${device.meetings === 1 ? '1 meeting' : `${device.meetings} meetings`} in the vault. They are removed there; your meetings stay on this computer, and this computer puts its own copy of any that only that device had.\n\nForget only a device you no longer use. One still in use writes its copies again only as its meetings change; to shut a lost device out, change the recovery phrase.`,
+          confirmLabel: 'Forget device',
+          cancelLabel: 'Cancel',
+        }))
+      ) {
+        return;
+      }
+      await controller.forgetDevice(value);
       syncSoon();
     },
     disconnectSync: async () => {

@@ -85,6 +85,12 @@ export type SyncTransportInfo =
   | { kind: 'folder'; folder: string }
   | { kind: 'relay'; url: string };
 
+export type SyncDevice = {
+  id: string;
+  meetings: number;
+  lastChangedAt: number;
+};
+
 export type SyncState =
   | { status: 'none'; error: string | null }
   | { status: 'unavailable'; error: string }
@@ -216,11 +222,14 @@ export const IpcChannel = {
   createRecoveryPhrase: 'sync:create-recovery-phrase',
   enterRecoveryPhrase: 'sync:enter-recovery-phrase',
   showRecoveryPhrase: 'sync:show-recovery-phrase',
+  showPairingCode: 'sync:show-pairing-code',
   chooseSyncFolder: 'sync:choose-folder',
   connectSyncRelay: 'sync:connect-relay',
   disconnectSync: 'sync:disconnect',
   changeRecoveryPhrase: 'sync:change-recovery-phrase',
   syncNow: 'sync:now',
+  listSyncDevices: 'sync:list-devices',
+  forgetSyncDevice: 'sync:forget-device',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
   string
@@ -282,11 +291,14 @@ export type AppApi = {
   createRecoveryPhrase: () => Promise<void>;
   enterRecoveryPhrase: (phrase: string) => Promise<boolean>;
   showRecoveryPhrase: () => Promise<boolean>;
+  showPairingCode: () => Promise<void>;
   chooseSyncFolder: () => Promise<void>;
   connectSyncRelay: (url: string) => Promise<void>;
   disconnectSync: () => Promise<void>;
   changeRecoveryPhrase: () => Promise<void>;
   syncNow: () => Promise<void>;
+  listSyncDevices: () => Promise<SyncDevice[]>;
+  forgetSyncDevice: (id: string) => Promise<void>;
   onSyncChanged: (callback: (state: SyncState) => void) => () => void;
   getMcpState: () => Promise<McpState>;
   setMcpEnabled: (enabled: boolean) => Promise<void>;

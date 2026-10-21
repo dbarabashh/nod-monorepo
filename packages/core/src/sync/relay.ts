@@ -1,12 +1,33 @@
+import { concatBytes, textOf } from '../crypto/encoding.ts';
 import {
   assertSafePath,
+  WritesRefused,
   type RemoteFile,
   type Transport,
-} from '@nod/core/sync';
+} from './transport.ts';
 
-export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
+// What the transport reads from a response: met by the Fetch API on Node,
+// Electron's net.fetch and expo/fetch on mobile.
+export type RelayResponse = {
+  status: number;
+  ok: boolean;
+  headers: { get: (name: string) => string | null };
+  body: ReadableStream<Uint8Array> | null;
+  arrayBuffer: () => Promise<ArrayBuffer>;
+};
+
+export type RelayRequest = {
+  method: 'GET' | 'PUT' | 'DELETE';
+  headers: Record<string, string>;
+  body?: Uint8Array<ArrayBuffer>;
+  redirect: 'error';
+};
+
+export type Fetch = (url: string, init: RelayRequest) => Promise<RelayResponse>;
 
 const maxListingBytes = 8 * 1024 * 1024;
+
+const vaultWide = new Set([429, 507]);
 
 const refusals: Record<number, string> = {
   409: 'another change to this meeting is still finishing, sync will try again',
@@ -45,12 +66,49 @@ function isRemoteFile(value: unknown): value is RemoteFile {
   );
 }
 
+// Reads a reply up to maxBytes, refusing more even when its length header
+// says less.
+export async function readBody(
+  response: RelayResponse,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  const tooLarge = () => new Error('The relay sent more than expected');
+  if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
+    throw tooLarge();
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    if (whole.length > maxBytes) {
+      throw tooLarge();
+    }
+    return whole;
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    size += value.length;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  return concatBytes(...chunks);
+}
+
+export type RelayTransport = Transport & { register: () => Promise<void> };
+
 export function createRelayTransport(options: {
   url: string;
   vaultId: string;
   token: string | null;
   fetch: Fetch;
-}): Transport & { register: () => Promise<void> } {
+}): RelayTransport {
   const base = relayBase(options.url);
   const vaultUrl = new URL(
     `v1/vaults/${encodeURIComponent(options.vaultId)}`,
@@ -63,9 +121,13 @@ export function createRelayTransport(options: {
   // would otherwise look like success and stop that file from syncing.
   async function request(
     url: string,
-    init: RequestInit,
+    init: {
+      method: RelayRequest['method'];
+      headers?: Record<string, string>;
+      body?: Uint8Array<ArrayBuffer>;
+    },
     known = false,
-  ): Promise<Response> {
+  ): Promise<RelayResponse> {
     const response = await options.fetch(url, {
       ...init,
       redirect: 'error',
@@ -78,37 +140,12 @@ export function createRelayTransport(options: {
         response.headers.get('x-relay-refusal') === 'new-vaults'
           ? 'it isn’t taking new vaults right now, sync will try again later'
           : refusals[response.status];
-      throw new Error(
-        `The relay answered ${response.status}${reason ? `: ${reason}` : ''}`,
-      );
+      const message = `The relay answered ${response.status}${reason ? `: ${reason}` : ''}`;
+      throw vaultWide.has(response.status) && init.method !== 'GET'
+        ? new WritesRefused(message)
+        : new Error(message);
     }
     return response;
-  }
-
-  async function body(
-    response: Response,
-    maxBytes: number,
-  ): Promise<Uint8Array> {
-    const tooLarge = () => new Error('The relay sent more than expected');
-    if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
-      throw tooLarge();
-    }
-    const reader = response.body?.getReader();
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    while (reader) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      size += value.length;
-      if (size > maxBytes) {
-        await reader.cancel();
-        throw tooLarge();
-      }
-      chunks.push(value);
-    }
-    return Buffer.concat(chunks);
   }
 
   const listings = new Map<string, { version: string; files: RemoteFile[] }>();
@@ -143,7 +180,7 @@ export function createRelayTransport(options: {
         return [];
       }
       const parsed: unknown = JSON.parse(
-        Buffer.from(await body(response, maxListingBytes)).toString('utf8'),
+        textOf(await readBody(response, maxListingBytes)),
       );
       const files = Array.isArray(parsed) ? parsed.filter(isRemoteFile) : [];
       const version = response.headers.get('etag');
@@ -156,10 +193,13 @@ export function createRelayTransport(options: {
     },
     read: async (path, maxBytes) => {
       const response = await request(fileUrl(path), { method: 'GET' });
-      return response.status === 404 ? null : body(response, maxBytes);
+      return response.status === 404 ? null : readBody(response, maxBytes);
     },
     write: async (path, data) => {
-      await request(fileUrl(path), { method: 'PUT', body: Buffer.from(data) });
+      await request(fileUrl(path), {
+        method: 'PUT',
+        body: new Uint8Array(data),
+      });
     },
     remove: async (path) => {
       await request(fileUrl(path), { method: 'DELETE' });

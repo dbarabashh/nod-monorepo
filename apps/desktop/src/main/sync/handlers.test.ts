@@ -7,7 +7,13 @@ import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController } from './controller.ts';
-import { createSyncHandlers, type Question } from './handlers.ts';
+import { pairingProof } from '@nod/core/crypto';
+import { openPairingOffer, readPairingCode } from '@nod/core/sync';
+import {
+  createSyncHandlers,
+  type PairingScreen,
+  type Question,
+} from './handlers.ts';
 import { createSyncSettings } from './settings.ts';
 
 const reversing: KeyWrap = {
@@ -25,6 +31,8 @@ describe('sync handlers', () => {
     answers?: boolean[];
     confirm?: (question: Question) => Promise<boolean>;
     folder?: string | null;
+    relayAnswers?: boolean;
+    showPairing?: (screen: PairingScreen) => Promise<void>;
   }) {
     const store = createMeetingStore({
       directory: join(dir(), 'meetings'),
@@ -40,6 +48,9 @@ describe('sync handlers', () => {
       onRemote: () => {},
       fetch: async () => {
         fetches += 1;
+        if (options.relayAnswers) {
+          return new Response(null, { status: 204 });
+        }
         throw new Error('no network in this test');
       },
       newId: randomUUID,
@@ -49,6 +60,9 @@ describe('sync handlers', () => {
     });
     await controller.load();
     const asked: Question[] = [];
+    const paired: PairingScreen[] = [];
+    const offers: Array<{ sealed: Uint8Array; proof: string }> = [];
+    let closedListeners = 0;
     const answers = options.answers ?? [];
     let clock = 0;
     let fetches = 0;
@@ -64,6 +78,22 @@ describe('sync handlers', () => {
           asked.push(question);
           return answers.shift() ?? false;
         }),
+      showPairing:
+        options.showPairing ??
+        (async (screen) => {
+          paired.push(screen);
+        }),
+      listenForPairing: async ({ sealed, proof }) => {
+        offers.push({ sealed, proof });
+        return {
+          port: 51234,
+          hosts: ['192.168.1.20'],
+          outcome: Promise.resolve(null),
+          close: () => {
+            closedListeners += 1;
+          },
+        };
+      },
       syncSoon: () => {},
       now: () => clock,
     });
@@ -71,6 +101,9 @@ describe('sync handlers', () => {
       controller,
       handlers,
       asked,
+      paired,
+      offers,
+      closedListeners: () => closedListeners,
       shared,
       fetches: () => fetches,
       tick: (ms: number) => {
@@ -226,6 +259,75 @@ describe('sync handlers', () => {
     assert.equal(fetches(), 0);
     const state = controller.state();
     assert.equal(state.status === 'ready' && state.transport, null);
+  });
+
+  it('shows a pairing code only once a relay is connected, with its vault code and host', async () => {
+    const { handlers, paired, offers, closedListeners, tick } = await setUp({
+      answers: [true, true],
+      relayAnswers: true,
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    await assert.rejects(handlers.showPairingCode(), /Connect a relay/);
+    assert.equal(paired.length, 0);
+
+    tick(10_000);
+    await handlers.connectSyncRelay('https://relay.example.com');
+    await handlers.showPairingCode();
+
+    assert.deepEqual(paired.length, 1);
+    assert.equal(paired[0]?.vaultCode, '32E2-308C-8391-59D8');
+    assert.equal(paired[0]?.relayHost, 'relay.example.com');
+    const code = readPairingCode(paired[0]?.code ?? '');
+    assert.equal(code.port, 51234);
+    assert.deepEqual(code.hosts, ['192.168.1.20']);
+    assert.doesNotMatch(
+      paired[0]?.code ?? '',
+      /relay|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/,
+    );
+    assert.equal(offers[0]?.proof, pairingProof(code.secret));
+    const offer = openPairingOffer(
+      code.secret,
+      offers[0]?.sealed ?? new Uint8Array(),
+    );
+    assert.deepEqual(
+      [...offer.key],
+      Array.from({ length: 32 }, () => 0),
+    );
+    assert.equal(offer.relayUrl, 'https://relay.example.com/');
+    assert.equal(closedListeners(), 1);
+  });
+
+  it('holds sync changes while the code is up, and limits showing it like the phrase', async () => {
+    let close = () => {};
+    let shown = 0;
+    const { handlers, tick } = await setUp({
+      answers: [true, true],
+      relayAnswers: true,
+      showPairing: () => {
+        shown += 1;
+        return shown === 1
+          ? new Promise<void>((resolve) => {
+              close = resolve;
+            })
+          : Promise.resolve();
+      },
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    await handlers.connectSyncRelay('https://relay.example.com');
+    const showing = handlers.showPairingCode();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await assert.rejects(handlers.disconnectSync(), /open question/);
+    await assert.rejects(handlers.showRecoveryPhrase(), /open question/);
+    tick(10_000);
+    close();
+    await showing;
+
+    await assert.rejects(handlers.showRecoveryPhrase(), /Wait a moment/);
+    await assert.rejects(handlers.showPairingCode(), /Wait a moment/);
+    tick(10_000);
+    await handlers.showPairingCode();
+    assert.equal(shown, 2);
   });
 
   it('stops syncing only after the user confirms', async () => {

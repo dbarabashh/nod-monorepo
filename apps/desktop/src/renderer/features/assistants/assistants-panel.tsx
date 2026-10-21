@@ -28,6 +28,7 @@ import {
 } from './api.ts';
 import { setupText } from './lib/setup.ts';
 import './assistants.css';
+import { dateTimeFormat } from '../../lib/formats.ts';
 
 const scopeLabels: Record<McpScope, string> = {
   summaries: 'Summaries',
@@ -52,11 +53,6 @@ const toolLabels: Record<string, string> = {
   search_meetings: 'Searched meetings',
   get_meeting: 'Opened a meeting',
 };
-
-const timeFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
 export function AssistantsPanel() {
   const { state, retry } = useAsync(getMcpState, onMcpChanged);
@@ -180,7 +176,7 @@ export function AssistantsPanel() {
                       ? 'Disconnected, but that couldn’t be saved yet'
                       : client.lastUsedAt === null
                         ? 'Not used yet'
-                        : `Last read ${timeFormat.format(client.lastUsedAt)}`}
+                        : `Last read ${dateTimeFormat.format(client.lastUsedAt)}`}
                   </span>
                 </div>
                 <Button
@@ -281,7 +277,7 @@ function ActivityLog({
               <span className="assistants__entry-head">
                 <span className="assistants__client-name">{entry.client}</span>
                 <span className="assistants__meta">
-                  {timeFormat.format(entry.at)}
+                  {dateTimeFormat.format(entry.at)}
                 </span>
               </span>
               <span className="assistants__meta">

@@ -1,18 +1,24 @@
 import type { SyncState } from '../../../shared/ipc.ts';
 import { Button } from '../../components/ui/index.ts';
 import { useAsync } from '../../lib/use-async.ts';
-import { disconnectSync, getSyncState, onSyncChanged, syncNow } from './api.ts';
+import {
+  disconnectSync,
+  getSyncState,
+  onSyncChanged,
+  showPairingCode,
+  syncNow,
+} from './api.ts';
 import { ChoosePlace } from './components/choose-place.tsx';
+import { Devices } from './components/devices.tsx';
 import { KeySetup } from './components/key-setup.tsx';
 import { PhraseChanged } from './components/phrase-changed.tsx';
 import { RecoveryPhrase } from './components/recovery-phrase.tsx';
 import { Unavailable } from './components/unavailable.tsx';
 import { useAction } from '../../lib/use-action.ts';
 import './sync.css';
+import { clockFormat } from '../../lib/formats.ts';
 
 type Ready = Extract<SyncState, { status: 'ready' }>;
-
-const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' });
 
 function Connected({
   state,
@@ -38,15 +44,24 @@ function Connected({
         <dd>
           {state.lastSyncedAt === null
             ? 'Not yet'
-            : timeFormat.format(new Date(state.lastSyncedAt))}
+            : clockFormat.format(new Date(state.lastSyncedAt))}
         </dd>
       </dl>
-      {state.connected && state.devices === 0 && (
+      {transport.kind === 'relay' ? (
         <p className="sync__note">
-          To add a device, install Nod there, choose “Already use Nod” and enter
-          your recovery phrase, then choose this same{' '}
-          {transport.kind === 'folder' ? 'folder' : 'relay'}.
+          To add your phone, install Nod there and scan the pairing code. To add
+          a computer, choose “Already use Nod” there, enter your recovery phrase
+          and connect this same relay.
         </p>
+      ) : (
+        state.connected &&
+        state.devices === 0 && (
+          <p className="sync__note">
+            To add a device, install Nod there, choose “Already use Nod” and
+            enter your recovery phrase, then choose this same folder. A phone
+            pairs only through a relay.
+          </p>
+        )
       )}
       {(error ?? state.error) && (
         <p className="sync__note" role="alert">
@@ -54,6 +69,15 @@ function Connected({
         </p>
       )}
       <div className="sync__actions">
+        {transport.kind === 'relay' && (
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => run(showPairingCode)}
+          >
+            Pair a phone…
+          </Button>
+        )}
         <Button disabled={busy} onClick={() => run(syncNow)}>
           Sync now
         </Button>
@@ -65,6 +89,7 @@ function Connected({
           Stop syncing on this device
         </Button>
       </div>
+      {state.connected && <Devices key={state.devices} />}
     </div>
   );
 }

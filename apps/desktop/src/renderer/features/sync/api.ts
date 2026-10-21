@@ -1,4 +1,4 @@
-import type { SyncState } from '../../../shared/ipc.ts';
+import type { SyncDevice, SyncState } from '../../../shared/ipc.ts';
 
 export function getSyncState(): Promise<SyncState> {
   return window.api.getSyncState();
@@ -22,6 +22,10 @@ export function showRecoveryPhrase(): Promise<boolean> {
   return window.api.showRecoveryPhrase();
 }
 
+export function showPairingCode(): Promise<void> {
+  return window.api.showPairingCode();
+}
+
 export function chooseSyncFolder(): Promise<void> {
   return window.api.chooseSyncFolder();
 }
@@ -40,4 +44,12 @@ export function syncNow(): Promise<void> {
 
 export function changeRecoveryPhrase(): Promise<void> {
   return window.api.changeRecoveryPhrase();
+}
+
+export function listSyncDevices(): Promise<SyncDevice[]> {
+  return window.api.listSyncDevices();
+}
+
+export function forgetSyncDevice(id: string): Promise<void> {
+  return window.api.forgetSyncDevice(id);
 }

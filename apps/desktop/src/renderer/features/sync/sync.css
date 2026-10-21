@@ -83,4 +83,34 @@
     font-weight: var(--weight-bold);
     line-height: var(--leading-md);
   }
+
+  .sync__devices {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sync__device {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0 var(--space-3);
+
+    & .sync__note {
+      grid-column: 1;
+    }
+
+    & .ui-button {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+  }
+
+  .sync__device-name {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-sm);
+  }
 }

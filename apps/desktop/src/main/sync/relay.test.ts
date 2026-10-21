@@ -7,15 +7,23 @@ import { afterEach, describe, it } from 'node:test';
 import { createRelay } from '../../../relay/server.ts';
 import {
   editSummary,
+  readDocument,
   setSummary,
   startMeeting,
   type DocumentState,
+  type MeetingDocument,
 } from '@nod/core/meetings';
 import { createMeetingStore } from '../meetings/store.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
-import { createSyncEngine } from '@nod/core/sync';
-import { relayToken, vaultIdOf } from '@nod/core/crypto';
-import { createRelayTransport, relayBase } from './relay-transport.ts';
+import {
+  createSyncEngine,
+  requestPairingOffer,
+  sealPairingOffer,
+  type Merged,
+} from '@nod/core/sync';
+import { pairingProof, relayToken, vaultIdOf } from '@nod/core/crypto';
+import { listenForPairing } from './pairing-server.ts';
+import { createRelayTransport, relayBase } from '@nod/core/sync';
 
 describe('relay transport', () => {
   const dir = useTempDir('relay-');
@@ -73,6 +81,93 @@ describe('relay transport', () => {
     await assert.rejects(
       transport(relayToken(randomBytes(32))).register(),
       /403/,
+    );
+  });
+
+  it('lets a phone that scans the pairing code find the vault and every meeting', async () => {
+    await startRelay();
+    const store = createMeetingStore({
+      directory: join(dir(), 'computer'),
+      cipher: async () => ({
+        encrypt: (plain) => Buffer.from(plain),
+        decrypt: (data) => data,
+      }),
+    });
+    await store.load();
+    await store.save(setSummary(startMeeting('m-1', 'Planning', 1), 'Ship it'));
+    await store.save(startMeeting('m-2', 'Retro', 2));
+    const owner = transport(ownerToken);
+    await owner.register();
+    await createSyncEngine({
+      transport: owner,
+      vault: { id: vault, key: ownerKey, deviceId: 'computer' },
+      store,
+      onRemote: () => {},
+      now: () => 1,
+    }).sync();
+
+    const listing = await fetch(
+      `${url}/v1/vaults/${vault}/files?prefix=devices%2F`,
+      { headers: { authorization: `Bearer ${ownerToken}` } },
+    );
+    assert.equal(listing.headers.get('cache-control'), 'no-store');
+
+    const secret = randomBytes(32);
+    const listener = await listenForPairing({
+      offer: sealPairingOffer(secret, { key: ownerKey, relayUrl: url }),
+      proof: pairingProof(secret),
+      hosts: ['127.0.0.1'],
+    });
+    const lan = { secret, port: listener.port, hosts: ['127.0.0.1'] };
+    const pairing = await requestPairingOffer(lan, (input, init) =>
+      fetch(input, init),
+    );
+    assert.deepEqual(await listener.outcome, { by: '127.0.0.1' });
+    await assert.rejects(
+      requestPairingOffer(lan, (input, init) => fetch(input, init)),
+      /same Wi‑Fi/,
+    );
+    const phoneTransport = createRelayTransport({
+      url: pairing.relayUrl,
+      vaultId: vaultIdOf(pairing.key),
+      token: relayToken(pairing.key),
+      fetch: (input, init) => fetch(input, init),
+    });
+    await phoneTransport.register();
+    const received = new Map<string, MeetingDocument>();
+    const nothing: Merged = {
+      state: null,
+      written: Promise.resolve(null),
+      kept: false,
+    };
+    await createSyncEngine({
+      transport: phoneTransport,
+      vault: {
+        id: vaultIdOf(pairing.key),
+        key: pairing.key,
+        deviceId: 'phone',
+      },
+      store: {
+        ids: () => [],
+        document: () => undefined,
+        merge: (id, remote) => {
+          received.set(id, remote);
+          return nothing;
+        },
+      },
+      onRemote: () => {},
+      now: () => 1,
+    }).sync();
+
+    assert.deepEqual(
+      [...received].map(([id, document]) => {
+        const state = readDocument(document);
+        return [id, state?.kind === 'meeting' ? state.meeting.title : null];
+      }),
+      [
+        ['m-1', 'Planning'],
+        ['m-2', 'Retro'],
+      ],
     );
   });
 

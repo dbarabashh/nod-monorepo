@@ -5,4 +5,5 @@ export {
   phraseWords,
   recoveryPhrase,
 } from './recovery.ts';
-export { fileKeyOf, relayToken, vaultIdOf } from './vault-keys.ts';
+export { pairingProof } from './pairing-keys.ts';
+export { fileKeyOf, relayToken, vaultCodeOf, vaultIdOf } from './vault-keys.ts';

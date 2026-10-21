@@ -28,3 +28,9 @@ export function relayToken(vaultKey: Uint8Array): string {
 export function vaultIdOf(vaultKey: Uint8Array): string {
   return toHex(sha256(bytesOf(relayToken(vaultKey))).subarray(0, 16));
 }
+
+// 64 bits of the vault id, short enough to compare by eye across devices and
+// far too many to find another key that gives the same code.
+export function vaultCodeOf(vaultId: string): string {
+  return vaultId.slice(0, 16).toUpperCase().match(/.{4}/g)?.join('-') ?? '';
+}

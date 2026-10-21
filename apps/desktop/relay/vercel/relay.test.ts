@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { createHash, randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { relayToken, vaultIdOf } from '@nod/core/crypto';
-import { createRelayTransport } from '../../src/main/sync/relay-transport.ts';
+import { createRelayTransport } from '@nod/core/sync';
 import {
   Conflict,
   createRelayHandler,

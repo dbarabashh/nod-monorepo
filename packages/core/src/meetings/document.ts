@@ -132,10 +132,14 @@ export function tombstone(id: string, deletedAt: number): MeetingDocument {
   );
 }
 
+// Names a version of a meeting: equal for two documents that hold the same
+// changes, on every device.
+export function documentHeads(document: MeetingDocument): string {
+  return [...Automerge.getHeads(document)].sort().join();
+}
+
 export function sameDocument(a: MeetingDocument, b: MeetingDocument): boolean {
-  const heads = (document: MeetingDocument) =>
-    [...Automerge.getHeads(document)].sort().join();
-  return heads(a) === heads(b);
+  return documentHeads(a) === documentHeads(b);
 }
 
 function setLine(fields: MeetingFields, line: TranscriptLine) {

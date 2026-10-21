@@ -23,6 +23,7 @@ export function registerSyncIpc(
     IpcChannel.showRecoveryPhrase,
     handlers.showRecoveryPhrase,
   );
+  handleFromApp(appUrl, IpcChannel.showPairingCode, handlers.showPairingCode);
   handleFromApp(appUrl, IpcChannel.chooseSyncFolder, handlers.chooseSyncFolder);
   handleFromApp(appUrl, IpcChannel.connectSyncRelay, handlers.connectSyncRelay);
   handleFromApp(appUrl, IpcChannel.disconnectSync, handlers.disconnectSync);
@@ -32,6 +33,8 @@ export function registerSyncIpc(
     handlers.changeRecoveryPhrase,
   );
   handleFromApp(appUrl, IpcChannel.syncNow, handlers.syncNow);
+  handleFromApp(appUrl, IpcChannel.listSyncDevices, handlers.listSyncDevices);
+  handleFromApp(appUrl, IpcChannel.forgetSyncDevice, handlers.forgetSyncDevice);
 }
 
 export function broadcastSync(controller: SyncController): void {

@@ -10,8 +10,13 @@
     "ios": {
       "icon": "./assets/images/icon.png",
       "infoPlist": {
-        "UIDesignRequiresCompatibility": true
-      }
+        "UIDesignRequiresCompatibility": true,
+        "NSLocalNetworkUsageDescription": "Nod connects to your computer on this Wi‑Fi to pair, so the key to your meetings never leaves your network.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      },
+      "bundleIdentifier": "com.anonymous.nod-mobile"
     },
     "android": {
       "adaptiveIcon": {
@@ -20,10 +25,21 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "allowBackup": false,
+      "permissions": ["android.permission.CAMERA"]
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Nod uses the camera to scan the pairing code your computer shows, so this phone can sync your meetings.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {
@@ -34,7 +50,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 120
         }
-      ]
+      ],
+      "./plugins/with-local-pairing.js"
     ],
     "experiments": {
       "typedRoutes": true,

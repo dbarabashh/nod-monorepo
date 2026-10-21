@@ -17,6 +17,7 @@ import { createMeetingStore, type Cipher } from '../meetings/store.ts';
 import { fileKeyOf, open, seal } from '@nod/core/crypto';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncEngine } from '@nod/core/sync';
+import { countingTransport } from '@nod/core/sync/testing';
 import { createFolderTransport } from './folder-transport.ts';
 import type { Transport } from '@nod/core/sync';
 
@@ -38,20 +39,6 @@ const meeting = setSummary(
   'Jon ships the onboarding on Friday.',
 );
 
-function counting(transport: Transport) {
-  let writes = 0;
-  return {
-    transport: {
-      ...transport,
-      write: (path: string, data: Uint8Array) => {
-        writes += 1;
-        return transport.write(path, data);
-      },
-    },
-    writes: () => writes,
-  };
-}
-
 describe('sync engine', () => {
   const dir = useTempDir('sync-engine-');
   const vaultKey = randomBytes(32);
@@ -63,7 +50,9 @@ describe('sync engine', () => {
     });
     await store.load();
     const received: DocumentState[] = [];
-    const shared = counting(createFolderTransport(join(dir(), 'shared')));
+    const shared = countingTransport(
+      createFolderTransport(join(dir(), 'shared')),
+    );
     const engine = createSyncEngine({
       transport: shared.transport,
       vault: { id: 'vault-1', key, deviceId: name },
@@ -131,6 +120,13 @@ describe('sync engine', () => {
     await laptop.store.save(meeting);
     await laptop.engine.sync();
     await phone.engine.sync();
+    await phone.store.save(
+      editSummary(meeting, 'Jon ships the onboarding on Friday, with docs.'),
+    );
+    await phone.engine.sync();
+    await laptop.engine.sync();
+    const folder = createFolderTransport(join(dir(), 'shared'));
+    assert.ok(await folder.read(meetingPath('phone', 'm1'), 1_000_000));
 
     await laptop.store.remove('m1', 9_000);
     await laptop.engine.sync();
@@ -141,7 +137,6 @@ describe('sync engine', () => {
       id: 'm1',
       deletedAt: 9_000,
     });
-    const folder = createFolderTransport(join(dir(), 'shared'));
     for (const name of ['laptop', 'phone']) {
       const sealed = await folder.read(meetingPath(name, 'm1'), 1_000_000);
       assert.ok(sealed);

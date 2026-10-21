@@ -30,6 +30,9 @@ import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
 import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
 import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
 import { createSyncHandlers } from './sync/handlers.ts';
+import { pairingPage } from './sync/pairing-page.ts';
+import { listenForPairing, localAddresses } from './sync/pairing-server.ts';
+import { showPairingWindow } from './windows/pairing-window.ts';
 import { processAlive, quitWithParent } from './dev/quit-with-parent.ts';
 import { createMeetingDetection } from './meeting-detection/service.ts';
 import { platformMonitor } from './meeting-detection/monitor.ts';
@@ -57,7 +60,8 @@ import { openSuggestionWindow } from './windows/meeting-suggestion.ts';
 import { createSuggestionWindowControl } from './meeting-detection/suggestion-window.ts';
 import { createSyncController } from './sync/controller.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
-import { relayBase } from './sync/relay-transport.ts';
+import { relayBase } from '@nod/core/sync';
+import { createPublishedLogs } from './sync/published-log.ts';
 import { createSyncSettings } from './sync/settings.ts';
 
 ignoreClosedOutput();
@@ -123,6 +127,7 @@ const appUrl =
   ).href;
 
 const heartbeatMs = 5_000;
+const relayTimeoutMs = 60_000;
 const quitFlushMs = 10_000;
 
 let mainWindow: BrowserWindow | null = null;
@@ -174,9 +179,14 @@ const syncController = createSyncController({
     directory: app.getPath('userData'),
     keychain,
   }),
+  publishedLogs: createPublishedLogs(
+    path.join(app.getPath('userData'), 'sync-published.json'),
+  ),
   store: meetingStore,
   onRemote: (state) => recorder.applyRemote(state),
-  fetch: (url, init) => net.fetch(url, init),
+  // A request that never ends would hold sync busy until a restart.
+  fetch: (url, init) =>
+    net.fetch(url, { ...init, signal: AbortSignal.timeout(relayTimeoutMs) }),
   newId: randomUUID,
   now: Date.now,
   onChange: () => broadcastSync(syncController),
@@ -469,6 +479,14 @@ app.whenReady().then(async () => {
           : await dialog.showMessageBox(options);
         return response === 0;
       },
+      showPairing: (screen, done) =>
+        showPairingWindow(
+          pairingPage(screen, process.platform),
+          mainWindow,
+          done,
+        ),
+      listenForPairing: ({ sealed, proof }) =>
+        listenForPairing({ offer: sealed, proof, hosts: localAddresses() }),
       syncSoon: () => syncScheduler.soon(),
       now: Date.now,
     }),

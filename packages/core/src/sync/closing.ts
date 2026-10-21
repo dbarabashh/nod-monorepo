@@ -1,3 +1,5 @@
+import { devicesPrefix, parseClosedPath } from './layout.ts';
+import type { RemoteFile, Transport } from './transport.ts';
 import { bytesOf, open, seal, textOf } from '../crypto/index.ts';
 
 const closedContext = (vaultId: string, deviceId: string) =>
@@ -33,4 +35,52 @@ export function openClosedNotice(
     raw !== null &&
     typeof Reflect.get(raw, 'closedAt') === 'number'
   );
+}
+
+const noticeMaxBytes = 4 * 1024;
+
+export type ClosedCheck = { closed: boolean; readable: boolean };
+
+// Notices already read at a version are skipped through `checked`, which the
+// caller keeps for as long as it uses this transport. A notice that can't be
+// read leaves `readable` false, so the caller holds sync back rather than
+// risk writing into a closed vault.
+export async function checkClosedNotices(
+  transport: Transport,
+  vault: { fileKey: Uint8Array; id: string; deviceId: string },
+  checked: Map<string, string>,
+  listed?: RemoteFile[],
+): Promise<ClosedCheck> {
+  const files = listed ?? (await transport.list(devicesPrefix()));
+  let readable = true;
+  for (const file of files) {
+    const deviceId = parseClosedPath(file.path);
+    if (
+      !deviceId ||
+      deviceId === vault.deviceId ||
+      checked.get(file.path) === file.version
+    ) {
+      continue;
+    }
+    let data: Uint8Array | null;
+    try {
+      data = await transport.read(file.path, noticeMaxBytes);
+    } catch {
+      readable = false;
+      continue;
+    }
+    let closed = false;
+    try {
+      closed = data
+        ? openClosedNotice(vault.fileKey, vault.id, deviceId, data)
+        : false;
+    } catch {
+      closed = false;
+    }
+    if (closed) {
+      return { closed: true, readable };
+    }
+    checked.set(file.path, file.version);
+  }
+  return { closed: false, readable };
 }

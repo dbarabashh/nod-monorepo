@@ -36,7 +36,8 @@ build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Window
                and icon.png (Linux, 1024 px), plus entitlements.mac.plist for
                the signed macOS build, all wired in forge.config.mts
 relay/         the optional self-hostable sync relay (no dependencies); its
-               tests run with this app's because they use its sync transport
+               tests run with this app's, against the relay transport in
+               @nod/core/sync
 native/macos/  the microphone monitor (C, CoreAudio) that notices a meeting
                starting; Forge builds it into build/native on macOS
 scripts/       start, the mic monitor build, and package lookup in the workspace

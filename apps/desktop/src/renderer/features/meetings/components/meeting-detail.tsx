@@ -8,11 +8,7 @@ import { MeetingMenu } from './meeting-menu.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
 import { MeetingTitle } from './meeting-title.tsx';
 import { MeetingTranscript } from './meeting-transcript.tsx';
-
-const timeFormat = new Intl.DateTimeFormat(undefined, {
-  hour: 'numeric',
-  minute: '2-digit',
-});
+import { clockFormat } from '../../../lib/formats.ts';
 
 type MeetingDetailProps = {
   meeting: Meeting;
@@ -76,7 +72,7 @@ export function MeetingDetail({
                 <Icon name="clock" />
                 <time dateTime={meeting.startedAt.toISOString()}>
                   {dayLabel(meeting.startedAt, now, navigator.language)},{' '}
-                  {timeFormat.format(meeting.startedAt)}
+                  {clockFormat.format(meeting.startedAt)}
                 </time>
               </li>
               <li>

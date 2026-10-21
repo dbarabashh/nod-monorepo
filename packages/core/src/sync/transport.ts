@@ -13,6 +13,10 @@ export type Transport = {
   remove: (path: string) => Promise<void>;
 };
 
+// The place takes no more writes for the whole vault for now (a rate limit,
+// a full quota): trying the next file in the same round would only fail too.
+export class WritesRefused extends Error {}
+
 export function assertSafePath(path: string): string[] {
   const parts = path.split('/');
   if (

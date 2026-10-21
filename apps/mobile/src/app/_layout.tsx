@@ -1,10 +1,13 @@
+import '../lib/random.ts';
 import '../lib/automerge.ts';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useSyncLoop } from '../lib/sync/sync.ts';
 import { text, useColors, weight } from '../theme/index.ts';
 
 export default function RootLayout() {
   const colors = useColors();
+  useSyncLoop();
   return (
     <>
       <StatusBar style="auto" />
@@ -18,6 +21,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Meetings' }} />
+        <Stack.Screen name="pair" options={{ title: 'Pair with computer' }} />
+        <Stack.Screen name="meeting/[id]" options={{ title: '' }} />
         <Stack.Screen name="components" options={{ title: 'Design system' }} />
         <Stack.Screen name="diagnostics" options={{ title: 'Diagnostics' }} />
       </Stack>

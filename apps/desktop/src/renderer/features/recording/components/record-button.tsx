@@ -4,11 +4,7 @@ import { formatClock } from '../../../lib/format-clock.ts';
 import { useElapsed, useRecording } from '../use-recording.ts';
 import { StartNotice } from './start-notice.tsx';
 import { useStart } from './use-start.ts';
-
-const titleFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
+import { dateTimeFormat } from '../../../lib/formats.ts';
 
 export function RecordButton() {
   const recording = useRecording();
@@ -37,7 +33,7 @@ export function RecordButton() {
           disabled={starting}
           onClick={() =>
             void start(() =>
-              startRecording(`Meeting on ${titleFormat.format(new Date())}`),
+              startRecording(`Meeting on ${dateTimeFormat.format(new Date())}`),
             )
           }
         >

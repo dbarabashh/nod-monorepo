@@ -14,12 +14,21 @@ import {
   assertSafePath,
   type RemoteFile,
   type Transport,
+  WritesRefused,
 } from '@nod/core/sync';
 
 const temporaryMarker = '.tmp-';
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+function diskFull(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error.code === 'ENOSPC' || error.code === 'EDQUOT')
+  );
 }
 
 export function createFolderTransport(root: string): Transport {
@@ -102,7 +111,14 @@ export function createFolderTransport(root: string): Transport {
       const target = await resolve(relative);
       await mkdir(path.dirname(target), { recursive: true });
       const temporary = `${target}${temporaryMarker}${randomUUID()}`;
-      await writeFile(temporary, data);
+      try {
+        await writeFile(temporary, data);
+      } catch (error) {
+        await rm(temporary, { force: true });
+        throw diskFull(error)
+          ? new WritesRefused('The sync folder’s disk is full')
+          : error;
+      }
       await rename(temporary, target);
     },
     remove: async (relative) => {

@@ -200,7 +200,9 @@ describe('createMeetingStore', () => {
     assert.ok(shared);
     written.length = 0;
 
-    assert.equal(local.merge('m1', shared).state, null);
+    const same = local.merge('m1', shared);
+    assert.equal(same.state, null);
+    assert.equal(same.kept, true);
     assert.deepEqual(written, []);
 
     const remote = updateDocument(
@@ -210,9 +212,12 @@ describe('createMeetingStore', () => {
     );
     const merged = local.merge('m1', remote);
     assert.equal(merged.state?.kind, 'meeting');
+    assert.equal(merged.kept, true);
     await merged.written;
     assert.deepEqual(written, ['m1']);
-    assert.equal(local.merge('m2', remote).state, null);
+    const misfiled = local.merge('m2', remote);
+    assert.equal(misfiled.state, null);
+    assert.equal(misfiled.kept, false);
   });
 
   it('lets a copy from another device replace a file it could not read, keeping the old file', async () => {

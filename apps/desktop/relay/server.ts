@@ -224,14 +224,15 @@ export function createRelay(dataDirectory: string): Server {
   return createServer((request, response) => {
     handle(request).then(
       (reply) => {
-        response.writeHead(
-          reply.status,
-          reply.type ? { 'content-type': reply.type } : {},
-        );
+        // A phone's HTTP cache would otherwise keep listings on its disk.
+        response.writeHead(reply.status, {
+          'cache-control': 'no-store',
+          ...(reply.type ? { 'content-type': reply.type } : {}),
+        });
         response.end(reply.body);
       },
       () => {
-        response.writeHead(500);
+        response.writeHead(500, { 'cache-control': 'no-store' });
         response.end();
       },
     );
