@@ -179,9 +179,9 @@ export function registerRecordingIpc(options: {
       boundedString(text, maxLineChars, tooLong),
     ),
   );
-  handleFromApp(appUrl, IpcChannel.summarizeMeeting, (id) =>
-    session.summarize(meetingId(id)),
-  );
+  handleFromApp(appUrl, IpcChannel.summarizeMeeting, async (id) => {
+    await session.summarize(meetingId(id));
+  });
   handleFromApp(appUrl, IpcChannel.showMainWindow, showMainWindow);
   listenFromApp(appUrl, IpcChannel.dragRecordingWidget, (phase, dx, dy) => {
     if (

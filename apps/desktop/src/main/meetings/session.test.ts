@@ -95,6 +95,12 @@ function setup(captureGraceMs = 0) {
     advance: (ms: number) => {
       time += ms;
     },
+    summaryRuns: (run: () => Promise<void>) => {
+      summaryResult = async () => {
+        await run();
+        return { summary: 'We agreed.', title: 'Shipping plan' };
+      };
+    },
     failSummary: () => {
       summaryResult = () => Promise.reject(new Error('out of memory'));
     },
@@ -480,5 +486,55 @@ describe('createMeetingSession', () => {
 
     assert.equal(calls.includes('summarize'), false);
     assert.equal(recorder.transcriptOf('m1')?.summary, 'We agreed with Ann.');
+  });
+
+  it('keeps a summary another device wrote while the model was running', async () => {
+    const { recorder, session, summaryRuns } = setup();
+    await recorder.load();
+    await session.start('A');
+    await recorder.appendLines('m1', [
+      { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+    ]);
+    await recorder.finish('m1');
+    summaryRuns(() =>
+      recorder.saveSummary('m1', 'Written elsewhere.', 'Theirs'),
+    );
+
+    assert.equal(await session.summarize('m1', null), false);
+
+    assert.equal(recorder.transcriptOf('m1')?.summary, 'Written elsewhere.');
+    assert.equal(recorder.detail('m1').summaryStatus, 'idle');
+  });
+
+  it('leaves a meeting it is still finishing to its own summary', async () => {
+    const { recorder, session, calls, setFlush } = setup();
+    await recorder.load();
+    await session.start('A');
+    await recorder.appendLines('m1', [
+      { id: 'me-0', speaker: 'me', startMs: 0, endMs: 1_000, text: 'Ship it.' },
+    ]);
+    let flushDone = () => {};
+    let flushing = false;
+    setFlush(
+      () =>
+        new Promise<void>((resolve) => {
+          flushDone = resolve;
+          flushing = true;
+        }),
+    );
+    const finishing = session.finish('m1');
+    while (!flushing) {
+      await settle();
+    }
+    await session.finish('m1');
+    calls.length = 0;
+
+    assert.equal(await session.summarize('m1', null), false);
+    assert.equal(calls.includes('summarize'), false);
+
+    flushDone();
+    await finishing;
+    await settle();
+    assert.equal(calls.filter((call) => call === 'summarize').length, 1);
   });
 });

@@ -40,6 +40,7 @@ import type { MicUser } from './meeting-detection/parse.ts';
 import { createCapturePage } from './meetings/capture-page.ts';
 import { createMeetingImport } from './meetings/import-file.ts';
 import { createRecorder } from './meetings/recorder.ts';
+import { createArrivedSummaries } from './meetings/arrived-summaries.ts';
 import { createMeetingSession } from './meetings/session.ts';
 import { createTranscriber } from './transcription/service.ts';
 import { createMeetingStore } from './meetings/store.ts';
@@ -134,6 +135,8 @@ let mainWindow: BrowserWindow | null = null;
 let widget: BrowserWindow | null = null;
 let quitting = false;
 let pauseRecording = () => recorder.pause();
+let summaryArrived = (_id: string) => {};
+let scanForSummaries = () => {};
 
 const keychain: KeyWrap = {
   wrap: (plain) => {
@@ -183,7 +186,12 @@ const syncController = createSyncController({
     path.join(app.getPath('userData'), 'sync-published.json'),
   ),
   store: meetingStore,
-  onRemote: (state) => recorder.applyRemote(state),
+  onRemote: (state) => {
+    recorder.applyRemote(state);
+    if (state.kind === 'meeting') {
+      summaryArrived(state.id);
+    }
+  },
   // A request that never ends would hold sync busy until a restart.
   fetch: (url, init) =>
     net.fetch(url, { ...init, signal: AbortSignal.timeout(relayTimeoutMs) }),
@@ -403,11 +411,15 @@ app.whenReady().then(async () => {
     },
   });
   void appState.read().then(applySuggestionSettings);
+  const modelsChanged = broadcastModels();
   const models = createModelManager({
     catalog: modelCatalog,
     directory: path.join(app.getPath('userData'), 'models'),
     fetch: (url, init) => net.fetch(url, init),
-    onChange: broadcastModels(),
+    onChange: (installed) => {
+      modelsChanged(installed);
+      scanForSummaries();
+    },
   });
   registerModelsIpc(appUrl, models);
   const transcriber = createTranscriber({
@@ -427,6 +439,19 @@ app.whenReady().then(async () => {
     onCaptureFinished: () => capturePage.release(),
   });
   pauseRecording = meetingSession.pause;
+  const arrivedSummaries = createArrivedSummaries({
+    meeting: recorder.transcriptOf,
+    summarize: meetingSession.summarize,
+    recording: () => recorder.state().status === 'recording',
+    now: Date.now,
+    later: (ms, run) => {
+      const timer = setTimeout(run, ms);
+      return () => clearTimeout(timer);
+    },
+  });
+  summaryArrived = arrivedSummaries.arrived;
+  scanForSummaries = () =>
+    arrivedSummaries.scan(recorder.meetings().map((meeting) => meeting.id));
   registerRecordingIpc({
     appUrl,
     recorder,
@@ -499,6 +524,7 @@ app.whenReady().then(async () => {
   );
   await syncController.load();
   if (loaded) {
+    scanForSummaries();
     syncScheduler.start();
   }
   registerMcpIpc(appUrl, mcpService, clipboard);

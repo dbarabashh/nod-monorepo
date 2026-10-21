@@ -21,7 +21,12 @@ export type MeetingSession = {
   resume: (id: string) => Promise<void>;
   pause: () => Promise<void>;
   finish: (id: string) => Promise<void>;
-  summarize: (id: string) => Promise<void>;
+  // With `expected`, the summary is saved only if the meeting's summary is
+  // still that one when the model is done, so a summary another device wrote
+  // meanwhile is kept rather than merged with this one; and never for a
+  // meeting this computer is still finishing, whose last lines aren't in yet.
+  // Resolves to whether a summary was saved.
+  summarize: (id: string, expected?: string | null) => Promise<boolean>;
   acceptsAudio: () => boolean;
   captureStopped: () => void;
   transcriptionFailed: (
@@ -48,6 +53,8 @@ export function createMeetingSession(options: {
   let tail: Promise<unknown> = Promise.resolve();
   let restarts = 0;
   let listens = 0;
+  // Counted: the widget and the window can both ask to finish one meeting.
+  const finishing = new Map<string, number>();
 
   // Start, pause and finish each await several steps; running them one at a
   // time keeps a resume from landing in the middle of a finish.
@@ -179,16 +186,20 @@ export function createMeetingSession(options: {
     return { flushed };
   }
 
-  async function summarize(id: string) {
+  async function summarize(
+    id: string,
+    expected?: string | null,
+  ): Promise<boolean> {
     const meeting = recorder.transcriptOf(id);
     if (
       !meeting ||
+      (expected !== undefined && finishing.has(id)) ||
       meeting.finishedAt === null ||
       meeting.transcript.length === 0 ||
       meeting.summaryEdited ||
       recorder.detail(id).summaryStatus === 'writing'
     ) {
-      return;
+      return false;
     }
     recorder.setSummaryStatus(id, 'writing');
     try {
@@ -196,14 +207,20 @@ export function createMeetingSession(options: {
       const weights = summaryModel?.model.files[0];
       if (!summaryModel || !weights) {
         recorder.setSummaryStatus(id, 'idle');
-        return;
+        return false;
       }
       const { summary, title } = await transcriber.summarize(
         summaryModel.path(weights.name),
         transcriptText(meeting),
       );
-      await recorder.saveSummary(id, summary, title);
+      const saving =
+        expected === undefined ||
+        recorder.transcriptOf(id)?.summary === expected;
+      if (saving) {
+        await recorder.saveSummary(id, summary, title);
+      }
       recorder.setSummaryStatus(id, 'idle');
+      return saving;
     } catch (error) {
       recorder.setSummaryStatus(id, 'failed');
       throw error;
@@ -218,6 +235,15 @@ export function createMeetingSession(options: {
       await flushed;
     },
     finish: async (id) => {
+      const done = () => {
+        const left = (finishing.get(id) ?? 1) - 1;
+        if (left > 0) {
+          finishing.set(id, left);
+        } else {
+          finishing.delete(id);
+        }
+      };
+      finishing.set(id, (finishing.get(id) ?? 0) + 1);
       const { flushed, finished } = await exclusive(async () => {
         const state = recorder.state();
         const { flushed } =
@@ -229,8 +255,12 @@ export function createMeetingSession(options: {
         }
         await recorder.finish(id);
         return { flushed, finished: true };
+      }).catch((error: unknown) => {
+        done();
+        throw error;
       });
       await flushed;
+      done();
       if (finished) {
         void summarize(id).catch(() => undefined);
       }
