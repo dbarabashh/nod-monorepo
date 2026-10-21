@@ -44,10 +44,51 @@ function notifyRemote() {
   }, remoteBatchMs);
 }
 
+// Saving on this phone (a recording, a deletion) shows in the list and goes
+// to the other devices a moment later; a burst of saves shares one round.
+// While recording, the transcript is saved every few seconds and each round
+// uploads the whole growing meeting, so it goes out once a minute instead.
+const syncAfterSaveMs = 3_000;
+const syncWhileRecordingMs = 60_000;
+let recording = false;
+let pendingSync: ReturnType<typeof setTimeout> | null = null;
+
+function syncSoon() {
+  pendingSync ??= setTimeout(
+    () => {
+      pendingSync = null;
+      void syncNow();
+    },
+    recording ? syncWhileRecordingMs : syncAfterSaveMs,
+  );
+}
+
+export function setRecording(active: boolean): void {
+  recording = active;
+  if (!active) {
+    if (pendingSync !== null) {
+      clearTimeout(pendingSync);
+      pendingSync = null;
+    }
+    void syncNow();
+  }
+}
+
+export function whenLoaded(): Promise<void> {
+  return start();
+}
+
 const store = createMeetingStore({
   files: meetingFiles(),
   cipher: meetingCipher,
+  onWrite: () => {
+    notifyRemote();
+    syncSoon();
+  },
 });
+
+// Recording and deleting save through the same store sync keeps.
+export const meetingStore = store;
 
 const session = createSyncSession({
   vaults: secureVaults(),
@@ -89,6 +130,12 @@ function subscribe(listener: () => void) {
   return () => {
     listeners.delete(listener);
   };
+}
+
+// The deletion reaches the other devices on the next round, and wins over
+// any edit made there meanwhile.
+export async function deleteMeeting(id: string): Promise<void> {
+  await store.remove(id, Date.now());
 }
 
 export function syncNow(): Promise<void> {

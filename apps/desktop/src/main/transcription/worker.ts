@@ -8,15 +8,13 @@ import {
   type WhisperContext,
   type WhisperVadContext,
 } from '@fugood/whisper.node';
-import type { Speaker, TranscriptLine } from '@nod/core/meetings';
+import type { Speaker } from '@nod/core/meetings';
 import {
   append,
-  consume,
+  drainSpeech,
   emptyBuffer,
-  snapshot,
   type AudioBuffer,
-} from './audio-buffer.ts';
-import { planChunks } from '@nod/core/transcription';
+} from '@nod/core/transcription';
 import { ignoreClosedOutput } from '../closed-output.ts';
 import {
   sampleRate,
@@ -125,45 +123,23 @@ async function releaseEngine(): Promise<void> {
 }
 
 async function drain(stream: Stream, final: boolean): Promise<void> {
-  if (stream.buffer.samples === 0) {
-    return;
-  }
-  const taken = snapshot(stream.buffer);
-  const { audio } = taken;
-  const bufferMs = audio.length / samplesPerMs;
-  // Audio no engine could hear is dropped, so a failed model can't hold
-  // the whole meeting in memory.
-  if (!engine) {
-    consume(stream.buffer, taken, bufferMs, samplesPerMs);
-    return;
-  }
-  try {
-    const speech = (await engine.vad.detectSpeechData(audio.buffer)).map(
-      (segment) => ({ startMs: segment.t0 * 10, endMs: segment.t1 * 10 }),
-    );
-    const plan = planChunks(speech, bufferMs, final);
-    const baseMs = stream.buffer.baseMs;
-    const lines: TranscriptLine[] = [];
-    for (const chunk of plan.chunks) {
-      const pcm = audio.slice(
-        Math.floor(chunk.startMs * samplesPerMs),
-        Math.ceil(chunk.endMs * samplesPerMs),
-      );
-      lines.push({
-        id: randomUUID(),
-        speaker: stream.speaker,
-        startMs: Math.round(baseMs + chunk.startMs),
-        endMs: Math.round(baseMs + chunk.endMs),
-        text: await engine.transcribe(pcm.buffer),
-      });
-    }
-    consume(stream.buffer, taken, plan.consumeMs, samplesPerMs);
-    if (lines.length > 0) {
-      post({ type: 'lines', meetingId: stream.meetingId, lines });
-    }
-  } catch (error) {
-    consume(stream.buffer, taken, bufferMs, samplesPerMs);
-    throw error;
+  const current = engine;
+  const lines = await drainSpeech({
+    buffer: stream.buffer,
+    speaker: stream.speaker,
+    final,
+    newId: randomUUID,
+    engine: current && {
+      detectSpeech: async (audio) =>
+        (await current.vad.detectSpeechData(audio.buffer)).map((segment) => ({
+          startMs: segment.t0 * 10,
+          endMs: segment.t1 * 10,
+        })),
+      transcribe: (pcm) => current.transcribe(pcm.buffer),
+    },
+  });
+  if (lines.length > 0) {
+    post({ type: 'lines', meetingId: stream.meetingId, lines });
   }
 }
 

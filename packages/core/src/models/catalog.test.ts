@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { modelCatalog, modelSize } from './catalog.ts';
+import { modelCatalog, modelSize, phoneSpeechModels } from './catalog.ts';
 
 describe('modelCatalog', () => {
   it('pins every file to an exact Hugging Face revision over https', () => {
@@ -70,5 +70,20 @@ describe('modelSize', () => {
       }),
       15,
     );
+  });
+});
+
+describe('phone speech models', () => {
+  it('offers the small whisper models first-recommended, each with its voice activity model', () => {
+    assert.deepEqual(
+      phoneSpeechModels.map((model) => model.id),
+      ['whisper-small', 'whisper-base'],
+    );
+    for (const model of phoneSpeechModels) {
+      assert.equal(model.engine, 'whisper');
+      assert.ok(
+        model.files.some((file) => file.name.startsWith('ggml-silero')),
+      );
+    }
   });
 });

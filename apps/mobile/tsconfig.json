@@ -6,7 +6,12 @@
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    "types": []
+    "types": [],
+    "paths": {
+      "whisper.rn/index": [
+        "../../node_modules/whisper.rn/lib/typescript/index.d.ts"
+      ]
+    }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
   "exclude": ["scripts", "**/*.test.ts", "node_modules", "ios", "android"]

@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["FileDigestModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.filedigest.FileDigestModule"]
+  }
+}

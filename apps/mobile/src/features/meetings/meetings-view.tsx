@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Alert, FlatList, RefreshControl, View } from 'react-native';
 import { Link, Redirect, useRouter } from 'expo-router';
 import {
@@ -30,6 +30,7 @@ type Unavailable = Extract<SyncState, { status: 'unavailable' }>;
 
 const sheets = themed((colors) => ({
   screen: { flex: 1, backgroundColor: colors.bg },
+  list: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', backgroundColor: colors.bg },
   content: { flexGrow: 1, gap: space[1], padding: space[4] },
   header: { gap: space[2], paddingBottom: space[3] },
@@ -174,7 +175,9 @@ function UnavailableState({ sync }: { sync: Unavailable }) {
   );
 }
 
-export function MeetingsView() {
+// The dock under the list (recording) comes from the route, so this feature
+// doesn't import another.
+export function MeetingsView({ bottomBar }: { bottomBar?: ReactNode }) {
   const styles = sheets[useScheme()];
   const colors = useColors();
   const router = useRouter();
@@ -205,37 +208,42 @@ export function MeetingsView() {
     router.push({ pathname: '/meeting/[id]', params: { id: meeting.id } });
 
   return (
-    <FlatList
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior="automatic"
-      data={sync.meetings}
-      keyExtractor={(meeting) => meeting.id}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={colors.textMuted}
-          colors={[colors.accent]}
-        />
-      }
-      ListHeaderComponent={<Header sync={paired} />}
-      ListFooterComponent={<Footer sync={paired} />}
-      ListEmptyComponent={
-        <EmptyState
-          icon={paired.syncing ? 'sync' : 'mic'}
-          title={paired.syncing ? 'Getting your meetings…' : 'No meetings yet'}
-          description="Meetings you record on your computer show up here."
-        />
-      }
-      renderItem={({ item }) => (
-        <ListRow
-          title={meetingName(item)}
-          meta={`${dateTimeFormat.format(meetingStartedAt(item))} · ${formatDuration(recordedMs(item) / 1000)}`}
-          accessibilityHint="Opens the summary and transcript"
-          onPress={() => open(item)}
-        />
-      )}
-    />
+    <View style={styles.screen}>
+      <FlatList
+        style={styles.list}
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        data={sync.meetings}
+        keyExtractor={(meeting) => meeting.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={colors.textMuted}
+            colors={[colors.accent]}
+          />
+        }
+        ListHeaderComponent={<Header sync={paired} />}
+        ListFooterComponent={<Footer sync={paired} />}
+        ListEmptyComponent={
+          <EmptyState
+            icon={paired.syncing ? 'sync' : 'mic'}
+            title={
+              paired.syncing ? 'Getting your meetings…' : 'No meetings yet'
+            }
+            description="Meetings you record here or on your computer show up here."
+          />
+        }
+        renderItem={({ item }) => (
+          <ListRow
+            title={meetingName(item)}
+            meta={`${dateTimeFormat.format(meetingStartedAt(item))} · ${formatDuration(recordedMs(item) / 1000)}`}
+            accessibilityHint="Opens the summary and transcript"
+            onPress={() => open(item)}
+          />
+        )}
+      />
+      {bottomBar}
+    </View>
   );
 }

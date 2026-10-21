@@ -103,6 +103,26 @@ export const modelCatalog: ModelDefinition[] = [
     ],
   },
   {
+    id: 'whisper-base',
+    kind: 'speech',
+    engine: 'whisper',
+    name: 'Whisper Base',
+    description: 'Small and quick, for older phones. Less accurate.',
+    languages: '99 languages',
+    license: 'MIT, OpenAI',
+    recommended: false,
+    files: [
+      {
+        name: 'ggml-base-q8_0.bin',
+        url: `${whisperCpp}/ggml-base-q8_0.bin`,
+        sizeBytes: 81_768_585,
+        sha256:
+          'c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9',
+      },
+      vadFile,
+    ],
+  },
+  {
     id: 'qwen3-4b-instruct',
     kind: 'summary',
     engine: 'llama',
@@ -126,3 +146,14 @@ export const modelCatalog: ModelDefinition[] = [
 export function modelSize(model: Pick<ModelDefinition, 'files'>): number {
   return model.files.reduce((total, file) => total + file.sizeBytes, 0);
 }
+
+const phoneModelIds: readonly string[] = ['whisper-small', 'whisper-base'];
+
+// A phone runs whisper on its CPU (the GPU is off limits in the background),
+// so it offers only the models small enough to keep up there, the one it
+// recommends first.
+export const phoneSpeechModels: SpeechModel[] = phoneModelIds.flatMap((id) =>
+  modelCatalog.flatMap((model) =>
+    model.kind === 'speech' && model.id === id ? [model] : [],
+  ),
+);

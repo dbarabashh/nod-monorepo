@@ -14,7 +14,8 @@
         "NSLocalNetworkUsageDescription": "Nod connects to your computer on this Wi‑Fi to pair, so the key to your meetings never leaves your network.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
-        }
+        },
+        "UIBackgroundModes": ["audio"]
       },
       "bundleIdentifier": "com.anonymous.nod-mobile"
     },
@@ -35,7 +36,7 @@
         "expo-camera",
         {
           "cameraPermission": "Nod uses the camera to scan the pairing code your computer shows, so this phone can sync your meetings.",
-          "microphonePermission": false,
+          "microphonePermission": "Nod listens while you record a meeting, to transcribe it on this phone. Audio is never stored.",
           "recordAudioAndroid": false
         }
       ],

@@ -2,12 +2,17 @@ import '../lib/random.ts';
 import '../lib/automerge.ts';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { finishInterrupted } from '../lib/recording/recording.ts';
 import { useSyncLoop } from '../lib/sync/sync.ts';
 import { text, useColors, weight } from '../theme/index.ts';
 
 export default function RootLayout() {
   const colors = useColors();
   useSyncLoop();
+  useEffect(() => {
+    void finishInterrupted();
+  }, []);
   return (
     <>
       <StatusBar style="auto" />
@@ -23,6 +28,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'Meetings' }} />
         <Stack.Screen name="pair" options={{ title: 'Pair with computer' }} />
         <Stack.Screen name="meeting/[id]" options={{ title: '' }} />
+        <Stack.Screen name="models" options={{ title: 'Speech model' }} />
         <Stack.Screen name="components" options={{ title: 'Design system' }} />
         <Stack.Screen name="diagnostics" options={{ title: 'Diagnostics' }} />
       </Stack>
