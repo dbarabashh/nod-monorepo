@@ -247,11 +247,12 @@ describe('vercel relay', () => {
       (await send(file('a'), { method: 'PUT', body: '1' })).status,
       204,
     );
-    assert.equal(
-      (await send(file('a'), { method: 'PUT', body: '1' })).status,
-      429,
-    );
-    tick(60 * 60 * 1000);
+    tick(20 * 60 * 1000);
+    const refused = await send(file('a'), { method: 'PUT', body: '1' });
+    assert.equal(refused.status, 429);
+    assert.equal(refused.headers.get('retry-after'), '2400');
+    assert.equal(refused.headers.get('x-relay-refusal'), 'writes');
+    tick(40 * 60 * 1000);
     assert.equal(
       (await send(file('a'), { method: 'PUT', body: '1' })).status,
       204,
@@ -445,6 +446,7 @@ describe('vercel relay', () => {
     const refused = await firstWrite('192.0.2.1');
     assert.equal(refused.status, 429);
     assert.equal(refused.headers.get('x-relay-refusal'), 'new-vaults');
+    assert.equal(refused.headers.get('retry-after'), '3600');
     const key = randomBytes(32);
     const transport = createRelayTransport({
       url: 'https://sync.example.com',

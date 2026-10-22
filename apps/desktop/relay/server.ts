@@ -12,9 +12,16 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import path from 'node:path';
 
 const idPattern = /^[A-Za-z0-9_-]{1,64}$/;
-const fileMaxBytes = 64 * 1024 * 1024;
+// What @nod/core reads at most; a larger file would be refused by every
+// other device.
+const fileMaxBytes = 16 * 1024 * 1024;
 
-type Reply = { status: number; body?: Buffer | string; type?: string };
+type Reply = {
+  status: number;
+  body?: Buffer | string;
+  type?: string;
+  etag?: string;
+};
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -190,7 +197,8 @@ export function createRelay(dataDirectory: string): Server {
         return { status: 413 };
       }
       await store(file, body);
-      return { status: 204 };
+      const info = await stat(file);
+      return { status: 204, etag: `${info.mtimeMs}-${info.size}` };
     }
     if (request.method === 'DELETE') {
       await rm(file, { force: true });
@@ -228,6 +236,7 @@ export function createRelay(dataDirectory: string): Server {
         response.writeHead(reply.status, {
           'cache-control': 'no-store',
           ...(reply.type ? { 'content-type': reply.type } : {}),
+          ...(reply.etag ? { etag: reply.etag } : {}),
         });
         response.end(reply.body);
       },

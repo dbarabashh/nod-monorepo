@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -7,12 +7,12 @@ import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController } from './controller.ts';
-import { pairingProof } from '@nod/core/crypto';
 import { openPairingOffer, readPairingCode } from '@nod/core/sync';
 import {
   createSyncHandlers,
   type PairingScreen,
   type Question,
+  type ListenForPairing,
 } from './handlers.ts';
 import { createSyncSettings } from './settings.ts';
 
@@ -33,6 +33,7 @@ describe('sync handlers', () => {
     folder?: string | null;
     relayAnswers?: boolean;
     showPairing?: (screen: PairingScreen) => Promise<void>;
+    listenForPairing?: ListenForPairing;
   }) {
     const store = createMeetingStore({
       directory: join(dir(), 'meetings'),
@@ -61,7 +62,11 @@ describe('sync handlers', () => {
     await controller.load();
     const asked: Question[] = [];
     const paired: PairingScreen[] = [];
-    const offers: Array<{ sealed: Uint8Array; proof: string }> = [];
+    const offers: Array<{
+      sealed: Uint8Array;
+      proofFor: (host: string, port: number) => string;
+      confirm: (by: string) => Promise<boolean>;
+    }> = [];
     let closedListeners = 0;
     const answers = options.answers ?? [];
     let clock = 0;
@@ -83,17 +88,19 @@ describe('sync handlers', () => {
         (async (screen) => {
           paired.push(screen);
         }),
-      listenForPairing: async ({ sealed, proof }) => {
-        offers.push({ sealed, proof });
-        return {
-          port: 51234,
-          hosts: ['192.168.1.20'],
-          outcome: Promise.resolve(null),
-          close: () => {
-            closedListeners += 1;
-          },
-        };
-      },
+      listenForPairing:
+        options.listenForPairing ??
+        (async ({ sealed, proofFor, confirm }) => {
+          offers.push({ sealed, proofFor, confirm });
+          return {
+            port: 51234,
+            hosts: ['192.168.1.20'],
+            outcome: Promise.resolve(null),
+            close: () => {
+              closedListeners += 1;
+            },
+          };
+        }),
       syncSoon: () => {},
       now: () => clock,
     });
@@ -284,7 +291,12 @@ describe('sync handlers', () => {
       paired[0]?.code ?? '',
       /relay|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/,
     );
-    assert.equal(offers[0]?.proof, pairingProof(code.secret));
+    assert.equal(
+      offers[0]?.proofFor('192.168.1.20', 51234),
+      createHmac('sha256', code.secret)
+        .update('nod:pair-request:192.168.1.20:51234')
+        .digest('hex'),
+    );
     const offer = openPairingOffer(
       code.secret,
       offers[0]?.sealed ?? new Uint8Array(),
@@ -296,6 +308,70 @@ describe('sync handlers', () => {
     assert.equal(offer.relayUrl, 'https://relay.example.com/');
     assert.equal(closedListeners(), 1);
   });
+
+  it('asks in its own dialog, naming the asking address, before the offer goes out', async () => {
+    const { handlers, asked, offers, tick } = await setUp({
+      answers: [true, true, false],
+      relayAnswers: true,
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    tick(10_000);
+    await handlers.connectSyncRelay('https://relay.example.com');
+    await handlers.showPairingCode();
+
+    assert.equal(await offers[0]?.confirm('192.168.1.37'), false);
+
+    const question = asked.at(-1);
+    assert.equal(question?.message, 'Pair the phone that scanned the code?');
+    assert.match(question?.detail ?? '', /192\.168\.1\.37/);
+    assert.match(question?.detail ?? '', /Choose Pair on your computer/);
+    assert.equal(question?.confirmLabel, 'Pair');
+    assert.equal(question?.cancelLabel, 'Don’t pair');
+  });
+
+  const decisions: Array<[boolean, string]> = [
+    [true, 'offer'],
+    [false, 'refusal'],
+  ];
+  for (const [answer, delivery] of decisions) {
+    it(`answers a phone with the ${delivery} chosen after the code window closed, before it stops listening`, async () => {
+      const delivered: string[] = [];
+      const { handlers, asked, tick } = await setUp({
+        answers: [true, true, answer],
+        relayAnswers: true,
+        listenForPairing: async ({ confirm }) => {
+          let closedAt = 'never';
+          const outcome = confirm('192.168.1.37').then(
+            (allowed) =>
+              new Promise<{ by: string } | null>((resolve) => {
+                setTimeout(() => {
+                  delivered.push(
+                    `${allowed ? 'offer' : 'refusal'} before ${closedAt}`,
+                  );
+                  resolve(allowed ? { by: '192.168.1.37' } : null);
+                }, 20);
+              }),
+          );
+          return {
+            port: 51234,
+            hosts: ['192.168.1.20'],
+            outcome,
+            close: () => {
+              closedAt = 'close';
+            },
+          };
+        },
+      });
+      await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+      tick(10_000);
+      await handlers.connectSyncRelay('https://relay.example.com');
+
+      await handlers.showPairingCode();
+
+      assert.deepEqual(delivered, [`${delivery} before never`]);
+      assert.equal(asked.at(-1)?.message === 'A phone is paired', answer);
+    });
+  }
 
   it('holds sync changes while the code is up, and limits showing it like the phrase', async () => {
     let close = () => {};

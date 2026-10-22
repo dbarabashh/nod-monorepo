@@ -21,6 +21,8 @@ import {
   meetingPath,
   parseMeetingPath,
   sealClosedNotice,
+  stillWaiting,
+  Throttled,
   type PairingOffer,
   type SyncEngine,
   type Transport,
@@ -106,6 +108,7 @@ export function createSyncController(options: {
         vaultId: target.id,
         token: relayToken(target.key),
         fetch,
+        now,
       });
     }
     // An unmounted drive looks like an empty folder; removing from it would
@@ -143,11 +146,18 @@ export function createSyncController(options: {
   }
 
   // Offline is normal: the vault is kept, and every sync round tries to
-  // reach the folder or relay again until it works.
+  // reach the folder or relay again until it works. A relay that asked this
+  // device to wait is not asked again before then: the transport that
+  // remembers the wait is dropped with the failed connection.
+  let connectAfter = 0;
   async function connect() {
     const current = vault;
     const round = generation;
-    if (connection || !current?.transport) {
+    if (
+      connection ||
+      !current?.transport ||
+      stillWaiting(connectAfter, now())
+    ) {
       return;
     }
     try {
@@ -157,6 +167,9 @@ export function createSyncController(options: {
         error = null;
       }
     } catch (failure) {
+      if (failure instanceof Throttled) {
+        connectAfter = now() + failure.retryAfterMs;
+      }
       if (round === generation) {
         error = messageOf(failure);
       }
@@ -226,6 +239,9 @@ export function createSyncController(options: {
       busy = true;
       generation += 1;
       error = null;
+      // What the user asks for is one deliberate ask of the place, and may
+      // be another place; a relay still refusing says so again.
+      connectAfter = 0;
       try {
         await action();
       } finally {

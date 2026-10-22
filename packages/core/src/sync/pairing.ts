@@ -8,7 +8,12 @@ import {
   toBase64Url,
 } from '../crypto/encoding.ts';
 import { pairingOfferKey, pairingProof } from '../crypto/pairing-keys.ts';
-import { readBody, relayBase, type Fetch } from './relay.ts';
+import {
+  readBody,
+  relayBase,
+  type Fetch,
+  type RelayResponse,
+} from './relay.ts';
 
 // What the QR code carries: a one-time secret and where the computer listens
 // on the local network. Never the vault key, so a photo of the code is
@@ -26,7 +31,7 @@ export type PairingOffer = {
   relayUrl: string;
 };
 
-const prefix = 'nod-pair:v2:';
+const prefix = 'nod-pair:v3:';
 const maxCodeLength = 512;
 export const maxPairingHosts = 4;
 const encodedSecret = /^[A-Za-z0-9_-]{43}$/;
@@ -171,33 +176,79 @@ export function openPairingOffer(
 }
 
 const maxOfferBytes = 4 * 1024;
+const maxAskerBytes = 64;
+// The computer answers 202 while it asks its user, holding each ask for a
+// few seconds. Waiting ends with the window the code is shown in, over all
+// the addresses together, so nothing that answers 202 at a wrong one can
+// hold the phone past it.
+const maxWaitMs = 3 * 60_000;
+
+// The computer's user chose not to pair this phone.
+export class PairingRefused extends Error {}
+
+// What the computer sees the asking phone as, from its 202, so the phone can
+// show the address the computer's dialog should name. Anything else that
+// answers 202 can't make the phone show more than an address of this kind.
+async function askerOf(response: RelayResponse): Promise<string | null> {
+  try {
+    const address = textOf(await readBody(response, maxAskerBytes));
+    return isLocalAddress(address) ? address : null;
+  } catch {
+    return null;
+  }
+}
 
 // The phone asks the computer on the local network, at each address the code
 // names, for the sealed offer. Reaching it at all is what proves the phone
-// is on the computer's network.
+// is on the computer's network; the computer then asks its user before it
+// answers, and `waiting` says so once the asking has started, with the
+// address the computer sees this phone as.
 export async function requestPairingOffer(
   code: PairingCode,
   fetch: Fetch,
+  waiting?: (asker: string | null) => void,
+  now: () => number = Date.now,
 ): Promise<PairingOffer> {
   let refused = 0;
+  let unanswered = false;
   let unreadable: Error | null = null;
+  const deadline = now() + maxWaitMs;
   for (const host of code.hosts) {
-    let sealed: Uint8Array;
-    try {
-      const response = await fetch(`http://${host}:${code.port}/v1/pair`, {
+    const proof = pairingProof(code.secret, host, code.port);
+    const ask = () =>
+      fetch(`http://${host}:${code.port}/v1/pair`, {
         method: 'GET',
-        headers: { authorization: `Bearer ${pairingProof(code.secret)}` },
+        headers: { authorization: `Bearer ${proof}` },
         redirect: 'error',
       });
+    let sealed: Uint8Array;
+    try {
+      let response = await ask();
+      while (response.status === 202 && now() < deadline) {
+        waiting?.(await askerOf(response));
+        response = await ask();
+      }
       if (response.status === 404) {
         refused += 1;
+        continue;
+      }
+      if (response.status === 403) {
+        throw new PairingRefused(
+          'Your computer didn’t pair this phone. Show the code there again to retry.',
+        );
+      }
+      if (response.status === 202) {
+        unanswered = true;
         continue;
       }
       if (!response.ok) {
         continue;
       }
       sealed = await readBody(response, maxOfferBytes);
-    } catch {
+    } catch (error) {
+      if (error instanceof PairingRefused) {
+        throw error;
+      }
       continue;
     }
     // Something else may answer at one of the addresses; the computer is the
@@ -207,6 +258,11 @@ export async function requestPairingOffer(
     } catch (error) {
       unreadable = error instanceof Error ? error : unreadable;
     }
+  }
+  if (unanswered) {
+    throw new Error(
+      'Your computer didn’t answer in time. Show the code there again, scan it, and choose Pair on the computer.',
+    );
   }
   // Only when every address answered that way: something else on one of
   // them may answer 404 while the computer is just out of reach, and this

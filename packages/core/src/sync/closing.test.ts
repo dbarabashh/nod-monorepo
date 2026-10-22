@@ -14,6 +14,7 @@ import {
 } from './closing.ts';
 import { closedPath } from './layout.ts';
 import { createMemoryTransport } from './testing/memory-transport.ts';
+import { Throttled, type Transport } from './transport.ts';
 
 describe('closing a vault', () => {
   const root = randomKey();
@@ -88,5 +89,37 @@ describe('checking for closed notices', () => {
       closed: false,
       readable: false,
     });
+  });
+});
+
+describe('a relay that asked to wait while notices are checked', () => {
+  const root = randomKey();
+  const vault = {
+    fileKey: fileKeyOf(root),
+    id: vaultIdOf(root),
+    deviceId: 'phone',
+  };
+
+  it('ends the check at once, so the wait is kept and nothing is called paused', async () => {
+    const memory = createMemoryTransport();
+    for (const device of ['laptop', 'tablet']) {
+      await memory.write(
+        closedPath(device),
+        sealClosedNotice(vault.fileKey, vault.id, device, 1),
+      );
+    }
+    let reads = 0;
+    const throttled: Transport = {
+      ...memory,
+      read: async () => {
+        reads += 1;
+        throw new Throttled('The relay answered 429', 60_000);
+      },
+    };
+    await assert.rejects(
+      checkClosedNotices(throttled, vault, new Map()),
+      (error: unknown) => error instanceof Throttled,
+    );
+    assert.equal(reads, 1);
   });
 });

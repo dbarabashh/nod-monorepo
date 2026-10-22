@@ -191,6 +191,7 @@ export function relayTransportFor(vault: StoredVault): RelayTransport {
     // A request that never ends would hold every later round behind it.
     fetch: (url, init) =>
       fetch(url, { ...init, signal: abortAfter(relayTimeoutMs) }),
+    now: () => Date.now(),
   });
 }
 
@@ -225,9 +226,15 @@ const lanTimeoutMs = 5_000;
 
 // Asks the computer on this network for the vault, over plain HTTP: the
 // answer is sealed with the code's secret, and the computer stops listening
-// once it has given it.
-export function fetchPairingOffer(code: PairingCode): Promise<PairingOffer> {
-  return requestPairingOffer(code, (url, init) =>
-    fetch(url, { ...init, signal: abortAfter(lanTimeoutMs) }),
+// once it has given it. The computer asks its user first, and `waiting`
+// fires once it has, with the address the computer sees this phone as.
+export function fetchPairingOffer(
+  code: PairingCode,
+  waiting: (asker: string | null) => void,
+): Promise<PairingOffer> {
+  return requestPairingOffer(
+    code,
+    (url, init) => fetch(url, { ...init, signal: abortAfter(lanTimeoutMs) }),
+    waiting,
   );
 }

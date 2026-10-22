@@ -6,6 +6,8 @@ import {
   meetingPath,
   pausedMessage,
   type PairingOffer,
+  stillWaiting,
+  Throttled,
   type PublishedLog,
   type RelayTransport,
   type SyncEngine,
@@ -74,6 +76,9 @@ export function createSyncSession(options: {
   // Bumped when the vault changes, so a round still running for the old one
   // can't put its connection or result in place.
   let generation = 0;
+  // A relay that asked this phone to wait is not asked again before then: the
+  // transport that remembers the wait is dropped with the failed connection.
+  let connectAfter = 0;
 
   async function connect(current: StoredVault, round: number) {
     const transport = transportFor(current);
@@ -117,7 +122,11 @@ export function createSyncSession(options: {
     if (!current) {
       return;
     }
-    const at = connection ?? (await connect(current, round));
+    const at =
+      connection ??
+      (stillWaiting(connectAfter, now())
+        ? null
+        : await connect(current, round));
     if (!at) {
       return;
     }
@@ -162,6 +171,9 @@ export function createSyncSession(options: {
       try {
         await round();
       } catch (failure) {
+        if (failure instanceof Throttled) {
+          connectAfter = now() + failure.retryAfterMs;
+        }
         error = messageOf(failure);
       } finally {
         syncing = false;
@@ -255,6 +267,9 @@ export function createSyncSession(options: {
         generation += 1;
         vault = next;
         connection = null;
+        // Scanning a code is one deliberate ask of the place, and may be
+        // another place; a relay still refusing says so again.
+        connectAfter = 0;
         error = null;
         onChange();
         return current && !same ? { vault: current, ids } : null;
@@ -279,6 +294,7 @@ export function createSyncSession(options: {
       generation += 1;
       connection?.engine.stop();
       connection = null;
+      connectAfter = 0;
       error = null;
       vault = null;
       unreadable = null;

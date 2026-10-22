@@ -510,8 +510,13 @@ app.whenReady().then(async () => {
           mainWindow,
           done,
         ),
-      listenForPairing: ({ sealed, proof }) =>
-        listenForPairing({ offer: sealed, proof, hosts: localAddresses() }),
+      listenForPairing: ({ sealed, proofFor, confirm }) =>
+        listenForPairing({
+          offer: sealed,
+          proofFor,
+          confirm,
+          hosts: localAddresses(),
+        }),
       syncSoon: () => syncScheduler.soon(),
       now: Date.now,
     }),

@@ -1,5 +1,5 @@
 import { devicesPrefix, parseClosedPath } from './layout.ts';
-import type { RemoteFile, Transport } from './transport.ts';
+import { Throttled, type RemoteFile, type Transport } from './transport.ts';
 import { bytesOf, open, seal, textOf } from '../crypto/index.ts';
 
 const closedContext = (vaultId: string, deviceId: string) =>
@@ -65,7 +65,10 @@ export async function checkClosedNotices(
     let data: Uint8Array | null;
     try {
       data = await transport.read(file.path, noticeMaxBytes);
-    } catch {
+    } catch (error) {
+      if (error instanceof Throttled) {
+        throw error;
+      }
       readable = false;
       continue;
     }

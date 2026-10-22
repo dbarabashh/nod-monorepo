@@ -115,8 +115,9 @@ describe('relay transport', () => {
     const secret = randomBytes(32);
     const listener = await listenForPairing({
       offer: sealPairingOffer(secret, { key: ownerKey, relayUrl: url }),
-      proof: pairingProof(secret),
+      proofFor: (host, port) => pairingProof(secret, host, port),
       hosts: ['127.0.0.1'],
+      confirm: async () => true,
     });
     const lan = { secret, port: listener.port, hosts: ['127.0.0.1'] };
     const pairing = await requestPairingOffer(lan, (input, init) =>

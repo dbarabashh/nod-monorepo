@@ -14,6 +14,7 @@ import {
   assertSafePath,
   type RemoteFile,
   type Transport,
+  UnreadableFile,
   WritesRefused,
 } from '@nod/core/sync';
 
@@ -95,7 +96,9 @@ export function createFolderTransport(root: string): Transport {
       const target = await resolve(relative);
       try {
         if ((await stat(target)).size > maxBytes) {
-          throw new Error(`A sync file is larger than expected: ${relative}`);
+          throw new UnreadableFile(
+            `A sync file is larger than expected: ${relative}`,
+          );
         }
         return await readFile(target);
       } catch (error) {
@@ -120,6 +123,8 @@ export function createFolderTransport(root: string): Transport {
           : error;
       }
       await rename(temporary, target);
+      const info = await stat(target);
+      return `${info.mtimeMs}-${info.size}`;
     },
     remove: async (relative) => {
       await rm(await resolve(relative), { force: true });

@@ -1,6 +1,10 @@
 import { concatBytes, textOf } from '../crypto/encoding.ts';
 import {
   assertSafePath,
+  maxWaitMs,
+  stillWaiting,
+  Throttled,
+  UnreadableFile,
   WritesRefused,
   type RemoteFile,
   type Transport,
@@ -27,12 +31,30 @@ export type Fetch = (url: string, init: RelayRequest) => Promise<RelayResponse>;
 
 const maxListingBytes = 8 * 1024 * 1024;
 
-const vaultWide = new Set([429, 507]);
+// A wait the relay names is kept, within reason: never under a few seconds,
+// since asking again at once is what keeps a limit tripped. One it doesn't
+// name (a limit in front of it says nothing) gets a minute, enough for a
+// per-minute limit to reset.
+const defaultRetryMs = 60_000;
+const minRetryMs = 5_000;
+
+export function retryAfterOf(header: string | null, now = Date.now()): number {
+  if (header === null || header.trim() === '') {
+    return defaultRetryMs;
+  }
+  const seconds = Number(header);
+  const ms = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(header) - now;
+  return Number.isFinite(ms) && ms >= 0
+    ? Math.min(Math.max(ms, minRetryMs), maxWaitMs)
+    : defaultRetryMs;
+}
 
 const refusals: Record<number, string> = {
   409: 'another change to this meeting is still finishing, sync will try again',
   413: 'this meeting is too large to sync through it',
-  429: 'too many changes at once, sync will try again later',
+  429: 'it asked this device to wait, sync will try again later',
   507: 'the space for your devices on it is full',
 };
 
@@ -72,7 +94,8 @@ export async function readBody(
   response: RelayResponse,
   maxBytes: number,
 ): Promise<Uint8Array> {
-  const tooLarge = () => new Error('The relay sent more than expected');
+  const tooLarge = () =>
+    new UnreadableFile('The relay sent more than expected');
   if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
     throw tooLarge();
   }
@@ -108,8 +131,13 @@ export function createRelayTransport(options: {
   vaultId: string;
   token: string | null;
   fetch: Fetch;
+  now?: () => number;
 }): RelayTransport {
   const base = relayBase(options.url);
+  const now = options.now ?? (() => Date.now());
+  // Every request passes here, so a wait the relay asked for holds the
+  // listing, the closed notices and the registration as much as the files.
+  let waiting: { until: number; message: string } | null = null;
   const vaultUrl = new URL(
     `v1/vaults/${encodeURIComponent(options.vaultId)}`,
     base.href.endsWith('/') ? base : `${base.href}/`,
@@ -128,6 +156,10 @@ export function createRelayTransport(options: {
     },
     known = false,
   ): Promise<RelayResponse> {
+    if (waiting && stillWaiting(waiting.until, now())) {
+      throw new Throttled(waiting.message, waiting.until - now());
+    }
+    waiting = null;
     const response = await options.fetch(url, {
       ...init,
       redirect: 'error',
@@ -136,12 +168,23 @@ export function createRelayTransport(options: {
     const missing = response.status === 404 && init.method === 'GET';
     const unchanged = response.status === 304 && known;
     if (!response.ok && !missing && !unchanged) {
+      const refusal = response.headers.get('x-relay-refusal');
       const reason =
-        response.headers.get('x-relay-refusal') === 'new-vaults'
+        refusal === 'new-vaults'
           ? 'it isn’t taking new vaults right now, sync will try again later'
-          : refusals[response.status];
+          : refusal === 'writes'
+            ? 'it took every change it allows this hour, sync will try again later'
+            : refusals[response.status];
       const message = `The relay answered ${response.status}${reason ? `: ${reason}` : ''}`;
-      throw vaultWide.has(response.status) && init.method !== 'GET'
+      // The relay's own limit on writes leaves reading alone, so only writes
+      // stop; any other 429 (a limit in front of it) holds every request.
+      if (response.status === 429 && refusal !== 'writes') {
+        const wait = retryAfterOf(response.headers.get('retry-after'), now());
+        waiting = { until: now() + wait, message };
+        throw new Throttled(message, wait);
+      }
+      throw (response.status === 507 || response.status === 429) &&
+        init.method !== 'GET'
         ? new WritesRefused(message)
         : new Error(message);
     }
@@ -196,10 +239,11 @@ export function createRelayTransport(options: {
       return response.status === 404 ? null : readBody(response, maxBytes);
     },
     write: async (path, data) => {
-      await request(fileUrl(path), {
+      const response = await request(fileUrl(path), {
         method: 'PUT',
         body: new Uint8Array(data),
       });
+      return response.headers.get('etag');
     },
     remove: async (path) => {
       await request(fileUrl(path), { method: 'DELETE' });

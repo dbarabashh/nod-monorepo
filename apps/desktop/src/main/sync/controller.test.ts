@@ -39,6 +39,7 @@ describe('sync controller', () => {
       defaultRelay?: string;
       fetch?: Fetch;
       savesFail?: () => boolean;
+      now?: () => number;
     } = {},
   ) {
     const store = createMeetingStore({
@@ -66,7 +67,7 @@ describe('sync controller', () => {
       onRemote: (state) => received.push(state),
       fetch: options.fetch ?? ((url, init) => fetch(url, init)),
       newId: randomUUID,
-      now: () => 7,
+      now: options.now ?? (() => 7),
       onChange: () => {},
       defaultRelay: options.defaultRelay ?? null,
     });
@@ -609,6 +610,52 @@ describe('sync controller', () => {
     } finally {
       server.close();
     }
+  });
+
+  it('waits as long as a relay asked before trying to reach it again', async () => {
+    const first = await startRelay();
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.controller.useRelay(first.url);
+    first.server.close();
+
+    const clock = { at: 1_000 };
+    const requests: string[] = [];
+    const restarted = await device('laptop', {
+      now: () => clock.at,
+      fetch: async (url, init) => {
+        requests.push(`${init.method} ${new URL(url).pathname}`);
+        return new Response(null, {
+          status: 429,
+          headers: { 'retry-after': '30' },
+        });
+      },
+    });
+    await restarted.controller.refresh();
+    const asked = restarted.controller.state();
+    assert.equal(
+      asked.status === 'ready' && asked.error,
+      'The relay answered 429: it asked this device to wait, sync will try again later',
+    );
+    assert.equal(requests.length, 1);
+    assert.match(requests[0] ?? '', /^PUT \/v1\/vaults\//);
+
+    clock.at = 1_000 + 29_999;
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 1);
+
+    clock.at = 1_000 + 30_000;
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 2);
+
+    clock.at = 1_000 + 40_000;
+    await restarted.controller.confirmRecoveryPhrase();
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 3);
+
+    clock.at = 1_000 + 50_000;
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 3);
   });
 
   it('reaches the relay once it is back online, and syncs then', async () => {

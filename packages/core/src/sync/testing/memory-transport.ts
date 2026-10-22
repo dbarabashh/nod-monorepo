@@ -1,4 +1,8 @@
-import { assertSafePath, type Transport } from '../transport.ts';
+import {
+  assertSafePath,
+  UnreadableFile,
+  type Transport,
+} from '../transport.ts';
 
 export function createMemoryTransport(): Transport & {
   paths: () => string[];
@@ -20,14 +24,18 @@ export function createMemoryTransport(): Transport & {
       assertSafePath(path);
       const file = files.get(path);
       if (file && file.data.length > maxBytes) {
-        throw new Error(`A sync file is larger than expected: ${path}`);
+        throw new UnreadableFile(
+          `A sync file is larger than expected: ${path}`,
+        );
       }
       return file ? file.data.slice() : null;
     },
     write: async (path, data) => {
       assertSafePath(path);
       writes += 1;
-      files.set(path, { data: data.slice(), changedAt: Date.now() + writes });
+      const file = { data: data.slice(), changedAt: Date.now() + writes };
+      files.set(path, file);
+      return `${file.changedAt}-${file.data.length}`;
     },
     remove: async (path) => {
       assertSafePath(path);

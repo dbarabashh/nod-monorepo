@@ -374,11 +374,20 @@ export function createRelayHandler(options: {
     );
   }
 
+  // Both hourly limits reset on the hour, so the client is told how long to
+  // wait instead of guessing.
+  const retryOnTheHour = () => ({
+    'retry-after': String(Math.ceil((hourMs - (now() % hourMs)) / 1000)),
+  });
+
   function countWrite(index: Index): Index | Response {
     const hour = hourOf(now());
     const writes = index.hour === hour ? index.writes + 1 : 1;
     return writes > limits.writesPerHour
-      ? reply(429)
+      ? reply(429, undefined, undefined, {
+          ...retryOnTheHour(),
+          'x-relay-refusal': 'writes',
+        })
       : { ...index, hour, writes };
   }
 
@@ -406,6 +415,7 @@ export function createRelayHandler(options: {
         fromAddress > limits.newVaults.perAddressPerHour
       ) {
         return reply(429, undefined, undefined, {
+          ...retryOnTheHour(),
           'x-relay-refusal': 'new-vaults',
         });
       }
@@ -562,7 +572,7 @@ export function createRelayHandler(options: {
           changedAt: now(),
           size: body.length,
         }))(index);
-      })) ?? reply(204)
+      })) ?? reply(204, undefined, undefined, { etag: version })
     );
   }
 

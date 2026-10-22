@@ -3,6 +3,7 @@ import { randomBytes } from '@noble/ciphers/utils.js';
 import { bytesOf, concatBytes } from './encoding.ts';
 
 const version = 1;
+const supportedVersions = new Set([version]);
 const nonceLength = 12;
 const tagLength = 16;
 
@@ -20,6 +21,16 @@ function assertKey(key: Uint8Array) {
   }
 }
 
+// Version 1 binds only the context, as every file already sealed does. Any
+// later version binds its version byte too, so a file can never be opened as
+// a version it wasn't sealed with; contexts start with ASCII, so a version
+// byte in front can't read as one.
+function associatedData(of: number, context: string): Uint8Array {
+  return of === 1
+    ? bytesOf(context)
+    : concatBytes(Uint8Array.of(of), bytesOf(context));
+}
+
 export function seal(
   key: Uint8Array,
   plain: Uint8Array,
@@ -27,7 +38,7 @@ export function seal(
 ): Uint8Array {
   assertKey(key);
   const nonce = randomBytes(nonceLength);
-  const body = gcm(key, nonce, bytesOf(context)).encrypt(plain);
+  const body = gcm(key, nonce, associatedData(version, context)).encrypt(plain);
   return concatBytes(Uint8Array.of(version), nonce, body);
 }
 
@@ -39,12 +50,16 @@ export function open(
   context: string,
 ): Uint8Array {
   assertKey(key);
-  if (sealed.length < 1 + nonceLength + tagLength || sealed[0] !== version) {
+  const sealedVersion = sealed[0] ?? 0;
+  if (
+    sealed.length < 1 + nonceLength + tagLength ||
+    !supportedVersions.has(sealedVersion)
+  ) {
     throw new Error('Unsupported encrypted data');
   }
   const nonce = sealed.subarray(1, 1 + nonceLength);
   try {
-    return gcm(key, nonce, bytesOf(context)).decrypt(
+    return gcm(key, nonce, associatedData(sealedVersion, context)).decrypt(
       sealed.subarray(1 + nonceLength),
     );
   } catch {

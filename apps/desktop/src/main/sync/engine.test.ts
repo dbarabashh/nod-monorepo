@@ -192,7 +192,7 @@ describe('sync engine', () => {
       phone.received.map((state) => state.id),
       ['m1'],
     );
-    assert.match(phone.engine.status().error ?? '', /could not be opened/);
+    assert.match(phone.engine.status().error ?? '', /could not be read/);
     assert.equal(phone.engine.status().lastSyncedAt, null);
   });
 });

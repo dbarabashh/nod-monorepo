@@ -20,9 +20,10 @@ import {
   type Cipher,
   type MeetingFiles,
 } from '@nod/core/meetings';
-import type { RelayTransport } from '@nod/core/sync';
+import type { PublishedEntry, RelayTransport } from '@nod/core/sync';
 import { createMemoryTransport } from '@nod/core/sync/testing';
 import { createSyncSession, type StoredVault } from './session.ts';
+import { Throttled } from '@nod/core/sync';
 
 const relay = 'https://relay.example.com/';
 
@@ -363,7 +364,7 @@ describe('stopping while a round runs', () => {
         if (path.includes('phone-1')) {
           phoneWrites += 1;
         }
-        await transport.write(path, data);
+        return transport.write(path, data);
       },
       read: async (path, maxBytes) => {
         if (!held) {
@@ -411,11 +412,11 @@ describe('sync rounds', () => {
       ...transport,
       write: async (path, data) => {
         writes += 1;
-        await transport.write(path, data);
+        return transport.write(path, data);
       },
     };
     const { stored, files } = memoryFiles();
-    const log = new Map<string, string>();
+    const log = new Map<string, PublishedEntry>();
     let saved: StoredVault | null = null;
     const launch = async () => {
       const store = createMeetingStore({ files, cipher: async () => cipher });
@@ -434,8 +435,8 @@ describe('sync rounds', () => {
         transportFor: () => counted,
         publishedLogFor: async () => ({
           get: (id) => log.get(id),
-          set: (id, heads) => {
-            log.set(id, heads);
+          set: (id, entry) => {
+            log.set(id, entry);
           },
         }),
         onRemote: () => {},
@@ -607,5 +608,68 @@ describe('meetings on the phone', () => {
     );
     assert.equal(merged.state, null);
     assert.deepEqual(store.meetings(), []);
+  });
+});
+
+describe('a relay that asked the phone to wait', () => {
+  it('is not asked to register again before the wait is over', async () => {
+    const waiting =
+      'The relay answered 429: it asked this device to wait, sync will try again later';
+    const { transport } = memoryRelay();
+    let registrations = 0;
+    const refusing: RelayTransport = {
+      ...transport,
+      register: async () => {
+        registrations += 1;
+        throw new Throttled(waiting, 30_000);
+      },
+    };
+    const clock = { at: 1_000 };
+    const { stored, files } = memoryFiles();
+    const store = createMeetingStore({ files, cipher: async () => cipher });
+    await store.load();
+    let saved: StoredVault | null = null;
+    const session = createSyncSession({
+      vaults: {
+        load: async () => saved,
+        save: async (vault) => {
+          saved = vault;
+        },
+        clear: async () => {
+          saved = null;
+        },
+      },
+      store,
+      transportFor: () => refusing,
+      onRemote: () => {},
+      onChange: () => {},
+      newId: () => 'phone-1',
+      now: () => clock.at,
+    });
+    await session.load();
+    const key = randomKey();
+    await session.pair({ key, relayUrl: relay });
+    await session.refresh();
+    const asked = session.state();
+    assert.equal(asked.status === 'paired' && asked.error, waiting);
+    assert.equal(registrations, 1);
+    assert.equal(stored.size, 0);
+
+    clock.at = 1_000 + 29_999;
+    await session.refresh();
+    assert.equal(registrations, 1);
+
+    clock.at = 1_000 + 30_000;
+    await session.refresh();
+    assert.equal(registrations, 2);
+
+    clock.at = 1_000 + 40_000;
+    await session.pair({ key, relayUrl: relay });
+    await session.refresh();
+    assert.equal(registrations, 3);
+
+    clock.at = 1_000 + 50_000;
+    await session.refresh();
+    assert.equal(registrations, 3);
   });
 });

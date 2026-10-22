@@ -48,5 +48,6 @@ export function toBase64Url(bytes: Uint8Array): string {
 }
 
 export function fromBase64Url(text: string): Uint8Array {
-  return fromBase64(`${text.replace(/-/g, '+').replace(/_/g, '/')}=`);
+  const padding = '='.repeat((4 - (text.length % 4)) % 4);
+  return fromBase64(`${text.replace(/-/g, '+').replace(/_/g, '/')}${padding}`);
 }

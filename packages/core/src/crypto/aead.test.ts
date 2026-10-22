@@ -24,6 +24,9 @@ describe('seal and open', () => {
     flipped[20] = (flipped[20] ?? 0) ^ 1;
     assert.throws(() => open(key, flipped, 'meeting:m1'));
     assert.throws(() => open(randomKey(), sealed, 'meeting:m1'));
+    const relabeled = sealed.slice();
+    relabeled[0] = 2;
+    assert.throws(() => open(key, relabeled, 'meeting:m1'), /Unsupported/);
     assert.throws(
       () => open(key, bytesOf('short'), 'meeting:m1'),
       /Unsupported/,

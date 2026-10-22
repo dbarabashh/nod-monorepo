@@ -30,6 +30,7 @@ type Phase =
   | { kind: 'intro' }
   | { kind: 'scanning' }
   | { kind: 'connecting' }
+  | { kind: 'allowing'; asker: string | null }
   | { kind: 'confirm'; offer: PairingOffer }
   | { kind: 'pairing' };
 
@@ -164,7 +165,11 @@ export function PairingView() {
     rejected.current = data;
     setError(null);
     setPhase({ kind: 'connecting' });
-    fetchPairingOffer(code).then(
+    fetchPairingOffer(code, (asker) => {
+      if (mounted.current) {
+        setPhase({ kind: 'allowing', asker });
+      }
+    }).then(
       (offer) => {
         if (!mounted.current) {
           return;
@@ -217,16 +222,28 @@ export function PairingView() {
     );
   }
 
-  if (phase.kind === 'pairing' || phase.kind === 'connecting') {
+  if (
+    phase.kind === 'pairing' ||
+    phase.kind === 'connecting' ||
+    phase.kind === 'allowing'
+  ) {
     return (
       <View style={[styles.screen, styles.pairing]}>
         <ActivityIndicator color={colors.textMuted} />
         <Text variant="lg" weight="semibold" accessibilityLiveRegion="polite">
           {phase.kind === 'connecting'
             ? 'Connecting to your computer…'
-            : 'Getting your meetings…'}
+            : phase.kind === 'allowing'
+              ? 'Choose Pair on your computer'
+              : 'Getting your meetings…'}
         </Text>
-        <Text tone="muted">They stay encrypted on the way.</Text>
+        <Text tone="muted">
+          {phase.kind === 'allowing'
+            ? phase.asker
+              ? `Your computer asks before it shares anything. It should name this phone as ${phase.asker}.`
+              : 'Your computer asks before it shares anything with this phone.'
+            : 'They stay encrypted on the way.'}
+        </Text>
       </View>
     );
   }

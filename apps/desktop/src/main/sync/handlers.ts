@@ -42,8 +42,20 @@ export type ShowPairing = (
 
 export type ListenForPairing = (offer: {
   sealed: Uint8Array;
-  proof: string;
+  proofFor: (host: string, port: number) => string;
+  confirm: (by: string) => Promise<boolean>;
 }) => Promise<PairingListener>;
+
+// The only thing the user can check is that the address matches the one
+// their phone shows, and that the phone is waiting at all.
+function pairingQuestion(by: string): Question {
+  return {
+    message: 'Pair the phone that scanned the code?',
+    detail: `A device at ${by} on this network scanned the code and asks for your meetings.\n\nYour phone should now say “Choose Pair on your computer” and show ${by}. If it shows something else, or isn’t waiting, choose Don’t pair. Nothing is shared until you choose.`,
+    confirmLabel: 'Pair',
+    cancelLabel: 'Don’t pair',
+  };
+}
 
 const leftBehind =
   'The folder or relay can’t be reached, so the copies this device put there stay behind until you delete them.';
@@ -56,6 +68,25 @@ const maxPhraseLength = 1_000;
 const firstCooldownMs = 10_000;
 const maxCooldownMs = 5 * 60_000;
 const showIntervalMs = 10_000;
+// The phone's next ask collects the answer (the offer, or the refusal); the
+// listener stays this long for it once the code window is gone.
+const deliveryGraceMs = 10_000;
+
+function settledWithin(settled: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    settled.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+    );
+  });
+}
 
 function phraseOf(value: unknown): string {
   if (typeof value !== 'string' || value.length > maxPhraseLength) {
@@ -281,9 +312,19 @@ export function createSyncHandlers(options: {
       const secret = randomKey();
       const taken = await holding(
         async () => {
+          // A photo of the code is enough to ask; main's own dialog, not the
+          // page, decides who gets the key. The window may close while the
+          // dialog is up, so the phone is answered once the user has.
+          const asked: { decision: Promise<boolean> | null } = {
+            decision: null,
+          };
           const listener = await listenForPairing({
             sealed: sealPairingOffer(secret, offer),
-            proof: pairingProof(secret),
+            proofFor: (host, port) => pairingProof(secret, host, port),
+            confirm: (by) => {
+              asked.decision = confirm(pairingQuestion(by)).catch(() => false);
+              return asked.decision;
+            },
           });
           shownAt = now();
           try {
@@ -300,6 +341,10 @@ export function createSyncHandlers(options: {
               listener.outcome,
             );
           } finally {
+            if (asked.decision) {
+              await asked.decision;
+              await settledWithin(listener.outcome, deliveryGraceMs);
+            }
             listener.close();
           }
           return listener.outcome;

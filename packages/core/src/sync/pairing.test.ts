@@ -18,7 +18,7 @@ describe('pairing code', () => {
   it('writes a one-time secret and local addresses, never a vault key', () => {
     assert.equal(
       pairingCode({ secret: zero, port: 51234, hosts: ['192.168.1.20'] }),
-      'nod-pair:v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:51234:192.168.1.20',
+      'nod-pair:v3:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:51234:192.168.1.20',
     );
     assert.equal(
       pairingCode({
@@ -26,13 +26,13 @@ describe('pairing code', () => {
         port: 8,
         hosts: ['10.0.0.5', '203.0.113.9', '172.20.1.1'],
       }),
-      `nod-pair:v2:${encodedCounting}:8:10.0.0.5,172.20.1.1`,
+      `nod-pair:v3:${encodedCounting}:8:10.0.0.5,172.20.1.1`,
     );
   });
 
   it('reads back what it was made from', () => {
     const code = readPairingCode(
-      `nod-pair:v2:${encodedCounting}:51234:192.168.1.20,10.1.2.3`,
+      `nod-pair:v3:${encodedCounting}:51234:192.168.1.20,10.1.2.3`,
     );
     assert.deepEqual([...code.secret], [...counting]);
     assert.equal(code.port, 51234);
@@ -51,16 +51,17 @@ describe('pairing code', () => {
       '',
       'https://example.com',
       `nod-pair:v1:${encodedCounting}:https://relay.example.com/`,
-      `nod-pair:v2:${encodedCounting}:51234`,
-      `nod-pair:v2:${encodedCounting.slice(1)}:51234:192.168.1.20`,
-      `nod-pair:v2:${encodedCounting.slice(0, -1)}h:51234:192.168.1.20`,
-      `nod-pair:v2:${encodedCounting}:0:192.168.1.20`,
-      `nod-pair:v2:${encodedCounting}:65536:192.168.1.20`,
-      `nod-pair:v2:${encodedCounting}:0080:192.168.1.20`,
-      `nod-pair:v2:${encodedCounting}:51234:8.8.8.8`,
-      `nod-pair:v2:${encodedCounting}:51234:relay.example.com`,
-      `nod-pair:v2:${encodedCounting}:51234:192.168.1.20:extra`,
-      `nod-pair:v2:${encodedCounting}:51234:10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4,10.0.0.5`,
+      `nod-pair:v2:${encodedCounting}:51234:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting}:51234`,
+      `nod-pair:v3:${encodedCounting.slice(1)}:51234:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting.slice(0, -1)}h:51234:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting}:0:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting}:65536:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting}:0080:192.168.1.20`,
+      `nod-pair:v3:${encodedCounting}:51234:8.8.8.8`,
+      `nod-pair:v3:${encodedCounting}:51234:relay.example.com`,
+      `nod-pair:v3:${encodedCounting}:51234:192.168.1.20:extra`,
+      `nod-pair:v3:${encodedCounting}:51234:10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4,10.0.0.5`,
     ]) {
       assert.throws(() => readPairingCode(text), /pairing code/, text);
     }
@@ -162,8 +163,10 @@ describe('asking the computer for the offer', () => {
 
   it('skips an address where something else answers, and takes the computer’s offer', async () => {
     const asked: string[] = [];
-    const offer = await requestPairingOffer(code, async (url) => {
+    const proofs: string[] = [];
+    const offer = await requestPairingOffer(code, async (url, init) => {
       asked.push(url);
+      proofs.push(init.headers.authorization ?? '');
       return url.includes('192.168.1.20')
         ? answer(200, new Uint8Array([1, 2, 3]))
         : answer(200, sealed);
@@ -173,6 +176,85 @@ describe('asking the computer for the offer', () => {
       'http://10.0.0.5:51234/v1/pair',
     ]);
     assert.deepEqual([...offer.key], [...key]);
+    assert.deepEqual(proofs, [
+      'Bearer cae968f5d77da1d7132388e785ee5da90cdc1bcc21b07c077396704a8f1ecc95',
+      'Bearer bffef71fc984faa9b50615005c7ab96633ce8277d5f6ad316e65f26692f5f362',
+    ]);
+  });
+
+  it('waits while the computer asks its user, then takes the offer', async () => {
+    let asked = 0;
+    const waits: Array<string | null> = [];
+    const offer = await requestPairingOffer(
+      { ...code, hosts: ['192.168.1.20'] },
+      async () => {
+        asked += 1;
+        return asked < 3
+          ? answer(202, new TextEncoder().encode('192.168.1.37'))
+          : answer(200, sealed);
+      },
+      (asker) => {
+        waits.push(asker);
+      },
+    );
+    assert.deepEqual([...offer.key], [...key]);
+    assert.equal(asked, 3);
+    assert.deepEqual(waits, ['192.168.1.37', '192.168.1.37']);
+  });
+
+  it('shows no address the computer didn’t see the phone as', async () => {
+    let asked = 0;
+    const waits: Array<string | null> = [];
+    await requestPairingOffer(
+      { ...code, hosts: ['192.168.1.20'] },
+      async () => {
+        asked += 1;
+        return asked < 2
+          ? answer(202, new TextEncoder().encode('<script>'))
+          : answer(200, sealed);
+      },
+      (asker) => {
+        waits.push(asker);
+      },
+    );
+    assert.deepEqual(waits, [null]);
+  });
+
+  it('stops waiting with the code’s window, and moves on', async () => {
+    let clock = 0;
+    const asked: string[] = [];
+    await assert.rejects(
+      requestPairingOffer(
+        code,
+        async (url) => {
+          asked.push(url);
+          clock += 100_000;
+          return answer(202, new Uint8Array());
+        },
+        undefined,
+        () => clock,
+      ),
+      /didn’t answer in time/,
+    );
+    assert.deepEqual(asked, [
+      'http://192.168.1.20:51234/v1/pair',
+      'http://192.168.1.20:51234/v1/pair',
+      'http://10.0.0.5:51234/v1/pair',
+    ]);
+  });
+
+  it('says when the computer’s user didn’t pair this phone', async () => {
+    let asked = 0;
+    await assert.rejects(
+      requestPairingOffer(code, async () => {
+        asked += 1;
+        return asked === 1
+          ? answer(202, new Uint8Array())
+          : answer(403, new Uint8Array());
+      }),
+      /didn’t pair this phone/,
+    );
+    assert.equal(asked, 2);
   });
 
   it('says when the code was already used', async () => {

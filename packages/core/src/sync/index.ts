@@ -9,6 +9,7 @@ export {
 } from './layout.ts';
 export {
   createSyncEngine,
+  type PublishedEntry,
   type PublishedLog,
   type SyncEngine,
   type SyncStatus,
@@ -16,6 +17,9 @@ export {
 } from './engine.ts';
 export {
   assertSafePath,
+  stillWaiting,
+  Throttled,
+  UnreadableFile,
   WritesRefused,
   type RemoteFile,
   type Transport,
@@ -37,6 +41,7 @@ export {
   maxPairingHosts,
   openPairingOffer,
   pairingCode,
+  PairingRefused,
   readPairingCode,
   requestPairingOffer,
   sealPairingOffer,
