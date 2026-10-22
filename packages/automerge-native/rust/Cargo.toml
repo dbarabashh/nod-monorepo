@@ -15,7 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 automerge = { git = "https://github.com/automerge/automerge", rev = "4d2a8f6bfecfb7f1e4fca126e6d2122ac526f903", features = [
   "utf16-indexing",
 ] }
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
