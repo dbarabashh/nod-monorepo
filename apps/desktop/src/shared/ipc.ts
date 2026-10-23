@@ -107,6 +107,38 @@ export type SyncState =
       closed: boolean;
     };
 
+export type SharingPeer = {
+  identity: string;
+  code: string;
+  stoppedAt: number | null;
+};
+
+export type SharedNoteInfo = {
+  id: string;
+  title: string;
+  sharedAt: number;
+  peer: string;
+  peerCode: string;
+};
+
+export type SharedNoteDetail = {
+  id: string;
+  title: string;
+  summary: string;
+  sharedAt: number;
+  peer: string;
+};
+
+export type SharingState =
+  | { status: 'none' }
+  | {
+      status: 'ready';
+      code: string;
+      peers: SharingPeer[];
+      notes: SharedNoteInfo[];
+      error: string | null;
+    };
+
 export type McpScope = 'summaries' | 'transcripts';
 
 export const mcpNameMaxLength = 60;
@@ -173,6 +205,8 @@ export const IpcEvent = {
   onSyncChanged: 'sync:changed',
   onMcpChanged: 'mcp:changed',
   onMeetingSuggestion: 'meeting-suggestion:changed',
+  onSharingChanged: 'sharing:changed',
+  onDialogChanged: 'dialog:changed',
 } satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
@@ -230,6 +264,14 @@ export const IpcChannel = {
   syncNow: 'sync:now',
   listSyncDevices: 'sync:list-devices',
   forgetSyncDevice: 'sync:forget-device',
+  getSharingState: 'sharing:get',
+  showIdentityCard: 'sharing:show-identity-card',
+  addSharingPeer: 'sharing:add-peer',
+  stopSharingPeer: 'sharing:stop-peer',
+  shareMeeting: 'sharing:share-meeting',
+  getSharedNote: 'sharing:get-note',
+  editSharedNote: 'sharing:edit-note',
+  deleteSharedNote: 'sharing:delete-note',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
   string
@@ -300,6 +342,16 @@ export type AppApi = {
   listSyncDevices: () => Promise<SyncDevice[]>;
   forgetSyncDevice: (id: string) => Promise<void>;
   onSyncChanged: (callback: (state: SyncState) => void) => () => void;
+  getSharingState: () => Promise<SharingState>;
+  showIdentityCard: () => Promise<void>;
+  addSharingPeer: (card: string) => Promise<boolean>;
+  stopSharingPeer: (identity: string) => Promise<void>;
+  shareMeeting: (meetingId: string, peer: string) => Promise<SharedNoteInfo>;
+  getSharedNote: (peer: string, id: string) => Promise<SharedNoteDetail>;
+  editSharedNote: (peer: string, id: string, summary: string) => Promise<void>;
+  deleteSharedNote: (peer: string, id: string) => Promise<void>;
+  onSharingChanged: (callback: (state: SharingState) => void) => () => void;
+  onDialogChanged: (callback: (open: boolean) => void) => () => void;
   getMcpState: () => Promise<McpState>;
   setMcpEnabled: (enabled: boolean) => Promise<void>;
   addMcpClient: (name: string, scopes: McpScope[]) => Promise<McpConnection>;

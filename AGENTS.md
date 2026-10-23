@@ -18,7 +18,8 @@ packages/core/   @nod/core: the platform-neutral data model, migrations, sync
 packages/automerge-native/  Automerge on a Rust backend for mobile, where
                  Hermes has no WebAssembly (an Expo module plus a JS shim)
 docs/decisions/  numbered decision records; read 0001-sync.md before touching
-                 meetings storage or sync
+                 meetings storage or sync, and 0003-sharing.md before touching
+                 identity, shared vaults or shared notes
 scripts/         repository tooling shared by every package
 ```
 

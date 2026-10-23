@@ -16,6 +16,10 @@ src/main/
   models/           speech model downloads: resume, checksum, storage
   meetings/         recorder, session, and the encrypted file-per-meeting store
   sync/             device sync: engine, transports, settings
+  windows/          the app's windows, and the dialog main draws itself with no
+                    script; sync/pairing-page.ts draws the pairing code the same way
+  sharing/          notes shared with other people: the core sharing session
+                    over this computer's files, and its dialogs
   <domain>/         OS-facing code for one domain (audio/, storage/, keychain/)
 ```
 

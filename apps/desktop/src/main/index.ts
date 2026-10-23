@@ -6,7 +6,6 @@ import {
   net,
   safeStorage,
   session,
-  type MessageBoxOptions,
   type OpenDialogOptions,
   type WebContents,
 } from 'electron';
@@ -30,9 +29,11 @@ import { broadcastModels, registerModelsIpc } from './ipc/models.ts';
 import { broadcastRecording, registerRecordingIpc } from './ipc/recording.ts';
 import { broadcastSync, registerSyncIpc } from './ipc/sync.ts';
 import { createSyncHandlers } from './sync/handlers.ts';
+import { createDialogGate, type Question } from './sync/dialog-gate.ts';
 import { pairingPage } from './sync/pairing-page.ts';
 import { listenForPairing, localAddresses } from './sync/pairing-server.ts';
 import { showPairingWindow } from './windows/pairing-window.ts';
+import { showDialogWindow } from './windows/dialog-window.ts';
 import { processAlive, quitWithParent } from './dev/quit-with-parent.ts';
 import { createMeetingDetection } from './meeting-detection/service.ts';
 import { platformMonitor } from './meeting-detection/monitor.ts';
@@ -46,6 +47,7 @@ import { createTranscriber } from './transcription/service.ts';
 import { createMeetingStore } from './meetings/store.ts';
 import { createModelManager } from './models/manager.ts';
 import { open, seal } from '@nod/core/crypto';
+import { meetingName, type Cipher } from '@nod/core/meetings';
 import { loadDataKey, type KeyWrap } from './security/data-key.ts';
 import { linuxPasswordStore } from './security/password-store.ts';
 import { createDisplayCaptureGate } from './security/display-capture-gate.ts';
@@ -60,6 +62,9 @@ import {
 import { openSuggestionWindow } from './windows/meeting-suggestion.ts';
 import { createSuggestionWindowControl } from './meeting-detection/suggestion-window.ts';
 import { createSyncController } from './sync/controller.ts';
+import { createSharingController } from './sharing/controller.ts';
+import { createSharingHandlers } from './sharing/handlers.ts';
+import { broadcastSharing, registerSharingIpc } from './ipc/sharing.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
 import { relayBase } from '@nod/core/sync';
 import { createPublishedLogs } from './sync/published-log.ts';
@@ -149,21 +154,34 @@ const keychain: KeyWrap = {
   },
 };
 
+// One key seals everything on this computer: meetings, shares and shared
+// notes. It is read once; the meeting store reads it first and decides
+// whether a missing key means a first run or a lost one.
+let dataKey: Promise<Uint8Array> | null = null;
+function dataCipher(hasEncryptedData: () => Promise<boolean>): Promise<Cipher> {
+  dataKey ??= loadDataKey(
+    path.join(app.getPath('userData'), 'keys', 'data.key'),
+    keychain,
+    hasEncryptedData,
+  ).catch((failure: unknown) => {
+    dataKey = null;
+    throw failure;
+  });
+  return dataKey.then((key) => ({
+    encrypt: (plain, context) => seal(key, plain, context),
+    decrypt: (data, context) => open(key, data, context),
+  }));
+}
+
 const meetingStore = createMeetingStore({
   directory: path.join(app.getPath('userData'), 'meetings'),
-  cipher: async (hasStoredMeetings) => {
-    const key = await loadDataKey(
-      path.join(app.getPath('userData'), 'keys', 'data.key'),
-      keychain,
-      async () => hasStoredMeetings,
-    );
-    return {
-      encrypt: (plain, context) => seal(key, plain, context),
-      decrypt: (data, context) => open(key, data, context),
-    };
-  },
+  cipher: (hasStoredMeetings) => dataCipher(async () => hasStoredMeetings),
   onWrite: () => syncScheduler.soon(),
 });
+
+const publishedLogs = createPublishedLogs(
+  path.join(app.getPath('userData'), 'published'),
+);
 
 // Set when the app is built, so a fork can offer its own relay without
 // anything in the source naming one. It is offered, never used unasked.
@@ -177,14 +195,22 @@ function offeredRelay(url: string): string | null {
   }
 }
 
+const sharingController = createSharingController({
+  directory: path.join(app.getPath('userData'), 'sharing'),
+  cipher: () => dataCipher(async () => true),
+  publishedLogs,
+  newId: randomUUID,
+  now: Date.now,
+  onChange: () => broadcastSharing(sharingController),
+});
+
 const syncController = createSyncController({
+  sharing: sharingController,
   settings: createSyncSettings({
     directory: app.getPath('userData'),
     keychain,
   }),
-  publishedLogs: createPublishedLogs(
-    path.join(app.getPath('userData'), 'sync-published.json'),
-  ),
+  publishedLogs,
   store: meetingStore,
   onRemote: (state) => {
     recorder.applyRemote(state);
@@ -481,6 +507,28 @@ app.whenReady().then(async () => {
         }),
     }),
   );
+  const confirmInMain = (question: Question) =>
+    showDialogWindow(question, mainWindow, (open) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IpcEvent.onDialogChanged, open);
+      }
+    });
+  const dialogGate = createDialogGate({
+    confirm: confirmInMain,
+    now: Date.now,
+  });
+  registerSharingIpc(
+    appUrl,
+    createSharingHandlers({
+      controller: sharingController,
+      place: () => syncController.sharedPlace(),
+      meeting: (id) => recorder.meetings().find((entry) => entry.id === id),
+      meetingName,
+      gate: dialogGate,
+      copyText: (text) => clipboard.writeText(text),
+      syncSoon: () => syncScheduler.soon(),
+    }),
+  );
   registerSyncIpc(
     appUrl,
     createSyncHandlers({
@@ -490,20 +538,6 @@ app.whenReady().then(async () => {
           title: 'Choose a folder to sync meetings through',
           properties: ['openDirectory', 'createDirectory'],
         }),
-      confirm: async ({ message, detail, confirmLabel, cancelLabel }) => {
-        const options: MessageBoxOptions = {
-          type: 'warning',
-          message,
-          detail,
-          buttons: cancelLabel ? [confirmLabel, cancelLabel] : [confirmLabel],
-          defaultId: cancelLabel ? 1 : 0,
-          cancelId: cancelLabel ? 1 : 0,
-        };
-        const { response } = mainWindow
-          ? await dialog.showMessageBox(mainWindow, options)
-          : await dialog.showMessageBox(options);
-        return response === 0;
-      },
       showPairing: (screen, done) =>
         showPairingWindow(
           pairingPage(screen, process.platform),
@@ -518,7 +552,7 @@ app.whenReady().then(async () => {
           hosts: localAddresses(),
         }),
       syncSoon: () => syncScheduler.soon(),
-      now: Date.now,
+      gate: dialogGate,
     }),
   );
   // Sync only starts on top of meetings that were read, so a failed load can

@@ -37,8 +37,34 @@ function nameOf(value: string | null): Automerge.ImmutableString | null {
   return value === null ? null : new Automerge.ImmutableString(value);
 }
 
-function plainValue(value: unknown): unknown {
+export function plainValue(value: unknown): unknown {
   return value instanceof Automerge.ImmutableString ? value.toString() : value;
+}
+
+export function field(value: object, key: string): unknown {
+  return Reflect.get(value, key);
+}
+
+// Names a version of a document: equal for two documents that hold the same
+// changes, on every device.
+export function headsOf<T>(document: Automerge.Doc<T>): string {
+  return [...Automerge.getHeads(document)].sort().join();
+}
+
+export function sameHeads<T>(
+  a: Automerge.Doc<T>,
+  b: Automerge.Doc<T>,
+): boolean {
+  return headsOf(a) === headsOf(b);
+}
+
+// Merging mutates its first argument, so the local document is cloned to
+// keep the one the caller holds as it was.
+export function mergeChanges<T>(
+  local: Automerge.Doc<T>,
+  remote: Automerge.Doc<T>,
+): Automerge.Doc<T> {
+  return Automerge.merge(Automerge.clone(local), remote);
 }
 
 function linesOf(meeting: Meeting): Record<string, LineFields> {
@@ -79,7 +105,7 @@ function fnvHex(bytes: Uint8Array, seed: number): string {
 // A fresh document with no history, so a deleted meeting's text doesn't live
 // on in the change log of every device that syncs it. Its author and time are
 // fixed, so every device builds the same bytes and they stop syncing it.
-function fixedActor(key: string): string {
+export function fixedActor(key: string): string {
   const bytes = new TextEncoder().encode(key);
   return [0x811c9dc5, 0x2f1a3b4c, 0x5e6d7c8b, 0x13572468]
     .map((seed) => fnvHex(bytes, seed))
@@ -132,14 +158,12 @@ export function tombstone(id: string, deletedAt: number): MeetingDocument {
   );
 }
 
-// Names a version of a meeting: equal for two documents that hold the same
-// changes, on every device.
 export function documentHeads(document: MeetingDocument): string {
-  return [...Automerge.getHeads(document)].sort().join();
+  return headsOf(document);
 }
 
 export function sameDocument(a: MeetingDocument, b: MeetingDocument): boolean {
-  return documentHeads(a) === documentHeads(b);
+  return sameHeads(a, b);
 }
 
 function setLine(fields: MeetingFields, line: TranscriptLine) {
@@ -246,10 +270,6 @@ export function updateDocument(
   );
 }
 
-function field(value: object, key: string): unknown {
-  return Reflect.get(value, key);
-}
-
 function transcriptOf(lines: unknown): unknown[] | null {
   if (typeof lines !== 'object' || lines === null) {
     return null;
@@ -312,7 +332,7 @@ export function mergeDocuments(
     );
     return tombstone(first.id, first.deletedAt);
   }
-  return Automerge.merge(Automerge.clone(local), remote);
+  return mergeChanges(local, remote);
 }
 
 export function saveDocument(document: MeetingDocument): Uint8Array {

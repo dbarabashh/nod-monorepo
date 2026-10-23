@@ -2,8 +2,10 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { bytesOf, fileKeyOf, randomKey, vaultIdOf } from '../crypto/index.ts';
 import type { Merged } from '../meetings/index.ts';
-import { createSyncEngine } from './engine.ts';
-import { meetingPath } from './layout.ts';
+import { composeEngines, createSyncEngine } from './engine.ts';
+import { closedPath, meetingPath } from './layout.ts';
+import { sealClosedNotice } from './closing.ts';
+import { createMemoryTransport } from './testing/index.ts';
 import { createRelayTransport } from './relay.ts';
 import { guardedRound } from './round.ts';
 import { Throttled } from './transport.ts';
@@ -88,5 +90,81 @@ describe('a round against a relay that asked to wait', () => {
     assert.equal(await at.round(), 'synced');
     assert.deepEqual(at.requests, ['list', 'read', 'list', 'read']);
     assert.equal(at.engine.status().error, waiting);
+  });
+});
+
+describe('a round with several kinds of document in one vault', () => {
+  function stubEngine(outcome: { error: string | null } = { error: null }) {
+    const listings: number[] = [];
+    return {
+      listings,
+      engine: {
+        sync: async (listed?: unknown[]) => {
+          listings.push(listed?.length ?? -1);
+        },
+        status: () => ({
+          lastSyncedAt: outcome.error ? null : 5,
+          devices: outcome.error ? 0 : 2,
+          error: outcome.error,
+        }),
+        merged: (path: string) =>
+          path === 'devices/d2/shares.bin' && !outcome.error ? 'v7' : undefined,
+        stop: () => {},
+        forget: () => {},
+      },
+    };
+  }
+
+  it('hands every engine the one listing, and none of them a closed vault', async () => {
+    const key = randomKey();
+    const vault = {
+      fileKey: fileKeyOf(key),
+      id: vaultIdOf(key),
+      deviceId: 'd1',
+    };
+    const transport = createMemoryTransport();
+    await transport.write(meetingPath('d2', 'm-1'), bytesOf('x'));
+    const main = stubEngine();
+    const shares = stubEngine();
+    const engine = composeEngines([main.engine, shares.engine]);
+    assert.equal(
+      await guardedRound({ transport, engine, checked: new Map() }, vault),
+      'synced',
+    );
+    assert.deepEqual(main.listings, [1]);
+    assert.deepEqual(shares.listings, [1]);
+
+    await transport.write(closedPath('d2'), bytesOf('not a notice'));
+    assert.equal(
+      await guardedRound({ transport, engine, checked: new Map() }, vault),
+      'synced',
+    );
+    await transport.write(
+      closedPath('d2'),
+      sealClosedNotice(vault.fileKey, vault.id, 'd2', 1),
+    );
+    assert.equal(
+      await guardedRound({ transport, engine, checked: new Map() }, vault),
+      'closed',
+    );
+    assert.deepEqual(shares.listings, [1, 2]);
+  });
+
+  it('shows the first engine’s round and devices, and any engine’s error', () => {
+    const main = stubEngine();
+    const shares = stubEngine({ error: 'The relay answered 400' });
+    const engine = composeEngines([main.engine, shares.engine]);
+    assert.deepEqual(engine.status(), {
+      lastSyncedAt: 5,
+      devices: 2,
+      error: 'The relay answered 400',
+    });
+    assert.equal(engine.merged('devices/d2/shares.bin'), 'v7');
+    assert.equal(engine.merged('devices/d2/meetings/m-1.bin'), undefined);
+    assert.deepEqual(composeEngines([shares.engine, main.engine]).status(), {
+      lastSyncedAt: null,
+      devices: 0,
+      error: 'The relay answered 400',
+    });
   });
 });

@@ -44,7 +44,9 @@ tsconfig.test.json   tests, with Node types for node:test and node:assert
 - Treat the data format and sync protocol as contracts. Other devices may run an
   older version, so a schema change ships with a migration and must keep
   reading data written by the previous version. Read
-  `docs/decisions/0001-sync.md` first.
+  `docs/decisions/0001-sync.md` first, and `docs/decisions/0003-sharing.md`
+  for identity, version 2 files, shared vaults and shared notes (`src/sharing`,
+  which both apps run through `createSharingSession`).
 - Some domains serve one app today (`meeting-detection`, `mcp` for desktop).
   They stay here because they are platform-neutral logic, not because both apps
   use them.

@@ -107,6 +107,24 @@ const api: AppApi = {
   showPairingCode: () =>
     clicked(() => ipcRenderer.invoke(IpcChannel.showPairingCode)),
   onSyncChanged: (callback) => subscribe(IpcEvent.onSyncChanged, callback),
+  getSharingState: () => ipcRenderer.invoke(IpcChannel.getSharingState),
+  showIdentityCard: () =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.showIdentityCard)),
+  addSharingPeer: (card) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.addSharingPeer, card)),
+  stopSharingPeer: (identity) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.stopSharingPeer, identity)),
+  shareMeeting: (meetingId, peer) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.shareMeeting, meetingId, peer)),
+  getSharedNote: (peer, id) =>
+    ipcRenderer.invoke(IpcChannel.getSharedNote, peer, id),
+  editSharedNote: (peer, id, summary) =>
+    ipcRenderer.invoke(IpcChannel.editSharedNote, peer, id, summary),
+  deleteSharedNote: (peer, id) =>
+    ipcRenderer.invoke(IpcChannel.deleteSharedNote, peer, id),
+  onSharingChanged: (callback) =>
+    subscribe(IpcEvent.onSharingChanged, callback),
+  onDialogChanged: (callback) => subscribe(IpcEvent.onDialogChanged, callback),
   getMcpState: () => ipcRenderer.invoke(IpcChannel.getMcpState),
   setMcpEnabled: (enabled) =>
     clicked(() => ipcRenderer.invoke(IpcChannel.setMcpEnabled, enabled)),

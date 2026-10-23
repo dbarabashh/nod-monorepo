@@ -4,8 +4,8 @@ import { bytesOf, concatBytes } from './encoding.ts';
 
 const version = 1;
 const supportedVersions = new Set([version]);
-const nonceLength = 12;
-const tagLength = 16;
+export const nonceLength = 12;
+export const tagLength = 16;
 
 export const keyLength = 32;
 
@@ -15,7 +15,7 @@ export function randomKey(): Uint8Array {
 
 // AES-GCM also takes shorter keys; anything but a 256-bit key is a mistake
 // here, so it is refused rather than quietly used as AES-128.
-function assertKey(key: Uint8Array) {
+export function assertKey(key: Uint8Array) {
   if (key.length !== keyLength) {
     throw new Error('An encryption key must be 32 bytes');
   }

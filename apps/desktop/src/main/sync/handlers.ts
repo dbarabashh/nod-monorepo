@@ -18,15 +18,9 @@ import {
   sealPairingOffer,
 } from '@nod/core/sync';
 import type { PairingListener } from './pairing-server.ts';
+import type { DialogGate, Question } from './dialog-gate.ts';
 
-export type Question = {
-  message: string;
-  detail: string;
-  confirmLabel: string;
-  cancelLabel: string | null;
-};
-
-export type Confirm = (question: Question) => Promise<boolean>;
+export type { Confirm, Question } from './dialog-gate.ts';
 
 export type PairingScreen = {
   code: string;
@@ -65,12 +59,6 @@ const askedToWait = (waitMs: number) =>
 
 const maxUrlLength = 2_048;
 const maxPhraseLength = 1_000;
-// The first wait outlasts the click that opened the dialog, and each further
-// Cancel doubles it, so a page script can't keep reopening a dialog on every
-// later click until the user gives in.
-const firstCooldownMs = 10_000;
-const maxCooldownMs = 5 * 60_000;
-const showIntervalMs = 10_000;
 // The phone's next ask collects the answer (the offer, or the refusal); the
 // listener stays this long for it once the code window is gone.
 const deliveryGraceMs = 10_000;
@@ -105,27 +93,12 @@ function relayUrl(value: unknown): string {
   return relayBase(value.trim()).href;
 }
 
-function wordList(phrase: string): string {
-  const words = phraseWords(phrase);
-  const rows: string[] = [];
-  for (let index = 0; index < words.length; index += 3) {
-    rows.push(
-      words
-        .slice(index, index + 3)
-        .map((word, offset) => `${index + offset + 1}. ${word}`)
-        .join('    '),
-    );
-  }
-  return rows.join('\n');
-}
-
 // The page is untrusted and may have swapped the words the user typed, and it
 // could draw anything as "your phrase". So main shows the words and the vault
 // code itself, here and when the phrase is first written down, and the user
 // compares them with their paper or another device's dialog.
 function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
   const details = [
-    `Vault code ${preview.vaultCode}\n\n${wordList(phrase)}`,
     'Continue only if these are the words and the code you wrote down, or the ones another device shows under Settings → Recovery phrase.',
   ];
   if (preview.replacing) {
@@ -156,6 +129,8 @@ function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
       ? 'Switch this device to another recovery phrase?'
       : 'Use this recovery phrase on this device?',
     detail: details.join('\n\n'),
+    code: { label: 'Vault code', value: preview.vaultCode },
+    words: phraseWords(phrase),
     confirmLabel: preview.switching ? 'Switch' : 'Use phrase',
     cancelLabel: 'Cancel',
   };
@@ -168,68 +143,21 @@ function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
 export function createSyncHandlers(options: {
   controller: SyncController;
   chooseFolder: () => Promise<string | null>;
-  confirm: Confirm;
   showPairing: ShowPairing;
   listenForPairing: ListenForPairing;
   syncSoon: () => void;
-  now: () => number;
+  // Shared with the sharing handlers, so one gate guards every dialog.
+  gate: DialogGate;
 }) {
   const {
     controller,
     chooseFolder,
-    confirm,
     showPairing,
     listenForPairing,
     syncSoon,
-    now,
+    gate,
   } = options;
-  let asking = false;
-  let declines = 0;
-  let declinedAt = Number.NEGATIVE_INFINITY;
-  let shownAt = Number.NEGATIVE_INFINITY;
-
-  function assertFree() {
-    if (asking) {
-      throw new Error('Answer the open question first');
-    }
-    const cooldown =
-      declines === 0
-        ? 0
-        : Math.min(firstCooldownMs * 2 ** (declines - 1), maxCooldownMs);
-    if (now() - declinedAt < cooldown) {
-      throw new Error('Wait a moment before trying again');
-    }
-  }
-
-  // Only a confirmed change to sync ends the growing wait; showing the phrase
-  // or picking a folder neither cancels nor confirms anything.
-  async function holding<T>(
-    question: () => Promise<T>,
-    outcome: (answer: T) => 'confirmed' | 'declined' | 'neutral',
-  ): Promise<T> {
-    assertFree();
-    asking = true;
-    try {
-      const answer = await question();
-      const result = outcome(answer);
-      if (result === 'confirmed') {
-        declines = 0;
-      } else if (result === 'declined') {
-        declines += 1;
-        declinedAt = now();
-      }
-      return answer;
-    } finally {
-      asking = false;
-    }
-  }
-
-  function ask(question: Question): Promise<boolean> {
-    return holding(
-      () => confirm(question),
-      (yes) => (yes ? 'confirmed' : 'declined'),
-    );
-  }
+  const { assertFree, holding, ask, confirm } = gate;
 
   async function stop() {
     try {
@@ -274,10 +202,8 @@ export function createSyncHandlers(options: {
     // words up again and again.
     showRecoveryPhrase: async () => {
       assertFree();
-      if (now() - shownAt < showIntervalMs) {
-        throw new Error('Wait a moment before showing the phrase again');
-      }
-      shownAt = now();
+      gate.assertNotJustShown('phrase');
+      gate.markShown();
       const state = controller.state();
       const phrase = controller.recoveryPhrase();
       const writingDown = state.status === 'ready' && !state.recoveryConfirmed;
@@ -287,10 +213,11 @@ export function createSyncHandlers(options: {
           confirm({
             message: 'Your recovery phrase',
             detail: [
-              `Vault code ${code}\n\n${wordList(phrase)}`,
               'Write the words and the vault code on paper. Enter the words on your other devices to sync them; Nod shows the code there, and it must match.',
               'Anyone who has the words can read your meetings, so keep them off screenshots and notes apps.',
             ].join('\n\n'),
+            code: { label: 'Vault code', value: code },
+            words: phraseWords(phrase),
             confirmLabel: writingDown ? 'I’ve written it down' : 'Done',
             cancelLabel: writingDown ? 'Later' : null,
           }),
@@ -307,9 +234,7 @@ export function createSyncHandlers(options: {
     // them.
     showPairingCode: async () => {
       assertFree();
-      if (now() - shownAt < showIntervalMs) {
-        throw new Error('Wait a moment before showing the code again');
-      }
+      gate.assertNotJustShown('code');
       const offer = controller.pairingOffer();
       // The code carries a one-time secret, never the key: the phone gets the
       // key sealed with it, over the local network, once. Listening starts
@@ -331,7 +256,7 @@ export function createSyncHandlers(options: {
               return asked.decision;
             },
           });
-          shownAt = now();
+          gate.markShown();
           try {
             await showPairing(
               {
@@ -370,9 +295,7 @@ export function createSyncHandlers(options: {
           () => 'neutral',
         );
       }
-      // The interval runs from when the code went away, so a window left open
-      // can't be put back up on the very next click.
-      shownAt = now();
+      gate.markShown();
       syncSoon();
     },
     chooseSyncFolder: async () => {
@@ -444,7 +367,7 @@ export function createSyncHandlers(options: {
         !(await ask({
           message: 'Change your recovery phrase?',
           detail:
-            'Nod makes a new recovery phrase and stops syncing through the old one. Enter the new phrase on each device you keep; a lost or removed device never gets it, but it keeps what it already has. Do it soon: devices still on the old phrase stop syncing once they see the change. Write the new phrase down right after.',
+            'Nod makes a new recovery phrase and stops syncing through the old one. Enter the new phrase on each device you keep; a lost or removed device never gets it, but it keeps what it already has. Do it soon: devices still on the old phrase stop syncing once they see the change. Write the new phrase down right after.\n\nYour identity changes with the phrase, so every note you share with someone stops being shared; exchange identity cards again to share with them under the new phrase.',
           confirmLabel: 'Change phrase',
           cancelLabel: 'Cancel',
         }))

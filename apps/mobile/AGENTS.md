@@ -26,8 +26,12 @@ Sync → Pair a phone; see "Pairing a phone by QR code" in
 holds the sync layer both features use: meetings are kept by the store in
 `@nod/core/meetings`, the one the desktop app uses; `session.ts` is plain
 logic tested on Node; `device.ts` adapts both to Expo (`expo-file-system`,
-`expo-secure-store`, `expo/fetch`); and `sync.ts` runs them and exposes hooks. `src/lib/random.ts` backs `crypto.getRandomValues`
-with `expo-crypto` and is imported first.
+`expo-secure-store`, `expo/fetch`); and `sync.ts` runs them and exposes
+hooks. Notes shared with other people (`docs/decisions/0003-sharing.md`) ride
+on the same session: the core sharing session gets its files and relay from
+`device.ts`, and `features/shared-notes` shows and edits what arrives; adding
+people and sharing a meeting happen on the computer. `src/lib/random.ts` backs
+`crypto.getRandomValues` with `expo-crypto` and is imported first.
 
 Recording transcribes on the phone with whisper.cpp (`whisper.rn`), the
 engine family the desktop app uses, through the same chunking in

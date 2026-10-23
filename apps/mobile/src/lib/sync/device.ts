@@ -15,6 +15,7 @@ import {
   createPublishedLog,
   createRelayTransport,
   isSyncId,
+  publishedLogFile,
   readPublishedEntries,
   readReceivedEntries,
   requestPairingOffer,
@@ -34,8 +35,12 @@ import {
   keepOutOfBackup,
   keySlotFile,
   meetingsDirectory,
-  publishedFile,
+  publishedDirectory,
+  sharedVaultDirectory,
+  sharesDirectory,
 } from '../storage.ts';
+import type { SharedPlace, SharesFile } from '@nod/core/sharing';
+import type { Directory } from 'expo-file-system';
 import type { StoredVault, VaultStorage } from './session.ts';
 
 const suffix = '.bin';
@@ -57,7 +62,16 @@ const keychain: SecureStore.SecureStoreOptions = {
 };
 
 export function meetingFiles(): MeetingFiles {
-  const directory = meetingsDirectory();
+  return filesIn(meetingsDirectory());
+}
+
+// Notes shared with one person, kept like meetings in a folder of that
+// vault's own.
+export function noteFilesFor(vaultId: string): MeetingFiles {
+  return filesIn(sharedVaultDirectory(vaultId));
+}
+
+function filesIn(directory: Directory): MeetingFiles {
   const fileOf = (id: string) => new File(directory, `${id}${suffix}`);
   return {
     ids: async () => {
@@ -184,15 +198,52 @@ export function secureVaults(): VaultStorage {
   };
 }
 
-export function relayTransportFor(vault: StoredVault): RelayTransport {
+const sharesName = 'shares';
+
+// The shares list is one file in the vault's folder, written the way a
+// meeting is.
+export function sharesFileFor(vaultId: string): SharesFile {
+  const files = filesIn(sharesDirectory(vaultId));
+  return {
+    read: async () =>
+      (await files.ids()).includes(sharesName) ? files.read(sharesName) : null,
+    write: (data) => files.write(sharesName, data),
+    setAside: () => files.setAside(sharesName),
+  };
+}
+
+function relayTransport(
+  url: string,
+  vault: { id: string; token: string },
+): RelayTransport {
   return createRelayTransport({
-    url: vault.relayUrl,
-    vaultId: vaultIdOf(vault.key),
-    token: relayToken(vault.key),
+    url,
+    vaultId: vault.id,
+    token: vault.token,
     // A request that never ends would hold every later round behind it.
     fetch: (url, init) =>
       fetch(url, { ...init, signal: abortAfter(relayTimeoutMs) }),
     now: () => Date.now(),
+  });
+}
+
+// Shared vaults go through the same relay as the person's own, each under
+// its own id and token.
+export function sharedPlaceFor(vault: StoredVault): SharedPlace {
+  return {
+    name: vault.relayUrl,
+    open: async (target) => {
+      const transport = relayTransport(vault.relayUrl, target);
+      await transport.register();
+      return transport;
+    },
+  };
+}
+
+export function relayTransportFor(vault: StoredVault): RelayTransport {
+  return relayTransport(vault.relayUrl, {
+    id: vaultIdOf(vault.key),
+    token: relayToken(vault.key),
   });
 }
 
@@ -201,8 +252,13 @@ export function relayTransportFor(vault: StoredVault): RelayTransport {
 export async function publishedLogFor(
   vault: StoredVault,
 ): Promise<PublishedLog> {
-  const file = publishedFile();
-  const scope = `${vaultIdOf(vault.key)}:${vault.deviceId}:${vault.relayUrl}`;
+  return publishedLogIn(
+    `${vaultIdOf(vault.key)}:${vault.deviceId}:${vault.relayUrl}`,
+  );
+}
+
+export async function publishedLogIn(scope: string): Promise<PublishedLog> {
+  const file = new File(publishedDirectory(), publishedLogFile(scope));
   let stored: unknown = null;
   try {
     stored = file.exists ? JSON.parse(await file.text()) : null;
@@ -217,8 +273,8 @@ export async function publishedLogFor(
     // Losing it only costs writing each meeting, and reading each file of
     // another device, once more.
     save: (data) => {
-      file
-        .write(data)
+      ensureDirectory(file.parentDirectory)
+        .then(() => file.write(data))
         .then(() => keepOutOfBackup(file))
         .catch(() => undefined);
     },

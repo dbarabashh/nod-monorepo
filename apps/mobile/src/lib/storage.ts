@@ -7,8 +7,15 @@ export const meetingsDirectory = () =>
   new Directory(Paths.document, 'meetings');
 export const modelsDirectory = () => new Directory(Paths.document, 'models');
 export const keySlotFile = () => new File(Paths.document, 'data-key-slot');
-export const publishedFile = () => new File(Paths.document, 'published.json');
+// One file per sync scope: the vault, its shares list and each shared vault.
+export const publishedDirectory = () =>
+  new Directory(Paths.document, 'published');
 export const recordingFile = () => new File(Paths.document, 'recording.json');
+export const sharingDirectory = () => new Directory(Paths.document, 'sharing');
+export const sharesDirectory = (vaultId: string) =>
+  new Directory(sharingDirectory(), vaultId);
+export const sharedVaultDirectory = (vaultId: string) =>
+  new Directory(sharingDirectory(), 'shared', vaultId);
 
 // A file replaced by a move loses the flag, so files are marked after every
 // write; a folder keeps it, and it covers everything inside it.
@@ -36,8 +43,9 @@ export async function keepStorageOutOfBackup(): Promise<void> {
     keepOutOfBackup(new Directory(Paths.document)),
     ensureDirectory(meetingsDirectory()),
     ensureDirectory(modelsDirectory()),
+    ensureDirectory(sharingDirectory()),
+    ensureDirectory(publishedDirectory()),
     keepOutOfBackup(keySlotFile()),
-    keepOutOfBackup(publishedFile()),
     keepOutOfBackup(recordingFile()),
   ]);
 }

@@ -103,6 +103,11 @@ function Footer({ sync }: { sync: Paired }) {
       <Text variant="sm" tone="muted">
         {`Vault code ${sync.vaultCode} · ${sync.relayHost}`}
       </Text>
+      <Link href="/shared" asChild>
+        <Button variant="outline" size="sm">
+          Shared notes
+        </Button>
+      </Link>
       <Button variant="ghost" size="sm" onPress={confirmStop}>
         Stop syncing on this phone
       </Button>

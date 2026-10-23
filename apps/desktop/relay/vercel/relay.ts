@@ -88,8 +88,9 @@ type NewVaults = {
 const vaultPattern = /^[0-9a-f]{32}$/;
 const tokenPattern = /^[0-9a-f]{64}$/;
 const filePattern =
-  /^devices\/[A-Za-z0-9_-]{1,64}\/(meetings\/[A-Za-z0-9_-]{1,64}\.bin|closed\.json)$/;
-const prefixPattern = /^(devices\/([A-Za-z0-9_-]{1,64}\/(meetings\/)?)?)?$/;
+  /^devices\/[A-Za-z0-9_-]{1,64}\/((meetings|notes)\/[A-Za-z0-9_-]{1,64}\.bin|closed\.json|shares\.bin)$/;
+const prefixPattern =
+  /^(devices\/([A-Za-z0-9_-]{1,64}\/((meetings|notes)\/)?)?)?$/;
 const indexRetries = 8;
 const hourMs = 60 * 60 * 1000;
 const dayMs = 24 * hourMs;

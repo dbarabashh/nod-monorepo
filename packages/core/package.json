@@ -10,7 +10,9 @@
     "./mcp": "./src/mcp/index.ts",
     "./meeting-detection": "./src/meeting-detection/index.ts",
     "./meetings": "./src/meetings/index.ts",
+    "./meetings/testing": "./src/meetings/testing/index.ts",
     "./models": "./src/models/index.ts",
+    "./sharing": "./src/sharing/index.ts",
     "./sync": "./src/sync/index.ts",
     "./sync/testing": "./src/sync/testing/index.ts",
     "./transcription": "./src/transcription/index.ts"
@@ -24,6 +26,7 @@
   "dependencies": {
     "@automerge/automerge": "3.5.0",
     "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@scure/bip39": "2.4.0"
   },

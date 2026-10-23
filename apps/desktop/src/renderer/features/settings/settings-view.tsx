@@ -8,6 +8,7 @@ type PageId =
   | 'summaries'
   | 'assistants'
   | 'sync'
+  | 'sharing'
   | 'recovery'
   | 'import';
 
@@ -71,6 +72,13 @@ const groups: Array<{ label: string; pages: Page[] }> = [
         icon: 'sync',
         description:
           'Keep meetings the same on all your devices. They travel encrypted, and the folder or relay they pass through can’t read them.',
+      },
+      {
+        id: 'sharing',
+        label: 'Sharing',
+        icon: 'document',
+        description:
+          'Share a meeting’s title and summary with another person. Notes travel encrypted, and only the two of you can read them.',
       },
       {
         id: 'recovery',

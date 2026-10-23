@@ -5,6 +5,7 @@ import {
   stillWaiting,
   Throttled,
   UnreadableFile,
+  RequestRefused,
   WritesRefused,
   type RemoteFile,
   type Transport,
@@ -210,7 +211,7 @@ export function createRelayTransport(options: {
       throw (response.status === 507 || response.status === 429) &&
         init.method !== 'GET'
         ? new WritesRefused(message)
-        : new Error(message);
+        : new RequestRefused(message, response.status);
     }
     return response;
   }

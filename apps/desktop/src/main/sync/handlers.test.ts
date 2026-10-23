@@ -15,6 +15,7 @@ import {
   type Question,
   type ListenForPairing,
 } from './handlers.ts';
+import { createDialogGate } from './dialog-gate.ts';
 import { createSyncSettings } from './settings.ts';
 
 const reversing: KeyWrap = {
@@ -23,7 +24,7 @@ const reversing: KeyWrap = {
 };
 
 const zeroKeyPhrase = `${'abandon '.repeat(23)}art`;
-const zeroKeyCode = 'Vault code 32E2-308C-8391-59D8';
+const zeroKeyCode = '32E2-308C-8391-59D8';
 
 describe('sync handlers', () => {
   const dir = useTempDir('sync-handlers-');
@@ -82,12 +83,15 @@ describe('sync handlers', () => {
       controller,
       chooseFolder: async () =>
         options.folder === undefined ? shared : options.folder,
-      confirm:
-        options.confirm ??
-        (async (question) => {
-          asked.push(question);
-          return answers.shift() ?? false;
-        }),
+      gate: createDialogGate({
+        confirm:
+          options.confirm ??
+          (async (question) => {
+            asked.push(question);
+            return answers.shift() ?? false;
+          }),
+        now: () => clock,
+      }),
       showPairing:
         options.showPairing ??
         (async (screen) => {
@@ -107,7 +111,6 @@ describe('sync handlers', () => {
           };
         }),
       syncSoon: () => {},
-      now: () => clock,
     });
     return {
       controller,
@@ -131,9 +134,11 @@ describe('sync handlers', () => {
 
     assert.equal(await handlers.enterRecoveryPhrase(zeroKeyPhrase), false);
     assert.equal(controller.state().status, 'none');
-    const detail = asked[0]?.detail ?? '';
-    assert.match(detail, new RegExp(`^${zeroKeyCode}\n\n1\\. abandon`));
-    assert.match(detail, /22\. abandon {4}23\. abandon {4}24\. art/);
+    assert.deepEqual(asked[0]?.code, {
+      label: 'Vault code',
+      value: zeroKeyCode,
+    });
+    assert.deepEqual(asked[0]?.words, zeroKeyPhrase.split(' '));
 
     tick(10_000);
     assert.equal(await handlers.enterRecoveryPhrase(zeroKeyPhrase), true);
@@ -152,10 +157,7 @@ describe('sync handlers', () => {
     let state = controller.state();
     assert.equal(state.status === 'ready' && state.recoveryConfirmed, false);
     assert.equal(asked[0]?.cancelLabel, 'Later');
-    assert.match(
-      asked[0]?.detail ?? '',
-      new RegExp(`1\\. ${controller.recoveryPhrase().split(' ')[0]}`),
-    );
+    assert.deepEqual(asked[0]?.words, controller.recoveryPhrase().split(' '));
 
     assert.equal(await handlers.showRecoveryPhrase(), true);
     state = controller.state();
@@ -196,10 +198,11 @@ describe('sync handlers', () => {
 
     await handlers.showRecoveryPhrase();
 
-    assert.match(
-      asked[1]?.detail ?? '',
-      new RegExp(`^${zeroKeyCode}\n\n1\\. abandon`),
-    );
+    assert.deepEqual(asked[1]?.code, {
+      label: 'Vault code',
+      value: zeroKeyCode,
+    });
+    assert.equal(asked[1]?.words?.[0], 'abandon');
   });
 
   it('keeps the growing wait when the user only looks at the phrase', async () => {

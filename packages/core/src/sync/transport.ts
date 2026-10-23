@@ -45,6 +45,17 @@ export class Throttled extends Error {
 // until the place lists another version of it.
 export class UnreadableFile extends Error {}
 
+// A place answered a request with a refusal that isn't about waiting or
+// room: the status says what it wouldn't do.
+export class RequestRefused extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export function assertSafePath(path: string): string[] {
   const parts = path.split('/');
   if (

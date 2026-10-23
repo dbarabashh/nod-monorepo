@@ -1,4 +1,14 @@
 @layer app {
+  /* The page steps back while main draws a dialog over it, the one blur the
+     app uses: it is a filter on the page, never a translucent surface. */
+  #root {
+    transition: filter var(--duration-fast) var(--ease-out);
+  }
+
+  :root[data-dialog='open'] #root {
+    filter: blur(var(--dialog-blur));
+  }
+
   .app-shell {
     display: grid;
     grid-template-columns: var(--sidebar-width) 1fr;

@@ -38,7 +38,8 @@ store with the short-lived OIDC token Vercel gives it, not a stored token.
 
 Each vault keeps an index of its files, so a device that polls costs one small
 read rather than a listing. Writes update the index with conditional writes and
-retry on conflict. Only meeting files are accepted. Per vault: files up to
+retry on conflict. Only meeting, note, shares and closing files are accepted.
+Per vault: files up to
 4 MB (the platform's request limit), 10,000 files, 3,600 writes and deletes an
 hour, and 32 MB of space on the first day, growing by 32 MB a day up to
 512 MB. Only one write or delete of a file runs at a time; a second gets 409. A

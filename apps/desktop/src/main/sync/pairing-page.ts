@@ -1,21 +1,9 @@
 import encodeQR from 'qr';
+import { escapeHtml, pageTokens } from '../windows/page-style.ts';
 import type { PairingScreen } from './handlers.ts';
 
-const escapes: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => escapes[char] ?? char);
-}
-
 // The page runs with JavaScript off and loads nothing, so it can only show
-// what is written here. Its colours mirror the renderer's tokens.css, which
-// a page outside the renderer can't load.
+// what is written here.
 export function pairingPage(
   screen: PairingScreen,
   platform: NodeJS.Platform,
@@ -32,27 +20,14 @@ export function pairingPage(
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
 <title>Pair a phone</title>
 <style>
-:root {
-  color-scheme: light dark;
-  --surface: light-dark(oklch(100% 0 0), oklch(20.5% 0.008 260));
-  --text: light-dark(oklch(20.5% 0.008 260), oklch(98.5% 0.002 260));
-  --muted: light-dark(oklch(44.5% 0.012 260), oklch(71% 0.01 260));
-  --border: light-dark(oklch(92.5% 0.004 260), oklch(27.5% 0.01 260));
-}
-* { box-sizing: border-box; margin: 0; }
-html, body { height: 100%; }
+${pageTokens}
 body {
   display: grid;
   align-content: center;
   justify-items: center;
   gap: 16px;
   padding: 24px;
-  background: var(--surface);
-  color: var(--text);
-  font: 14px/20px system-ui, sans-serif;
   text-align: center;
-  user-select: none;
-  cursor: default;
 }
 h1 { font-size: 18px; line-height: 24px; font-weight: 600; }
 p { color: var(--muted); max-width: 320px; }

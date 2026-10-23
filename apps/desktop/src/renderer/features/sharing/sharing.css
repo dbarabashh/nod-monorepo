@@ -1,0 +1,115 @@
+@layer app {
+  .sharing {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .sharing__note {
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+  }
+
+  .sharing__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .sharing__facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: var(--leading-sm);
+
+    & dt {
+      color: var(--color-text-muted);
+    }
+
+    & dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .sharing__box {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-lg);
+  }
+
+  .sharing__box-title {
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-md);
+  }
+
+  .sharing__people {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sharing__person {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .sharing__person-code {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-sm);
+  }
+
+  .shared-notes {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-6);
+  }
+
+  .shared-notes__title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+  }
+
+  .shared-notes__name {
+    display: block;
+    font-weight: var(--weight-medium);
+  }
+
+  .shared-note {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100%;
+  }
+
+  .shared-note__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-block-end: var(--border-width) solid var(--color-border);
+  }
+
+  .shared-note__body {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    overflow: auto;
+  }
+
+  .shared-note__title {
+    font-size: var(--text-xl);
+    font-weight: var(--weight-bold);
+    line-height: var(--leading-xl);
+  }
+}

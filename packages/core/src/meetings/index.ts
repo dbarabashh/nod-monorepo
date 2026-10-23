@@ -26,12 +26,18 @@ export {
 export {
   createDocument,
   documentHeads,
+  field,
+  fixedActor,
+  headsOf,
   importedDocument,
   loadDocument,
   loadDocumentState,
+  mergeChanges,
   mergeDocuments,
+  plainValue,
   readDocument,
   sameDocument,
+  sameHeads,
   saveDocument,
   tombstone,
   updateDocument,
@@ -44,10 +50,17 @@ export {
   readMeetingExport,
 } from './import.ts';
 export {
+  createDocumentStore,
+  type Cipher,
+  type DocumentFiles,
+  type DocumentKind,
+  type DocumentStore,
+  type MergedOf,
+} from './document-store.ts';
+export {
   createMeetingStore,
   isMeetingId,
   KeyLostError,
-  type Cipher,
   type CipherMode,
   type MeetingFiles,
   type MeetingStore,

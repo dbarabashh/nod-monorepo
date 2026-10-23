@@ -28,7 +28,7 @@ export function PhraseForm({ submitLabel, onDone, onCancel }: PhraseFormProps) {
     <form className="sync__form" onSubmit={submit}>
       <Field
         label="Recovery phrase"
-        hint={`${words} of ${phraseLength} words. Type or paste them in order, separated by spaces; numbers, commas and line breaks don’t matter. Nod then shows the words and their vault code in a system window to compare.`}
+        hint={`${words} of ${phraseLength} words. Type or paste them in order, separated by spaces; numbers, commas and line breaks don’t matter. Nod then shows the words and their vault code in a window of its own to compare.`}
         error={error ?? undefined}
       >
         {(control) => (

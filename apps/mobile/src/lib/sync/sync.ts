@@ -6,10 +6,19 @@ import type { PairingOffer } from '@nod/core/sync';
 import {
   meetingCipher,
   meetingFiles,
+  noteFilesFor,
   publishedLogFor,
+  publishedLogIn,
   relayTransportFor,
   secureVaults,
+  sharedPlaceFor,
+  sharesFileFor,
 } from './device.ts';
+import {
+  createSharingSession,
+  type SharedNoteDetail,
+  type SharingSnapshot,
+} from '@nod/core/sharing';
 import { messageOf } from '../message-of.ts';
 import { createMeetingStore, KeyLostError } from '@nod/core/meetings';
 import { createSyncSession, type SyncState } from './session.ts';
@@ -18,7 +27,12 @@ export type { SyncState } from './session.ts';
 
 export type SyncView =
   | { status: 'loading' }
-  | { status: 'ready'; sync: SyncState; meetings: Meeting[] };
+  | {
+      status: 'ready';
+      sync: SyncState;
+      meetings: Meeting[];
+      sharing: SharingSnapshot;
+    };
 
 const roundMs = 15_000;
 
@@ -90,6 +104,18 @@ const store = createMeetingStore({
 // Recording and deleting save through the same store sync keeps.
 export const meetingStore = store;
 
+// Shared notes are sealed with the meetings' key, which the store holds once
+// it loaded; sharing is loaded after it, so the key is there.
+const sharing = createSharingSession({
+  sharesFileFor,
+  noteFilesFor,
+  cipher: () => meetingCipher('open'),
+  publishedLogFor: publishedLogIn,
+  newId: randomUUID,
+  now: Date.now,
+  onChange: notifyRemote,
+});
+
 const session = createSyncSession({
   vaults: secureVaults(),
   store,
@@ -99,6 +125,8 @@ const session = createSyncSession({
   onChange: notify,
   newId: randomUUID,
   now: Date.now,
+  sharing,
+  sharedPlaceFor,
 });
 
 let loaded = false;
@@ -163,6 +191,7 @@ function view(): SyncView {
         reset: keyLost ? 'start-over' : null,
       },
       meetings: [],
+      sharing: { status: 'none' },
     };
   }
   return {
@@ -171,7 +200,32 @@ function view(): SyncView {
     meetings: store
       .meetings()
       .sort((a, b) => meetingStartedAt(b) - meetingStartedAt(a)),
+    sharing: sharing.snapshot(),
   };
+}
+
+export function getSharedNote(
+  peer: string,
+  id: string,
+): Promise<SharedNoteDetail> {
+  return sharing.note(peer, id);
+}
+
+export async function editSharedNote(
+  peer: string,
+  id: string,
+  summary: string,
+): Promise<void> {
+  await sharing.editNote(peer, id, summary);
+  syncSoon();
+}
+
+export async function deleteSharedNote(
+  peer: string,
+  id: string,
+): Promise<void> {
+  await sharing.deleteNote(peer, id);
+  syncSoon();
 }
 
 // Pairing puts this phone's meetings in the vault the code names, so a phone

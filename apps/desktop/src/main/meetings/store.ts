@@ -19,7 +19,7 @@ function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
-function meetingFiles(directory: string): MeetingFiles {
+export function meetingFiles(directory: string): MeetingFiles {
   const fileOf = (id: string) => path.join(directory, `${id}${fileSuffix}`);
   return {
     ids: async () => {

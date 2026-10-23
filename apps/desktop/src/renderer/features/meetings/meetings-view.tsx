@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { ShareTargets } from '../../lib/share-targets.ts';
 import {
   Button,
   EmptyState,
@@ -31,6 +32,7 @@ type MeetingsViewProps = {
   folder: string | null;
   recordButton: ReactNode;
   meetingActions: (meeting: Meeting) => ReactNode;
+  shareTargets: ShareTargets | null;
 };
 
 export function MeetingsView({
@@ -39,6 +41,7 @@ export function MeetingsView({
   folder,
   recordButton,
   meetingActions,
+  shareTargets,
 }: MeetingsViewProps) {
   const { state, retry } = meetings;
   const [query, setQuery] = useState('');
@@ -200,6 +203,7 @@ export function MeetingsView({
         folders={folders}
         now={now}
         actions={meetingActions(selected)}
+        shareTargets={shareTargets}
         onBack={() => {
           setReturnTo(selected.id);
           setSelectedId(null);

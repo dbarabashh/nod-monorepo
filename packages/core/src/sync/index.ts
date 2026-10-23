@@ -4,12 +4,24 @@ export {
   isSyncId,
   meetingContext,
   meetingPath,
+  noteContext,
+  notePath,
   parseClosedPath,
   parseMeetingPath,
+  parseNotePath,
+  parseSharesPath,
+  sharesContext,
+  sharesPath,
 } from './layout.ts';
 export {
+  composeEngines,
+  createDocumentSyncEngine,
   createSyncEngine,
+  meetingDocuments,
   memoryReceivedLog,
+  messageOf,
+  type DocumentSyncStore,
+  type SyncDocuments,
   type PublishedEntry,
   type PublishedLog,
   type ReceivedEntry,
@@ -20,6 +32,7 @@ export {
 } from './engine.ts';
 export {
   assertSafePath,
+  RequestRefused,
   stillWaiting,
   Throttled,
   UnreadableFile,
@@ -55,8 +68,10 @@ export {
 } from './pairing.ts';
 export {
   createPublishedLog,
+  publishedLogFile,
   readPublishedEntries,
   readReceivedEntries,
 } from './published-log.ts';
-export type { Merged } from '../meetings/index.ts';
+export type { Merged, MergedOf } from '../meetings/index.ts';
+export { removePublishedFiles } from './leave.ts';
 export { guardedRound, pausedMessage, type RoundOutcome } from './round.ts';

@@ -21,6 +21,7 @@ import {
   type MeetingFiles,
 } from '@nod/core/meetings';
 import type { PublishedEntry, RelayTransport } from '@nod/core/sync';
+import { memoryFiles } from '@nod/core/meetings/testing';
 import { createMemoryTransport } from '@nod/core/sync/testing';
 import { createSyncSession, type StoredVault } from './session.ts';
 import { createPublishedLog, Throttled } from '@nod/core/sync';
@@ -31,27 +32,6 @@ function memoryRelay() {
   const memory = createMemoryTransport();
   const transport: RelayTransport = { ...memory, register: async () => {} };
   return { published: memory.paths, transport };
-}
-
-function memoryFiles() {
-  const stored = new Map<string, Uint8Array>();
-  const files: MeetingFiles = {
-    ids: async () => [...stored.keys()],
-    read: async (id) => {
-      const data = stored.get(id);
-      if (!data) {
-        throw new Error('missing');
-      }
-      return data;
-    },
-    write: async (id, data) => {
-      stored.set(id, data.slice());
-    },
-    setAside: async (id) => {
-      stored.delete(id);
-    },
-  };
-  return { stored, files };
 }
 
 const dataKey = randomKey();
@@ -86,7 +66,8 @@ async function publishFromComputer(
 }
 
 async function phone(transport: RelayTransport) {
-  const { stored, files } = memoryFiles();
+  const files = memoryFiles();
+  const { stored } = files;
   const store = createMeetingStore({ files, cipher: async () => cipher });
   await store.load();
   let saved: StoredVault | null = null;
@@ -217,7 +198,7 @@ describe('a closed vault', () => {
   it('stays closed after a restart even when saving that failed the first time', async () => {
     const key = randomKey();
     const { transport } = memoryRelay();
-    const { files } = memoryFiles();
+    const files = memoryFiles();
     let saved: StoredVault | null = null;
     let failSaves = false;
     const savedVault = (): StoredVault | null => saved;
@@ -296,7 +277,7 @@ describe('starting over', () => {
       return { session, store };
     };
     const before = memoryFiles();
-    const first = await launch(before.files);
+    const first = await launch(before);
     await first.store.merge(
       'm-phone',
       createDocument(startMeeting('m-phone', 'Recorded on the phone', 3_000)),
@@ -304,7 +285,7 @@ describe('starting over', () => {
     await first.session.pair({ key, relayUrl: relay });
     await first.session.refresh();
 
-    const fresh = await launch(memoryFiles().files);
+    const fresh = await launch(memoryFiles());
     await fresh.session.refresh();
 
     assert.equal(
@@ -415,7 +396,8 @@ describe('sync rounds', () => {
         return transport.write(path, data);
       },
     };
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     const log = new Map<string, PublishedEntry>();
     let saved: StoredVault | null = null;
     const launch = async () => {
@@ -495,7 +477,8 @@ describe('sync rounds', () => {
 
   it('offers a way out of saved sync settings it can’t read', async () => {
     const { transport } = memoryRelay();
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     const store = createMeetingStore({ files, cipher: async () => cipher });
     await store.load();
     let cleared = false;
@@ -536,7 +519,8 @@ describe('sync rounds', () => {
 
 describe('meetings on the phone', () => {
   it('keeps meetings whose key is missing until the user starts over, then uses a new key', async () => {
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     stored.set('m-1', new Uint8Array([1, 2, 3]));
     const asked: string[] = [];
     const store = createMeetingStore({
@@ -566,7 +550,8 @@ describe('meetings on the phone', () => {
   });
 
   it('doesn’t start on other failures to get the key', async () => {
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     stored.set('m-1', new Uint8Array([1, 2, 3]));
     const store = createMeetingStore({
       files,
@@ -580,7 +565,8 @@ describe('meetings on the phone', () => {
   });
 
   it('keeps a file it can’t read until a healthy copy from another device replaces it', async () => {
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     stored.set('m-1', new Uint8Array([1, 2, 3]));
     const store = createMeetingStore({ files, cipher: async () => cipher });
     await store.load();
@@ -598,8 +584,10 @@ describe('meetings on the phone', () => {
   });
 
   it('ignores a copy filed under another meeting’s id', async () => {
-    const { files } = memoryFiles();
-    const store = createMeetingStore({ files, cipher: async () => cipher });
+    const store = createMeetingStore({
+      files: memoryFiles(),
+      cipher: async () => cipher,
+    });
     await store.load();
 
     const merged = store.merge(
@@ -625,7 +613,8 @@ describe('a relay that asked the phone to wait', () => {
       },
     };
     const clock = { at: 1_000 };
-    const { stored, files } = memoryFiles();
+    const files = memoryFiles();
+    const { stored } = files;
     const store = createMeetingStore({ files, cipher: async () => cipher });
     await store.load();
     let saved: StoredVault | null = null;
@@ -706,7 +695,7 @@ describe('what the phone read of the computer', () => {
         return transport.read(path, maxBytes);
       },
     };
-    const { files } = memoryFiles();
+    const files = memoryFiles();
     const log = createPublishedLog({
       scope: 'phone',
       entries: new Map(),
@@ -755,5 +744,84 @@ describe('what the phone read of the computer', () => {
     ]);
     await second.session.refresh();
     assert.equal(reads, 3);
+  });
+});
+
+describe('sharing on the phone', () => {
+  it('learns the vault with sync, syncs the shares list beside meetings and runs the shared vaults after each round', async () => {
+    const key = randomKey();
+    const { transport } = memoryRelay();
+    const seen: Array<string | null> = [];
+    const rounds: string[] = [];
+    let sharesRounds = 0;
+    const sharesEngine = createSyncEngine({
+      transport,
+      vault: { id: vaultIdOf(key), key, deviceId: 'shares' },
+      store: {
+        ids: () => [],
+        document: () => undefined,
+        merge: () => ({
+          state: null,
+          written: Promise.resolve(null),
+          kept: false,
+        }),
+      },
+      onRemote: () => {},
+      now: () => 1,
+    });
+    const store = createMeetingStore({
+      files: memoryFiles(),
+      cipher: async () => cipher,
+    });
+    await store.load();
+    let saved: StoredVault | null = null;
+    const session = createSyncSession({
+      vaults: {
+        load: async () => saved,
+        save: async (vault) => {
+          saved = vault;
+        },
+        clear: async () => {
+          saved = null;
+        },
+      },
+      store,
+      transportFor: () => transport,
+      onRemote: () => {},
+      onChange: () => {},
+      newId: () => 'phone-1',
+      now: () => 5,
+      sharing: {
+        load: async (vault) => {
+          seen.push(vault ? vault.deviceId : null);
+        },
+        sharesEngine: async () => {
+          sharesRounds += 1;
+          return sharesEngine;
+        },
+        round: async (place) => {
+          rounds.push(place?.name ?? 'none');
+        },
+        endAll: async () => {},
+      },
+      sharedPlaceFor: (vault) => ({
+        name: vault.relayUrl,
+        open: async () => transport,
+      }),
+    });
+    await session.load();
+    assert.deepEqual(seen, [null]);
+
+    await session.pair({ key, relayUrl: relay });
+    await session.refresh();
+    assert.deepEqual(seen, [null, 'phone-1']);
+    assert.equal(sharesRounds, 1);
+    // Pairing runs a round of its own before the one asked for.
+    assert.deepEqual(rounds, [relay, relay]);
+
+    await session.unpair();
+    assert.deepEqual(seen, [null, 'phone-1', null]);
+    await session.refresh();
+    assert.deepEqual(rounds, [relay, relay]);
   });
 });

@@ -17,16 +17,23 @@ import {
 } from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
 import {
+  SharedNotesView,
+  SharingPanel,
+  useShareTargets,
+} from './features/sharing/index.ts';
+import {
   KeySetup,
   RecoveryPanel,
   SyncPanel,
   SyncStep,
 } from './features/sync/index.ts';
+import { useDialogOpen } from './lib/use-dialog-open.ts';
 import './app.css';
 
-type Page = 'meetings' | 'settings';
+type Page = 'meetings' | 'shared' | 'settings';
 
 export function App() {
+  useDialogOpen();
   return (
     <OnboardingGate
       RecoveryKey={KeySetup}
@@ -47,6 +54,7 @@ function Shell() {
   const [meetingsHome, setMeetingsHome] = useState(0);
   const [folder, setFolder] = useState<string | null>(null);
   const meetings = useMeetingList();
+  const shareTargets = useShareTargets();
 
   const showFolder = useCallback((next: string | null) => {
     setFolder(next);
@@ -105,6 +113,13 @@ function Shell() {
           </Nav>
           <Nav aria-label="App">
             <NavItem
+              icon="document"
+              current={page === 'shared'}
+              onClick={() => setPage('shared')}
+            >
+              Shared notes
+            </NavItem>
+            <NavItem
               icon="settings"
               current={page === 'settings'}
               onClick={() => setPage('settings')}
@@ -127,7 +142,10 @@ function Shell() {
                 status={meeting.status}
               />
             )}
+            shareTargets={shareTargets}
           />
+        ) : page === 'shared' ? (
+          <SharedNotesView />
         ) : (
           <SettingsView
             audio={
@@ -140,6 +158,7 @@ function Shell() {
             summaries={<ModelsPanel kind="summary" />}
             assistants={<AssistantsPanel />}
             sync={<SyncPanel />}
+            sharing={<SharingPanel />}
             recovery={<RecoveryPanel />}
             import={<ImportPanel />}
           />

@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import {
   createPublishedLog,
+  publishedLogFile,
   readPublishedEntries,
   readReceivedEntries,
   type PublishedLog,
@@ -15,10 +17,13 @@ async function readStored(file: string): Promise<unknown> {
   }
 }
 
-export function createPublishedLogs(file: string, saveDelayMs = 1_000) {
-  let saving: Promise<void> = Promise.resolve();
+// One file per scope in the directory, so the logs of the vault, its shares
+// and each shared vault live side by side.
+export function createPublishedLogs(directory: string, saveDelayMs = 1_000) {
+  const saving = new Map<string, Promise<void>>();
   return {
     open: async (scope: string): Promise<PublishedLog> => {
+      const file = path.join(directory, publishedLogFile(scope));
       const stored = await readStored(file);
       return createPublishedLog({
         scope,
@@ -26,13 +31,18 @@ export function createPublishedLogs(file: string, saveDelayMs = 1_000) {
         received: readReceivedEntries(stored, scope),
         delayMs: saveDelayMs,
         save: (data) => {
-          saving = saving
-            .then(() => writeAtomically(file, data))
-            .catch(() => undefined);
+          saving.set(
+            file,
+            (saving.get(file) ?? Promise.resolve())
+              .then(() => writeAtomically(file, data))
+              .catch(() => undefined),
+          );
         },
       });
     },
-    flushed: () => saving,
+    flushed: async () => {
+      await Promise.all(saving.values());
+    },
   };
 }
 

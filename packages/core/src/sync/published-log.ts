@@ -1,9 +1,18 @@
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesOf, toHex } from '../crypto/encoding.ts';
 import type {
   PublishedEntry,
   PublishedLog,
   ReceivedEntry,
   ReceivedLog,
 } from './engine.ts';
+
+// One file per scope, so the logs of a vault, its shares and each shared
+// vault never overwrite one another. A scope names a relay address, which
+// no filesystem takes as a name, so the file is named by its hash.
+export function publishedLogFile(scope: string): string {
+  return `${toHex(sha256(bytesOf(scope))).slice(0, 32)}.json`;
+}
 
 function entryOf(value: unknown): PublishedEntry | null {
   // Entries written before the place's version was kept name the heads only.

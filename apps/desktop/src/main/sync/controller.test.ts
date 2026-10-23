@@ -42,6 +42,9 @@ describe('sync controller', () => {
       savesFail?: () => boolean;
       now?: () => number;
       publishedLogs?: PublishedLogs;
+      sharing?: NonNullable<
+        Parameters<typeof createSyncController>[0]['sharing']
+      >;
     } = {},
   ) {
     const store = createMeetingStore({
@@ -73,6 +76,7 @@ describe('sync controller', () => {
       onChange: () => {},
       defaultRelay: options.defaultRelay ?? null,
       publishedLogs: options.publishedLogs,
+      sharing: options.sharing,
     });
     await controller.load();
     return { store, controller, received };
@@ -190,7 +194,7 @@ describe('sync controller', () => {
     await tablet.store.save(startMeeting('m3', 'Only on the tablet', 2));
     await tablet.store.save(startMeeting('m5', 'Also on the tablet', 2));
     await tablet.controller.refresh();
-    const logFile = join(dir(), 'desktop-published.json');
+    const logFile = join(dir(), 'desktop-published');
     const logs = createPublishedLogs(logFile, 0);
     const desktop = await joinVault('desktop', logs);
     await desktop.controller.refresh();
@@ -1128,5 +1132,81 @@ describe('sync controller', () => {
     const state = desktop.controller.state();
     assert.equal(state.status === 'ready' && state.connected, true);
     assert.equal(state.status === 'ready' && state.lastSyncedAt, 7);
+  });
+
+  it('forgets a device that left a shares list, which nothing has to wait for', async () => {
+    const shared = await sharedFolder();
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const words = laptop.controller.recoveryPhrase();
+    const phone = await device('phone');
+    await phone.controller.enterPhrase(words, {
+      leaveCopies: false,
+      replaceUnreadable: false,
+    });
+    await phone.controller.useFolder(shared);
+    await phone.store.save(startMeeting('m1', 'On the phone', 1));
+    await phone.controller.refresh();
+    await laptop.controller.refresh();
+    const seen = await laptop.controller.devices();
+    const phoneId = seen[0]?.id ?? '';
+    assert.equal(seen.length, 1);
+    const phoneFolder = join(
+      shared,
+      'nod-sync',
+      vaultIdOf(keyFromRecoveryPhrase(words)),
+      'devices',
+      phoneId,
+    );
+    await writeFile(join(phoneFolder, 'shares.bin'), 'not a readable list');
+    await laptop.controller.refresh();
+
+    await laptop.controller.forgetDevice(phoneId);
+    assert.deepEqual(await readdir(phoneFolder), ['meetings']);
+    assert.deepEqual(await readdir(join(phoneFolder, 'meetings')), []);
+  });
+
+  it('carries sharing along: the vault on load, the shares engine in its round, the shared vaults after it', async () => {
+    const shared = await sharedFolder();
+    const seen: Array<string | null> = [];
+    const places: Array<string | null> = [];
+    let listings = 0;
+    const laptop = await device('laptop', {
+      sharing: {
+        load: async (vault) => {
+          seen.push(vault ? vault.deviceId : null);
+        },
+        sharesEngine: async () => ({
+          sync: async (listed?: unknown[]) => {
+            listings += listed?.length ?? -1;
+          },
+          status: () => ({ lastSyncedAt: null, devices: 0, error: null }),
+          merged: () => undefined,
+          stop: () => {},
+          forget: () => {},
+        }),
+        round: async (place) => {
+          places.push(place?.name ?? null);
+        },
+        endAll: async () => {},
+      },
+    });
+    assert.deepEqual(seen, [null]);
+    await laptop.controller.create();
+    assert.equal(seen.length, 2);
+    assert.notEqual(seen[1], null);
+    assert.equal(laptop.controller.sharedPlace(), null);
+
+    await laptop.controller.useFolder(shared);
+    assert.equal(laptop.controller.sharedPlace()?.name, shared);
+    await laptop.controller.refresh();
+    assert.deepEqual(places, [shared]);
+    assert.equal(listings, 0);
+
+    await laptop.controller.disconnect(false);
+    assert.equal(laptop.controller.sharedPlace(), null);
+    await laptop.controller.refresh();
+    assert.deepEqual(places, [shared]);
   });
 });

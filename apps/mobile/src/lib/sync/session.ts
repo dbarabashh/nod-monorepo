@@ -1,9 +1,10 @@
 import type { DocumentState } from '@nod/core/meetings';
 import { fileKeyOf, vaultCodeOf, vaultIdOf } from '@nod/core/crypto';
 import {
+  composeEngines,
   createSyncEngine,
   guardedRound,
-  meetingPath,
+  removePublishedFiles,
   pausedMessage,
   type PairingOffer,
   stillWaiting,
@@ -15,6 +16,7 @@ import {
 } from '@nod/core/sync';
 import { messageOf } from '../message-of.ts';
 import type { MeetingStore } from '@nod/core/meetings';
+import type { SharedPlace, SharingSession } from '@nod/core/sharing';
 
 export type StoredVault = {
   key: Uint8Array;
@@ -64,9 +66,21 @@ export function createSyncSession(options: {
   onChange: () => void;
   newId: () => string;
   now: () => number;
+  // Sharing rides on the vault: its list syncs beside the meetings, and the
+  // shared vaults go through the same relay.
+  sharing?: Pick<SharingSession, 'load' | 'sharesEngine' | 'round' | 'endAll'>;
+  sharedPlaceFor?: (vault: StoredVault) => SharedPlace;
 }) {
-  const { vaults, store, transportFor, onRemote, onChange, newId, now } =
-    options;
+  const {
+    vaults,
+    store,
+    transportFor,
+    onRemote,
+    onChange,
+    newId,
+    now,
+    sharing,
+  } = options;
   let vault: StoredVault | null = null;
   let unreadable: string | null = null;
   let connection: Connection | null = null;
@@ -89,20 +103,30 @@ export function createSyncSession(options: {
     if (round !== generation) {
       return null;
     }
+    const syncVault = {
+      id: vaultIdOf(current.key),
+      key: current.key,
+      deviceId: current.deviceId,
+    };
+    const meetings = createSyncEngine({
+      transport,
+      vault: syncVault,
+      store,
+      onRemote,
+      now,
+      publishedLog,
+    });
+    const shares = await sharing?.sharesEngine(
+      syncVault,
+      transport,
+      current.relayUrl,
+    );
+    if (round !== generation) {
+      return null;
+    }
     connection = {
       transport,
-      engine: createSyncEngine({
-        transport,
-        vault: {
-          id: vaultIdOf(current.key),
-          key: current.key,
-          deviceId: current.deviceId,
-        },
-        store,
-        onRemote,
-        now,
-        publishedLog,
-      }),
+      engine: shares ? composeEngines([meetings, shares]) : meetings,
       checked: new Map(),
     };
     return connection;
@@ -150,6 +174,9 @@ export function createSyncSession(options: {
       return;
     }
     error = outcome === 'paused' ? pausedMessage : at.engine.status().error;
+    if (outcome === 'synced') {
+      await sharing?.round(options.sharedPlaceFor?.(current) ?? null);
+    }
   }
 
   // Rounds and changes of vault run one at a time, in the order asked.
@@ -195,10 +222,7 @@ export function createSyncSession(options: {
   // haven't seen them. Best effort: the old place may be unreachable.
   async function leave(old: StoredVault, ids: string[]) {
     try {
-      const transport = transportFor(old);
-      for (const id of ids) {
-        await transport.remove(meetingPath(old.deviceId, id));
-      }
+      await removePublishedFiles(transportFor(old), old.deviceId, ids);
     } catch {
       return;
     }
@@ -214,6 +238,7 @@ export function createSyncSession(options: {
       } catch (failure) {
         unreadable = messageOf(failure);
       }
+      await sharing?.load(vault);
       onChange();
     },
     state: (): SyncState => {
@@ -270,10 +295,18 @@ export function createSyncSession(options: {
           closed: false,
         };
         const ids = published();
+        // Another phrase is another identity: every share ends, best
+        // effort, before this phone becomes someone else to its peers.
+        if (current && !same) {
+          await sharing
+            ?.endAll(options.sharedPlaceFor?.(current) ?? null)
+            .catch(() => undefined);
+        }
         await vaults.save(next);
         generation += 1;
         vault = next;
         connection = null;
+        await sharing?.load(next);
         // Scanning a code is one deliberate ask of the place, and may be
         // another place; a relay still refusing says so again.
         waitUntil = 0;
@@ -294,6 +327,13 @@ export function createSyncSession(options: {
     unpair: async () => {
       const current = vault;
       const ids = published();
+      // Shares end with the vault: this phone's note copies come off the
+      // relay where it can be reached, and every peer is marked stopped.
+      if (current && !current.closed) {
+        await sharing
+          ?.endAll(options.sharedPlaceFor?.(current) ?? null)
+          .catch(() => undefined);
+      }
       await vaults.clear();
       // At once, not after the round in progress: that round is stopped and
       // its results dropped, and the phone is unpaired as soon as the user
@@ -305,6 +345,7 @@ export function createSyncSession(options: {
       error = null;
       vault = null;
       unreadable = null;
+      await sharing?.load(null);
       onChange();
       // Once the stopped round has ended, so it can't write a copy back
       // after it was removed.

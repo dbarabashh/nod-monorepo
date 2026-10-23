@@ -181,12 +181,15 @@ describe('vercel relay', () => {
     );
   });
 
-  it('accepts only meeting files, never other paths', async () => {
+  it('accepts only meeting, note, shares and closing files, never other paths', async () => {
     const { send } = setUp();
     for (const path of [
       'pairing/r1/request.json',
       'devices/laptop/meetings/../../index.json',
       'devices/laptop/meetings/m1.txt',
+      'devices/laptop/notes/n1.txt',
+      'devices/laptop/notes/closed.json',
+      'devices/laptop/shares.json',
       'devices/laptop/other.json',
       'devices/laptop/device.json',
       'devices/laptop/meetings/closed.json',
@@ -199,7 +202,11 @@ describe('vercel relay', () => {
       );
     }
     assert.equal((await send('/files?prefix=../')).status, 400);
-    for (const path of ['devices/laptop/closed.json']) {
+    for (const path of [
+      'devices/laptop/closed.json',
+      'devices/laptop/notes/n1.bin',
+      'devices/laptop/shares.bin',
+    ]) {
       assert.equal(
         (await send(`/files/${path}`, { method: 'PUT', body: 'x' })).status,
         204,

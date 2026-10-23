@@ -4,6 +4,7 @@ import { formatDuration } from '../lib/format-duration.ts';
 import { dayLabel } from '../lib/group-by-day.ts';
 import type { Meeting } from '../types.ts';
 import { FolderPicker } from './folder-picker.tsx';
+import type { ShareTargets } from '../../../lib/share-targets.ts';
 import { MeetingMenu } from './meeting-menu.tsx';
 import { MeetingStatusBadge } from './meeting-status-badge.tsx';
 import { MeetingTitle } from './meeting-title.tsx';
@@ -15,6 +16,7 @@ type MeetingDetailProps = {
   folders: string[];
   now: Date;
   actions: ReactNode;
+  shareTargets: ShareTargets | null;
   onBack: () => void;
 };
 
@@ -23,6 +25,7 @@ export function MeetingDetail({
   folders,
   now,
   actions,
+  shareTargets,
   onBack,
 }: MeetingDetailProps) {
   const titleId = useId();
@@ -54,6 +57,7 @@ export function MeetingDetail({
           meetingId={meeting.id}
           title={meeting.title}
           recording={meeting.status === 'recording'}
+          shareTargets={shareTargets}
         />
       </header>
       {meeting.status !== 'finished' && (

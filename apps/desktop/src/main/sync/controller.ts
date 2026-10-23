@@ -16,10 +16,12 @@ import {
   pausedMessage,
   type RoundOutcome,
   closedPath,
+  composeEngines,
   createSyncEngine,
   devicesPrefix,
-  meetingPath,
   parseMeetingPath,
+  parseSharesPath,
+  removePublishedFiles,
   sealClosedNotice,
   stillWaiting,
   Throttled,
@@ -30,6 +32,7 @@ import {
 } from '@nod/core/sync';
 import type { SyncDevice, SyncState } from '../../shared/ipc.ts';
 import type { MeetingStore } from '../meetings/store.ts';
+import type { SharedPlace, SharingController } from '../sharing/controller.ts';
 import { createFolderTransport } from './folder-transport.ts';
 import { createRelayTransport, type Fetch } from '@nod/core/sync';
 import type { PublishedLogs } from './published-log.ts';
@@ -39,9 +42,18 @@ const folderName = 'nod-sync';
 
 type Connection = {
   transport: Transport;
+  // Every kind of document in the vault, and the meetings on their own:
+  // only a meeting can be the last copy of something.
   engine: SyncEngine;
+  meetings: SyncEngine;
   checked: Map<string, string>;
 };
+
+// The place a vault syncs through, as the published log and the shared
+// vaults name it.
+function placeNameOf(transport: TransportSettings): string {
+  return transport.kind === 'relay' ? transport.url : transport.folder;
+}
 
 const forgetBatch = 8;
 
@@ -84,8 +96,13 @@ export function createSyncController(options: {
   now: () => number;
   onChange: () => void;
   defaultRelay: string | null;
+  sharing?: Pick<
+    SharingController,
+    'load' | 'sharesEngine' | 'round' | 'endAll'
+  >;
 }) {
-  const { settings, store, onRemote, fetch, newId, now, onChange } = options;
+  const { settings, store, onRemote, fetch, newId, now, onChange, sharing } =
+    options;
   let vault: Vault | null = null;
   let unreadable: string | null = null;
   let connection: Connection | null = null;
@@ -101,15 +118,15 @@ export function createSyncController(options: {
   let generation = 0;
 
   // Each vault gets its own subfolder, so vaults sharing one folder never mix.
-  async function transportFor(
-    target: Vault,
+  async function placeFor(
+    target: { id: string; token: string },
     transport: TransportSettings,
   ): Promise<Transport & { register?: () => Promise<void> }> {
     if (transport.kind === 'relay') {
       return createRelayTransport({
         url: transport.url,
         vaultId: target.id,
-        token: relayToken(target.key),
+        token: target.token,
         fetch,
         now,
       });
@@ -124,26 +141,62 @@ export function createSyncController(options: {
     );
   }
 
+  function transportFor(
+    target: Vault,
+    transport: TransportSettings,
+  ): Promise<Transport & { register?: () => Promise<void> }> {
+    return placeFor(
+      { id: target.id, token: relayToken(target.key) },
+      transport,
+    );
+  }
+
+  // Shared vaults go through the same folder or relay as the person's own,
+  // each under its own id and token.
+  function sharedPlace(): SharedPlace | null {
+    return vault?.closed ? null : placeOf(vault?.transport ?? null);
+  }
+
+  // The place of a vault this device is leaving, closed or not: its shares
+  // end there even after another device changed the phrase.
+  function placeOf(transport: TransportSettings | null): SharedPlace | null {
+    if (!transport) {
+      return null;
+    }
+    return {
+      name: placeNameOf(transport),
+      open: async (target) => {
+        const place = await placeFor(target, transport);
+        await place.register?.();
+        return place;
+      },
+    };
+  }
+
   async function connectionFor(
     next: Vault,
     transport: TransportSettings,
   ): Promise<Connection> {
     const target = await transportFor(next, transport);
     await target.register?.();
+    const placeName = placeNameOf(transport);
+    const meetings = createSyncEngine({
+      transport: target,
+      vault: next,
+      store,
+      onRemote,
+      now,
+      // Scoped to the place too: copies left in another folder or relay
+      // are a different set, and may be older than what the log says.
+      publishedLog: await options.publishedLogs?.open(
+        `${next.id}:${next.deviceId}:${placeName}`,
+      ),
+    });
+    const shares = await sharing?.sharesEngine(next, target, placeName);
     return {
       transport: target,
-      engine: createSyncEngine({
-        transport: target,
-        vault: next,
-        store,
-        onRemote,
-        now,
-        // Scoped to the place too: copies left in another folder or relay
-        // are a different set, and may be older than what the log says.
-        publishedLog: await options.publishedLogs?.open(
-          `${next.id}:${next.deviceId}:${transport.kind === 'relay' ? transport.url : transport.folder}`,
-        ),
-      }),
+      engine: shares ? composeEngines([meetings, shares]) : meetings,
+      meetings,
       checked: new Map(),
     };
   }
@@ -196,10 +249,14 @@ export function createSyncController(options: {
         }
       }
     }
-    for (const id of store.ids().filter((id) => !store.isDeleted(id))) {
-      await from?.transport.remove(meetingPath(current.deviceId, id));
+    if (from) {
+      await removePublishedFiles(from.transport, current.deviceId, heldIds());
     }
   }
+
+  // What this device holds and publishes; deletions stay in the vault for
+  // devices that haven't seen them.
+  const heldIds = () => store.ids().filter((id) => !store.isDeleted(id));
 
   async function saveClosed() {
     if (closedUnsaved && vault?.closed) {
@@ -212,6 +269,7 @@ export function createSyncController(options: {
     await settings.save(next);
     vault = next;
     connection = null;
+    await sharing?.load(next);
     await connect();
   }
 
@@ -301,7 +359,9 @@ export function createSyncController(options: {
       } catch (failure) {
         unreadable = messageOf(failure);
       }
+      await sharing?.load(vault);
     },
+    sharedPlace,
     state: (): SyncState => {
       if (!vault) {
         return unreadable
@@ -395,6 +455,11 @@ export function createSyncController(options: {
         }
         if (current) {
           await leave(current, choices.leaveCopies);
+          // Another phrase is another identity: every share ends, best
+          // effort, before this device becomes someone else to its peers.
+          await sharing
+            ?.endAll(placeOf(current.transport))
+            .catch(() => undefined);
         }
         await adopt(vaultOf(key, current?.transport ?? null, true));
         unreadable = null;
@@ -429,15 +494,23 @@ export function createSyncController(options: {
             }
           }
         }
+        // The identity changes with the phrase, so every one-to-one share
+        // ends: the copies come off the old place while it can be reached.
+        await sharing
+          ?.endAll(old ? placeOf(current.transport) : null)
+          .catch(() => undefined);
         await settings.save(next);
         vault = next;
         connection = null;
+        await sharing?.load(next);
         if (old) {
           let kept: string | null = null;
           try {
-            for (const id of store.ids().filter((id) => !store.isDeleted(id))) {
-              await old.transport.remove(meetingPath(current.deviceId, id));
-            }
+            await removePublishedFiles(
+              old.transport,
+              current.deviceId,
+              heldIds(),
+            );
           } catch (failure) {
             kept = `This device’s copies stayed in the old place: ${messageOf(failure)}`;
           }
@@ -533,25 +606,32 @@ export function createSyncController(options: {
           throw new Error(error ?? 'The relay or folder can’t be reached');
         }
         const listing = await at.transport.list(devicesPrefix());
-        const files = listing.filter(
+        const meetings = listing.filter(
           (file) => parseMeetingPath(file.path)?.deviceId === deviceId,
         );
         // Removing a file this device hasn't merged at that version could
         // remove the only copy of a meeting, so nothing is removed until all
-        // of them are here.
+        // of them are here. The device's shares list is a copy of the one
+        // every device of this person carries, so it holds nothing to wait for.
         if (
-          files.some((file) => at.engine.merged(file.path) !== file.version)
+          meetings.some(
+            (file) => at.meetings.merged(file.path) !== file.version,
+          )
         ) {
           throw new Error(
             'Some of that device’s meetings haven’t reached this computer yet. Sync, then try again.',
           );
         }
+        const files = [
+          ...meetings,
+          ...listing.filter((file) => parseSharesPath(file.path) === deviceId),
+        ];
         // Devices don't write back what another device holds, so this one
         // may have no copy of its own of a meeting only that device had. A
         // round that no longer counts that device's files writes those
         // copies, and nothing is removed unless it did.
         await at.engine.sync(listing.filter((file) => !files.includes(file)));
-        const failed = at.engine.status().error;
+        const failed = at.meetings.status().error;
         if (failed) {
           throw new Error(
             `This computer couldn’t put its own copies in the vault first, so nothing was removed: ${failed}`,
@@ -609,6 +689,7 @@ export function createSyncController(options: {
           if (current === connection) {
             error = null;
           }
+          await sharing?.round(sharedPlace());
         }
         onChange();
       });
