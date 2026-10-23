@@ -146,8 +146,9 @@ async function drain(stream: Stream, final: boolean): Promise<void> {
 const summaryInstructions = [
   'You summarize meeting transcripts.',
   'Write in the language most of the transcript is in.',
-  'Start with two to four sentences that sum up the meeting, with no heading above them. Then add a "Key points" section (bullets) and an "Action items" section (bullets, with the owner when the transcript names one), each under a Markdown heading.',
-  'Lines marked "Me" are the person who recorded the meeting; "Others" are everyone else.',
+  'Start with two to four sentences that sum up the meeting, with no heading above them. Then add a "Key points" section (bullets) and an "Action items" section (bullets), each under a Markdown heading.',
+  'Lines marked "Me" are the person who recorded the meeting; "Others" are everyone else. Speakers are not told apart beyond that, so a person exists only when the transcript says their name.',
+  'An action item ends with "(Owner: <name>)" only when the transcript gives that person the task or they take it on, with their name as the transcript says it. It ends with "(Owner: Me)" only when a line marked "Me" takes the task on. Otherwise leave the owner out. Never guess an owner, and never give one to "Me" because "Me" recorded the meeting.',
   'Only use what the transcript says. If it is too short to summarize, say so in one sentence.',
 ].join(' ');
 
