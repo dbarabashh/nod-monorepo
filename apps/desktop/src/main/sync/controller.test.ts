@@ -24,6 +24,7 @@ import { createSyncController, UnreachableError } from './controller.ts';
 import type { SyncState } from '../../shared/ipc.ts';
 import { createRelayTransport, type Fetch } from '@nod/core/sync';
 import { createSyncSettings } from './settings.ts';
+import { createPublishedLogs, type PublishedLogs } from './published-log.ts';
 
 const reversing: KeyWrap = {
   wrap: (plain) => Buffer.from(plain).reverse(),
@@ -40,6 +41,7 @@ describe('sync controller', () => {
       fetch?: Fetch;
       savesFail?: () => boolean;
       now?: () => number;
+      publishedLogs?: PublishedLogs;
     } = {},
   ) {
     const store = createMeetingStore({
@@ -70,6 +72,7 @@ describe('sync controller', () => {
       now: options.now ?? (() => 7),
       onChange: () => {},
       defaultRelay: options.defaultRelay ?? null,
+      publishedLogs: options.publishedLogs,
     });
     await controller.load();
     return { store, controller, received };
@@ -165,6 +168,71 @@ describe('sync controller', () => {
     assert.equal(state.status === 'ready' && state.recoveryConfirmed, true);
   });
 
+  it('forgets a device after a relaunch on what its log says it merged, and only then', async () => {
+    const shared = await sharedFolder();
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const words = laptop.controller.recoveryPhrase();
+    const joinVault = async (name: string, publishedLogs?: PublishedLogs) => {
+      const next = await device(name, { publishedLogs });
+      await next.controller.enterPhrase(words, {
+        leaveCopies: false,
+        replaceUnreadable: false,
+      });
+      await next.controller.useFolder(shared);
+      return next;
+    };
+    const old = await joinVault('old-phone');
+    await old.store.save(startMeeting('m2', 'Only on the old phone', 1));
+    await old.controller.refresh();
+    const tablet = await joinVault('tablet');
+    await tablet.store.save(startMeeting('m3', 'Only on the tablet', 2));
+    await tablet.store.save(startMeeting('m5', 'Also on the tablet', 2));
+    await tablet.controller.refresh();
+    const logFile = join(dir(), 'desktop-published.json');
+    const logs = createPublishedLogs(logFile, 0);
+    const desktop = await joinVault('desktop', logs);
+    await desktop.controller.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await logs.flushed();
+    const seen = await desktop.controller.devices();
+    const oldId = seen.find((entry) => entry.meetings === 1)?.id;
+    const tabletId = seen.find((entry) => entry.meetings === 2)?.id;
+    assert.ok(oldId && tabletId);
+    await tablet.store.save(startMeeting('m4', 'Written since', 3));
+    await tablet.controller.refresh();
+
+    const relaunched = await device('desktop', {
+      publishedLogs: createPublishedLogs(logFile, 0),
+    });
+    await assert.rejects(
+      relaunched.controller.forgetDevice(tabletId),
+      /haven’t reached this computer/,
+    );
+    // Forgetting runs a round first, which brings m4 along; the copy of m2
+    // only the old phone had is now this computer's.
+    await relaunched.controller.forgetDevice(oldId);
+    assert.deepEqual(relaunched.store.ids().sort(), ['m2', 'm3', 'm4', 'm5']);
+    await laptop.controller.refresh();
+    assert.deepEqual(
+      (await laptop.controller.devices()).map((entry) => entry.meetings).sort(),
+      [1, 3],
+    );
+
+    // The log still says m3 was merged, but a relaunch that lost the file
+    // must not take its word for it.
+    await rm(join(dir(), 'desktop', 'meetings', 'm3.bin'));
+    const lostOne = await device('desktop', {
+      publishedLogs: createPublishedLogs(logFile, 0),
+    });
+    assert.deepEqual(lostOne.store.ids().sort(), ['m2', 'm4', 'm5']);
+    await assert.rejects(
+      lostOne.controller.forgetDevice(tabletId),
+      /haven’t reached this computer/,
+    );
+  });
+
   it('forgets a device that left copies, keeping in the vault what only it had', async () => {
     const shared = await sharedFolder();
     const laptop = await device('laptop');
@@ -257,7 +325,13 @@ describe('sync controller', () => {
       withoutCode(
         await fresh.controller.preview(laptop.controller.recoveryPhrase()),
       ),
-      { switching: false, replacing: false, reachable: true, devices: null },
+      {
+        switching: false,
+        replacing: false,
+        reachable: true,
+        waitMs: null,
+        devices: null,
+      },
     );
 
     const desktop = await device('desktop');
@@ -267,13 +341,25 @@ describe('sync controller', () => {
       withoutCode(
         await desktop.controller.preview(laptop.controller.recoveryPhrase()),
       ),
-      { switching: true, replacing: false, reachable: true, devices: 1 },
+      {
+        switching: true,
+        replacing: false,
+        reachable: true,
+        waitMs: null,
+        devices: 1,
+      },
     );
     assert.deepEqual(
       withoutCode(
         await desktop.controller.preview(recoveryPhrase(randomKey())),
       ),
-      { switching: true, replacing: false, reachable: true, devices: 0 },
+      {
+        switching: true,
+        replacing: false,
+        reachable: true,
+        waitMs: null,
+        devices: 0,
+      },
     );
     await assert.rejects(
       desktop.controller.preview(desktop.controller.recoveryPhrase()),
@@ -286,7 +372,13 @@ describe('sync controller', () => {
       withoutCode(
         await desktop.controller.preview(laptop.controller.recoveryPhrase()),
       ),
-      { switching: true, replacing: false, reachable: false, devices: null },
+      {
+        switching: true,
+        replacing: false,
+        reachable: false,
+        waitMs: null,
+        devices: null,
+      },
     );
   });
 
@@ -395,6 +487,7 @@ describe('sync controller', () => {
       switching: false,
       replacing: true,
       reachable: true,
+      waitMs: null,
       devices: null,
     });
     await reopened.controller.enterPhrase(phrase, {
@@ -627,35 +720,79 @@ describe('sync controller', () => {
         requests.push(`${init.method} ${new URL(url).pathname}`);
         return new Response(null, {
           status: 429,
-          headers: { 'retry-after': '30' },
+          headers: { 'retry-after': '300' },
         });
       },
     });
+    const shown = () => {
+      const state = restarted.controller.state();
+      return state.status === 'ready' ? state.error : null;
+    };
     await restarted.controller.refresh();
-    const asked = restarted.controller.state();
     assert.equal(
-      asked.status === 'ready' && asked.error,
-      'The relay answered 429: it asked this device to wait, sync will try again later',
+      shown(),
+      'The relay answered 429: it asked this device to wait, sync will try again in about 5 minutes',
     );
     assert.equal(requests.length, 1);
     assert.match(requests[0] ?? '', /^PUT \/v1\/vaults\//);
 
-    clock.at = 1_000 + 29_999;
+    clock.at = 1_000 + 120_000;
     await restarted.controller.refresh();
     assert.equal(requests.length, 1);
+    assert.equal(
+      shown(),
+      'The relay answered 429: it asked this device to wait, sync will try again in about 3 minutes',
+    );
 
-    clock.at = 1_000 + 30_000;
+    clock.at = 1_000 + 299_999;
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 1);
+    assert.equal(
+      shown(),
+      'The relay answered 429: it asked this device to wait, sync will try again in a moment',
+    );
+
+    clock.at = 1_000 + 300_000;
     await restarted.controller.refresh();
     assert.equal(requests.length, 2);
 
-    clock.at = 1_000 + 40_000;
+    clock.at = 1_000 + 310_000;
     await restarted.controller.confirmRecoveryPhrase();
     await restarted.controller.refresh();
     assert.equal(requests.length, 3);
 
-    clock.at = 1_000 + 50_000;
+    clock.at = 1_000 + 320_000;
     await restarted.controller.refresh();
     assert.equal(requests.length, 3);
+
+    const askedToWait = (waitMs: number) => ({
+      switching: true,
+      replacing: false,
+      reachable: false,
+      waitMs,
+      devices: null,
+    });
+    assert.deepEqual(
+      withoutCode(
+        await restarted.controller.preview(recoveryPhrase(randomKey())),
+      ),
+      askedToWait(290_000),
+    );
+    assert.equal(requests.length, 3);
+
+    clock.at = 1_000 + 620_000;
+    assert.deepEqual(
+      withoutCode(
+        await restarted.controller.preview(recoveryPhrase(randomKey())),
+      ),
+      askedToWait(300_000),
+    );
+    assert.equal(requests.length, 4);
+    assert.match(requests[3] ?? '', /^GET /);
+
+    clock.at = 1_000 + 630_000;
+    await restarted.controller.refresh();
+    assert.equal(requests.length, 4);
   });
 
   it('reaches the relay once it is back online, and syncs then', async () => {

@@ -11,6 +11,7 @@ import {
   vaultIdOf,
 } from '@nod/core/crypto';
 import {
+  inAbout,
   isSyncId,
   pairingCode,
   relayBase,
@@ -59,6 +60,8 @@ function pairingQuestion(by: string): Question {
 
 const leftBehind =
   'The folder or relay can’t be reached, so the copies this device put there stay behind until you delete them.';
+const askedToWait = (waitMs: number) =>
+  `The relay asked this device to wait, so the copies this device put there stay behind until you delete them. Sync will try again ${inAbout(waitMs)}.`;
 
 const maxUrlLength = 2_048;
 const maxPhraseLength = 1_000;
@@ -143,7 +146,9 @@ function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
       'No device syncs with these words yet. If you expected one, check each word.',
     );
   }
-  if (!preview.reachable) {
+  if (preview.waitMs !== null) {
+    details.push(askedToWait(preview.waitMs));
+  } else if (!preview.reachable) {
     details.push(leftBehind);
   }
   return {

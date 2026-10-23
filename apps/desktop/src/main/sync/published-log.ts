@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import {
   createPublishedLog,
   readPublishedEntries,
+  readReceivedEntries,
   type PublishedLog,
 } from '@nod/core/sync';
 import { writeAtomically } from '../storage/write-atomically.ts';
@@ -17,17 +18,20 @@ async function readStored(file: string): Promise<unknown> {
 export function createPublishedLogs(file: string, saveDelayMs = 1_000) {
   let saving: Promise<void> = Promise.resolve();
   return {
-    open: async (scope: string): Promise<PublishedLog> =>
-      createPublishedLog({
+    open: async (scope: string): Promise<PublishedLog> => {
+      const stored = await readStored(file);
+      return createPublishedLog({
         scope,
-        entries: readPublishedEntries(await readStored(file), scope),
+        entries: readPublishedEntries(stored, scope),
+        received: readReceivedEntries(stored, scope),
         delayMs: saveDelayMs,
         save: (data) => {
           saving = saving
             .then(() => writeAtomically(file, data))
             .catch(() => undefined);
         },
-      }),
+      });
+    },
     flushed: () => saving,
   };
 }

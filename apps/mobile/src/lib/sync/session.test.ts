@@ -23,7 +23,7 @@ import {
 import type { PublishedEntry, RelayTransport } from '@nod/core/sync';
 import { createMemoryTransport } from '@nod/core/sync/testing';
 import { createSyncSession, type StoredVault } from './session.ts';
-import { Throttled } from '@nod/core/sync';
+import { createPublishedLog, Throttled } from '@nod/core/sync';
 
 const relay = 'https://relay.example.com/';
 
@@ -612,16 +612,16 @@ describe('meetings on the phone', () => {
 });
 
 describe('a relay that asked the phone to wait', () => {
-  it('is not asked to register again before the wait is over', async () => {
+  it('is not asked to register again before the wait is over, and the wait is shown without flicker', async () => {
     const waiting =
-      'The relay answered 429: it asked this device to wait, sync will try again later';
+      'The relay answered 429: it asked this device to wait, sync will try again in about 2 minutes';
     const { transport } = memoryRelay();
     let registrations = 0;
     const refusing: RelayTransport = {
       ...transport,
       register: async () => {
         registrations += 1;
-        throw new Throttled(waiting, 30_000);
+        throw new Throttled(waiting, 120_000);
       },
     };
     const clock = { at: 1_000 };
@@ -629,6 +629,7 @@ describe('a relay that asked the phone to wait', () => {
     const store = createMeetingStore({ files, cipher: async () => cipher });
     await store.load();
     let saved: StoredVault | null = null;
+    let shownSyncing = 0;
     const session = createSyncSession({
       vaults: {
         load: async () => saved,
@@ -642,7 +643,12 @@ describe('a relay that asked the phone to wait', () => {
       store,
       transportFor: () => refusing,
       onRemote: () => {},
-      onChange: () => {},
+      onChange: () => {
+        const state = session.state();
+        if (state.status === 'paired' && state.syncing) {
+          shownSyncing += 1;
+        }
+      },
       newId: () => 'phone-1',
       now: () => clock.at,
     });
@@ -650,26 +656,104 @@ describe('a relay that asked the phone to wait', () => {
     const key = randomKey();
     await session.pair({ key, relayUrl: relay });
     await session.refresh();
-    const asked = session.state();
-    assert.equal(asked.status === 'paired' && asked.error, waiting);
+    const shown = () => {
+      const state = session.state();
+      return state.status === 'paired' ? state.error : null;
+    };
+    assert.equal(shown(), waiting);
     assert.equal(registrations, 1);
     assert.equal(stored.size, 0);
+    assert.equal(shownSyncing, 1);
 
-    clock.at = 1_000 + 29_999;
+    clock.at = 1_000 + 119_999;
     await session.refresh();
     assert.equal(registrations, 1);
+    assert.equal(shownSyncing, 1);
+    assert.equal(
+      shown(),
+      'The relay answered 429: it asked this device to wait, sync will try again in a moment',
+    );
 
-    clock.at = 1_000 + 30_000;
+    clock.at = 1_000 + 120_000;
     await session.refresh();
     assert.equal(registrations, 2);
+    assert.equal(shownSyncing, 2);
 
-    clock.at = 1_000 + 40_000;
+    clock.at = 1_000 + 130_000;
     await session.pair({ key, relayUrl: relay });
     await session.refresh();
     assert.equal(registrations, 3);
 
-    clock.at = 1_000 + 50_000;
+    clock.at = 1_000 + 140_000;
     await session.refresh();
     assert.equal(registrations, 3);
+  });
+});
+
+describe('what the phone read of the computer', () => {
+  it('is read once, across launches, until the computer changes it', async () => {
+    const key = randomKey();
+    const { transport } = memoryRelay();
+    await publishFromComputer(key, transport, [
+      createDocument(startMeeting('m-1', 'Planning', 1_000)),
+      createDocument(startMeeting('m-2', 'Retro', 2_000)),
+    ]);
+    let reads = 0;
+    const counted: RelayTransport = {
+      ...transport,
+      read: async (path, maxBytes) => {
+        reads += 1;
+        return transport.read(path, maxBytes);
+      },
+    };
+    const { files } = memoryFiles();
+    const log = createPublishedLog({
+      scope: 'phone',
+      entries: new Map(),
+      received: new Map(),
+      save: () => {},
+      delayMs: 0,
+    });
+    let saved: StoredVault | null = null;
+    const launch = async () => {
+      const store = createMeetingStore({ files, cipher: async () => cipher });
+      await store.load();
+      const session = createSyncSession({
+        vaults: {
+          load: async () => saved,
+          save: async (vault) => {
+            saved = vault;
+          },
+          clear: async () => {
+            saved = null;
+          },
+        },
+        store,
+        transportFor: () => counted,
+        publishedLogFor: async () => log,
+        onRemote: () => {},
+        onChange: () => {},
+        newId: () => 'phone-1',
+        now: () => 5,
+      });
+      await session.load();
+      return { session, store };
+    };
+    const first = await launch();
+    await first.session.pair({ key, relayUrl: relay });
+    await first.session.refresh();
+    assert.equal(reads, 2);
+    assert.deepEqual(first.store.ids().sort(), ['m-1', 'm-2']);
+
+    const second = await launch();
+    await second.session.refresh();
+    assert.equal(reads, 2);
+    assert.deepEqual(second.store.ids().sort(), ['m-1', 'm-2']);
+
+    await publishFromComputer(key, transport, [
+      createDocument(startMeeting('m-2', 'Retro, renamed', 2_000)),
+    ]);
+    await second.session.refresh();
+    assert.equal(reads, 3);
   });
 });

@@ -8,6 +8,7 @@ import {
   type PairingOffer,
   stillWaiting,
   Throttled,
+  throttledMessage,
   type PublishedLog,
   type RelayTransport,
   type SyncEngine,
@@ -77,8 +78,9 @@ export function createSyncSession(options: {
   // can't put its connection or result in place.
   let generation = 0;
   // A relay that asked this phone to wait is not asked again before then: the
-  // transport that remembers the wait is dropped with the failed connection.
-  let connectAfter = 0;
+  // transport that remembers the wait is dropped with a failed connection,
+  // and a round against a kept one would only be refused.
+  let waitUntil = 0;
 
   async function connect(current: StoredVault, round: number) {
     const transport = transportFor(current);
@@ -122,11 +124,11 @@ export function createSyncSession(options: {
     if (!current) {
       return;
     }
-    const at =
-      connection ??
-      (stillWaiting(connectAfter, now())
-        ? null
-        : await connect(current, round));
+    if (stillWaiting(waitUntil, now())) {
+      error = throttledMessage(waitUntil - now());
+      return;
+    }
+    const at = connection ?? (await connect(current, round));
     if (!at) {
       return;
     }
@@ -166,13 +168,18 @@ export function createSyncSession(options: {
   function refresh(): Promise<void> {
     queued ??= exclusive(async () => {
       queued = null;
-      syncing = true;
-      onChange();
+      // A round that only waits isn't shown as syncing, or the status would
+      // flip between the two every round.
+      const quiet = vault !== null && stillWaiting(waitUntil, now());
+      if (!quiet) {
+        syncing = true;
+        onChange();
+      }
       try {
         await round();
       } catch (failure) {
         if (failure instanceof Throttled) {
-          connectAfter = now() + failure.retryAfterMs;
+          waitUntil = now() + failure.retryAfterMs;
         }
         error = messageOf(failure);
       } finally {
@@ -269,7 +276,7 @@ export function createSyncSession(options: {
         connection = null;
         // Scanning a code is one deliberate ask of the place, and may be
         // another place; a relay still refusing says so again.
-        connectAfter = 0;
+        waitUntil = 0;
         error = null;
         onChange();
         return current && !same ? { vault: current, ids } : null;
@@ -294,7 +301,7 @@ export function createSyncSession(options: {
       generation += 1;
       connection?.engine.stop();
       connection = null;
-      connectAfter = 0;
+      waitUntil = 0;
       error = null;
       vault = null;
       unreadable = null;

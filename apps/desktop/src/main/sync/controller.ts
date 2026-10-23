@@ -23,6 +23,7 @@ import {
   sealClosedNotice,
   stillWaiting,
   Throttled,
+  throttledMessage,
   type PairingOffer,
   type SyncEngine,
   type Transport,
@@ -49,6 +50,8 @@ export type PhrasePreview = {
   switching: boolean;
   replacing: boolean;
   reachable: boolean;
+  // How long the place that could be reached asked this device to wait.
+  waitMs: number | null;
   devices: number | null;
 };
 
@@ -153,11 +156,11 @@ export function createSyncController(options: {
   async function connect() {
     const current = vault;
     const round = generation;
-    if (
-      connection ||
-      !current?.transport ||
-      stillWaiting(connectAfter, now())
-    ) {
+    if (connection || !current?.transport) {
+      return;
+    }
+    if (stillWaiting(connectAfter, now())) {
+      error = throttledMessage(connectAfter - now());
       return;
     }
     try {
@@ -345,28 +348,35 @@ export function createSyncController(options: {
           switching: current !== null,
           replacing,
           reachable: true,
+          waitMs: null,
           devices: null,
         };
       }
+      const asked = (waitMs: number | null): PhrasePreview => ({
+        vaultCode,
+        switching: true,
+        replacing,
+        reachable: waitMs === null,
+        waitMs,
+        devices: null,
+      });
+      if (stillWaiting(connectAfter, now())) {
+        return asked(connectAfter - now());
+      }
       try {
         return {
-          vaultCode,
-          switching: true,
-          replacing,
-          reachable: true,
+          ...asked(null),
           devices: await devicesIn(
             vaultOf(key, current.transport, true),
             current.transport,
           ),
         };
-      } catch {
-        return {
-          vaultCode,
-          switching: true,
-          replacing,
-          reachable: false,
-          devices: null,
-        };
+      } catch (failure) {
+        if (failure instanceof Throttled) {
+          connectAfter = now() + failure.retryAfterMs;
+          return asked(failure.retryAfterMs);
+        }
+        return { ...asked(null), reachable: false };
       }
     },
     // Words that belong to another vault switch this device over to it,
@@ -520,7 +530,7 @@ export function createSyncController(options: {
         await connect();
         const at = connection;
         if (!at) {
-          throw new Error('The relay or folder can’t be reached');
+          throw new Error(error ?? 'The relay or folder can’t be reached');
         }
         const listing = await at.transport.list(devicesPrefix());
         const files = listing.filter(
@@ -556,6 +566,7 @@ export function createSyncController(options: {
               .map((file) => at.transport.remove(file.path)),
           );
         }
+        at.engine.forget(deviceId);
       });
     },
     refresh: () => {

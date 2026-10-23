@@ -54,9 +54,24 @@ export function retryAfterOf(header: string | null, now = Date.now()): number {
 const refusals: Record<number, string> = {
   409: 'another change to this meeting is still finishing, sync will try again',
   413: 'this meeting is too large to sync through it',
-  429: 'it asked this device to wait, sync will try again later',
   507: 'the space for your devices on it is full',
 };
+
+export function inAbout(remainingMs: number): string {
+  const minutes = Math.round(remainingMs / 60_000);
+  if (!(remainingMs >= 45_000)) {
+    return 'in a moment';
+  }
+  return minutes <= 1 ? 'in about a minute' : `in about ${minutes} minutes`;
+}
+
+const waitingReason = (remainingMs: number) =>
+  `it asked this device to wait, sync will try again ${inAbout(remainingMs)}`;
+
+// What a device shows while it holds off a relay that asked it to wait.
+export function throttledMessage(remainingMs: number): string {
+  return `The relay answered 429: ${waitingReason(remainingMs)}`;
+}
 
 // Content is already encrypted, but plain HTTP would still expose which
 // devices sync and when, so it is only allowed to this machine.
@@ -137,7 +152,7 @@ export function createRelayTransport(options: {
   const now = options.now ?? (() => Date.now());
   // Every request passes here, so a wait the relay asked for holds the
   // listing, the closed notices and the registration as much as the files.
-  let waiting: { until: number; message: string } | null = null;
+  let waiting: { until: number; message: string | null } | null = null;
   const vaultUrl = new URL(
     `v1/vaults/${encodeURIComponent(options.vaultId)}`,
     base.href.endsWith('/') ? base : `${base.href}/`,
@@ -157,7 +172,11 @@ export function createRelayTransport(options: {
     known = false,
   ): Promise<RelayResponse> {
     if (waiting && stillWaiting(waiting.until, now())) {
-      throw new Throttled(waiting.message, waiting.until - now());
+      const remaining = waiting.until - now();
+      throw new Throttled(
+        waiting.message ?? throttledMessage(remaining),
+        remaining,
+      );
     }
     waiting = null;
     const response = await options.fetch(url, {
@@ -169,18 +188,23 @@ export function createRelayTransport(options: {
     const unchanged = response.status === 304 && known;
     if (!response.ok && !missing && !unchanged) {
       const refusal = response.headers.get('x-relay-refusal');
+      const wait = retryAfterOf(response.headers.get('retry-after'), now());
       const reason =
         refusal === 'new-vaults'
           ? 'it isn’t taking new vaults right now, sync will try again later'
           : refusal === 'writes'
             ? 'it took every change it allows this hour, sync will try again later'
-            : refusals[response.status];
+            : response.status === 429
+              ? waitingReason(wait)
+              : refusals[response.status];
       const message = `The relay answered ${response.status}${reason ? `: ${reason}` : ''}`;
       // The relay's own limit on writes leaves reading alone, so only writes
       // stop; any other 429 (a limit in front of it) holds every request.
       if (response.status === 429 && refusal !== 'writes') {
-        const wait = retryAfterOf(response.headers.get('retry-after'), now());
-        waiting = { until: now() + wait, message };
+        waiting = {
+          until: now() + wait,
+          message: refusal === 'new-vaults' ? message : null,
+        };
         throw new Throttled(message, wait);
       }
       throw (response.status === 507 || response.status === 429) &&

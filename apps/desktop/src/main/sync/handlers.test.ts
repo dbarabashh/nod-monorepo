@@ -7,6 +7,7 @@ import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController } from './controller.ts';
+import { randomKey, recoveryPhrase } from '@nod/core/crypto';
 import { openPairingOffer, readPairingCode } from '@nod/core/sync';
 import {
   createSyncHandlers,
@@ -32,6 +33,7 @@ describe('sync handlers', () => {
     confirm?: (question: Question) => Promise<boolean>;
     folder?: string | null;
     relayAnswers?: boolean;
+    respond?: () => Response;
     showPairing?: (screen: PairingScreen) => Promise<void>;
     listenForPairing?: ListenForPairing;
   }) {
@@ -49,6 +51,9 @@ describe('sync handlers', () => {
       onRemote: () => {},
       fetch: async () => {
         fetches += 1;
+        if (options.respond) {
+          return options.respond();
+        }
         if (options.relayAnswers) {
           return new Response(null, { status: 204 });
         }
@@ -435,6 +440,27 @@ describe('sync handlers', () => {
     tick(10_000);
     await handlers.changeRecoveryPhrase();
     assert.notEqual(controller.recoveryPhrase(), zeroKeyPhrase);
+  });
+
+  it('says in the phrase dialog how long the relay asked to wait', async () => {
+    let status = 204;
+    const { handlers, asked } = await setUp({
+      answers: [true, true, true],
+      respond: () =>
+        new Response(null, {
+          status,
+          headers: status === 429 ? { 'retry-after': '300' } : {},
+        }),
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    await handlers.connectSyncRelay('https://relay.example.com');
+
+    status = 429;
+    await handlers.enterRecoveryPhrase(recoveryPhrase(randomKey()));
+    assert.match(
+      asked.at(-1)?.detail ?? '',
+      /The relay asked this device to wait, so the copies this device put there stay behind until you delete them\. Sync will try again in about 5 minutes\.$/,
+    );
   });
 
   it('changes the phrase while the place can’t be reached only after a second yes', async () => {

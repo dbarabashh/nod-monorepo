@@ -1,6 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { createRelayTransport, retryAfterOf, type Fetch } from './relay.ts';
+import {
+  createRelayTransport,
+  retryAfterOf,
+  throttledMessage,
+  type Fetch,
+} from './relay.ts';
 import { Throttled, WritesRefused } from './transport.ts';
 
 // A response without a body stream, as some fetch implementations give.
@@ -72,7 +77,7 @@ describe('relay refusals', () => {
         error instanceof Throttled &&
         error.retryAfterMs === 60_000 &&
         error.message ===
-          'The relay answered 429: it asked this device to wait, sync will try again later',
+          'The relay answered 429: it asked this device to wait, sync will try again in about a minute',
     );
     await assert.rejects(
       at(429, { 'retry-after': '5' }).read(path, 10),
@@ -122,9 +127,44 @@ describe('the wait a relay names', () => {
   });
 });
 
+describe('what a device says while it waits', () => {
+  it('names the time left, roughly', () => {
+    assert.equal(
+      throttledMessage(1),
+      'The relay answered 429: it asked this device to wait, sync will try again in a moment',
+    );
+    assert.equal(
+      throttledMessage(44_999),
+      'The relay answered 429: it asked this device to wait, sync will try again in a moment',
+    );
+    assert.equal(
+      throttledMessage(45_000),
+      'The relay answered 429: it asked this device to wait, sync will try again in about a minute',
+    );
+    assert.equal(
+      throttledMessage(89_999),
+      'The relay answered 429: it asked this device to wait, sync will try again in about a minute',
+    );
+    assert.equal(
+      throttledMessage(90_000),
+      'The relay answered 429: it asked this device to wait, sync will try again in about 2 minutes',
+    );
+    assert.equal(
+      throttledMessage(600_000),
+      'The relay answered 429: it asked this device to wait, sync will try again in about 10 minutes',
+    );
+    for (const odd of [-1, Number.NaN]) {
+      assert.equal(
+        throttledMessage(odd),
+        'The relay answered 429: it asked this device to wait, sync will try again in a moment',
+      );
+    }
+  });
+});
+
 describe('a relay that asked to wait', () => {
   const waiting =
-    'The relay answered 429: it asked this device to wait, sync will try again later';
+    'The relay answered 429: it asked this device to wait, sync will try again in a moment';
   const path = 'devices/a/meetings/m.bin';
 
   function relay(answers: () => number, retryAfter: string | null) {

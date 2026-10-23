@@ -10,19 +10,22 @@ import {
 } from '../crypto/index.ts';
 import {
   createDocument,
+  createMeetingStore,
   loadDocument,
   readDocument,
   saveDocument,
   startMeeting,
   type MeetingDocument,
+  type MeetingFiles,
   type Merged,
 } from '../meetings/index.ts';
 import {
   createSyncEngine,
+  memoryReceivedLog,
   type PublishedEntry,
   type PublishedLog,
 } from './engine.ts';
-import { meetingContext, meetingPath } from './layout.ts';
+import { closedPath, meetingContext, meetingPath } from './layout.ts';
 import { countingTransport, createMemoryTransport } from './testing/index.ts';
 import { Throttled, WritesRefused, type Transport } from './transport.ts';
 
@@ -312,6 +315,41 @@ describe('a file that can’t be read', () => {
     assert.equal(engine.status().error, null);
   });
 
+  it('is fetched once per version when it holds another meeting than its name says', async () => {
+    const memory = createMemoryTransport();
+    await memory.write(
+      path,
+      seal(
+        fileKeyOf(key),
+        saveDocument(createDocument(startMeeting('m-2', 'Misfiled', 1))),
+        meetingContext(vaultIdOf(key), 'computer', 'm-1'),
+      ),
+    );
+    const counted = reading(memory);
+    const merged: string[] = [];
+    const engine = createSyncEngine({
+      transport: counted.transport,
+      vault: { id: vaultIdOf(key), key, deviceId: 'phone' },
+      store: {
+        ids: () => [],
+        document: () => undefined,
+        merge: (id) => {
+          merged.push(id);
+          return nothing;
+        },
+      },
+      onRemote: () => {},
+      now: () => 1,
+    });
+
+    await engine.sync();
+    await engine.sync();
+
+    assert.equal(counted.reads(), 1);
+    assert.deepEqual(merged, []);
+    assert.equal(engine.status().error, unreadable);
+  });
+
   it('gives up on a file larger than any meeting, until the place changes it', async () => {
     const memory = createMemoryTransport();
     await memory.write(path, new Uint8Array(16 * 1024 * 1024 + 1));
@@ -555,9 +593,10 @@ describe('a place that asks to wait', () => {
       store: {
         ids: () => [...byId.keys()],
         document: (id) => byId.get(id),
-        merge: (id) => {
+        merge: (id, remote) => {
           received.push(id);
-          return nothing;
+          byId.set(id, remote);
+          return { ...nothing, kept: true };
         },
       },
       onRemote: () => {},
@@ -682,5 +721,288 @@ describe('a place that asks to wait', () => {
     clock.at = 1_000 + 60_000;
     await engine.sync();
     assert.equal(lists, 2);
+  });
+});
+
+describe('receiving across launches', () => {
+  const vaultId = vaultIdOf(key);
+  const laptopFile = (document: MeetingDocument) =>
+    seal(
+      fileKeyOf(key),
+      saveDocument(document),
+      meetingContext(vaultId, 'laptop', document.id),
+    );
+  const logWithReceived = () => ({
+    ...memoryLog(),
+    received: memoryReceivedLog(),
+  });
+
+  // What the phone keeps on disk across launches, by meeting id.
+  function phone(
+    transport: Transport,
+    log: PublishedLog,
+    disk: Map<string, MeetingDocument>,
+  ) {
+    const merged: string[] = [];
+    const engine = createSyncEngine({
+      transport,
+      vault: { id: vaultId, key, deviceId: 'phone' },
+      store: {
+        ids: () => [...disk.keys()],
+        document: (id) => disk.get(id),
+        merge: (id, remote) => {
+          merged.push(id);
+          disk.set(id, remote);
+          return { ...nothing, kept: true };
+        },
+      },
+      onRemote: () => {},
+      now: () => 1,
+      publishedLog: log,
+    });
+    return { engine, merged };
+  }
+
+  function reading(memory: Transport) {
+    let reads = 0;
+    const transport: Transport = {
+      ...memory,
+      read: (path, maxBytes) => {
+        reads += 1;
+        return memory.read(path, maxBytes);
+      },
+    };
+    return { transport, reads: () => reads };
+  }
+
+  it('reads each file of another device once, until the place lists it under another version or stops listing it', async () => {
+    const memory = createMemoryTransport();
+    const planning = createDocument(startMeeting('m-1', 'Planning', 1_000));
+    const retro = createDocument(startMeeting('m-2', 'Retro', 2_000));
+    await memory.write(meetingPath('laptop', 'm-1'), laptopFile(planning));
+    await memory.write(meetingPath('laptop', 'm-2'), laptopFile(retro));
+    const counted = reading(memory);
+    const log = logWithReceived();
+    const disk = new Map<string, MeetingDocument>();
+
+    const first = phone(counted.transport, log, disk);
+    await first.engine.sync();
+    assert.deepEqual(first.merged, ['m-1', 'm-2']);
+    assert.equal(counted.reads(), 2);
+
+    const second = phone(counted.transport, log, disk);
+    await second.engine.sync();
+    assert.deepEqual(second.merged, []);
+    assert.equal(counted.reads(), 2);
+    assert.equal(second.engine.status().error, null);
+
+    await memory.write(
+      meetingPath('laptop', 'm-2'),
+      laptopFile(createDocument(startMeeting('m-2', 'Retro, renamed', 2_000))),
+    );
+    await second.engine.sync();
+    assert.deepEqual(second.merged, ['m-2']);
+    assert.equal(counted.reads(), 3);
+
+    await memory.remove(meetingPath('laptop', 'm-1'));
+    await second.engine.sync();
+    assert.equal(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+    assert.notEqual(log.received.get(meetingPath('laptop', 'm-2')), undefined);
+  });
+
+  it('keeps what it read of a device a listing leaves out, as a narrowed one or an unmounted folder does', async () => {
+    const memory = createMemoryTransport();
+    await memory.write(
+      meetingPath('laptop', 'm-1'),
+      laptopFile(createDocument(startMeeting('m-1', 'Planning', 1_000))),
+    );
+    const log = logWithReceived();
+    const disk = new Map<string, MeetingDocument>();
+    const { engine } = phone(memory, log, disk);
+    await engine.sync();
+    assert.notEqual(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+
+    await engine.sync([]);
+    await engine.sync([
+      { path: meetingPath('tablet', 'm-9'), version: 'v9', changedAt: 1 },
+    ]);
+    assert.notEqual(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+
+    await engine.sync([
+      { path: meetingPath('laptop', 'm-2'), version: 'v2', changedAt: 1 },
+    ]);
+    assert.equal(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+  });
+
+  it('drops what it read of a device that left a closing notice, or that was forgotten', async () => {
+    const memory = createMemoryTransport();
+    for (const device of ['laptop', 'tablet']) {
+      await memory.write(
+        meetingPath(device, 'm-1'),
+        seal(
+          fileKeyOf(key),
+          saveDocument(createDocument(startMeeting('m-1', 'Planning', 1_000))),
+          meetingContext(vaultId, device, 'm-1'),
+        ),
+      );
+    }
+    const log = logWithReceived();
+    const { engine } = phone(memory, log, new Map());
+    await engine.sync();
+    assert.notEqual(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+    assert.notEqual(log.received.get(meetingPath('tablet', 'm-1')), undefined);
+
+    await engine.sync([
+      { path: closedPath('laptop'), version: 'c1', changedAt: 2 },
+      { path: meetingPath('tablet', 'm-1'), version: 'v1', changedAt: 1 },
+    ]);
+    assert.equal(log.received.get(meetingPath('laptop', 'm-1')), undefined);
+    assert.notEqual(log.received.get(meetingPath('tablet', 'm-1')), undefined);
+
+    engine.forget('tablet');
+    assert.equal(log.received.get(meetingPath('tablet', 'm-1')), undefined);
+  });
+
+  it('still writes no copy of its own of a meeting it only received', async () => {
+    const memory = createMemoryTransport();
+    const relay = countingTransport(memory);
+    const planning = createDocument(startMeeting('m-1', 'Planning', 1_000));
+    await memory.write(meetingPath('laptop', 'm-1'), laptopFile(planning));
+    const log = logWithReceived();
+    const disk = new Map([[planning.id, planning]]);
+
+    await phone(relay.transport, log, disk).engine.sync();
+    assert.equal(relay.writes(), 0);
+
+    const restarted = phone(relay.transport, log, disk);
+    await restarted.engine.sync();
+    assert.equal(relay.writes(), 0);
+    const listedUnder = (await memory.list('devices/'))[0]?.version;
+    assert.ok(listedUnder);
+    assert.equal(
+      restarted.engine.merged(meetingPath('laptop', 'm-1')),
+      listedUnder,
+    );
+
+    await memory.remove(meetingPath('laptop', 'm-1'));
+    await restarted.engine.sync();
+    assert.equal(relay.writes(), 1);
+  });
+});
+
+describe('what was received, against a store that lost it', () => {
+  const vaultId = vaultIdOf(key);
+  const plain = {
+    encrypt: (data: Uint8Array) => data,
+    decrypt: (data: Uint8Array) => data,
+  };
+
+  function memoryFiles() {
+    const stored = new Map<string, Uint8Array>();
+    const damaged = new Set<string>();
+    const files: MeetingFiles = {
+      ids: async () => [...stored.keys()],
+      read: async (id) =>
+        damaged.has(id)
+          ? new Uint8Array([1, 2, 3])
+          : (stored.get(id) ?? new Uint8Array()),
+      write: async (id, data) => {
+        stored.set(id, data.slice());
+      },
+      setAside: async (id) => {
+        stored.delete(id);
+        damaged.delete(id);
+      },
+    };
+    return { files, damage: (id: string) => damaged.add(id) };
+  }
+
+  async function laptopWrote(memory: Transport, title: string) {
+    await memory.write(
+      meetingPath('laptop', 'm-1'),
+      seal(
+        fileKeyOf(key),
+        saveDocument(createDocument(startMeeting('m-1', title, 1_000))),
+        meetingContext(vaultId, 'laptop', 'm-1'),
+      ),
+    );
+  }
+
+  function phone(
+    transport: Transport,
+    store: ReturnType<typeof createMeetingStore>,
+    received: ReturnType<typeof memoryReceivedLog>,
+  ) {
+    return createSyncEngine({
+      transport,
+      vault: { id: vaultId, key, deviceId: 'phone' },
+      store,
+      onRemote: () => {},
+      now: () => 1,
+      publishedLog: { ...memoryLog(), received },
+    });
+  }
+
+  it('reads the meeting again after the store started over', async () => {
+    const memory = createMemoryTransport();
+    await laptopWrote(memory, 'Planning');
+    const store = createMeetingStore({
+      files: memoryFiles().files,
+      cipher: async () => plain,
+    });
+    await store.load();
+    const received = memoryReceivedLog();
+    await phone(memory, store, received).sync();
+    assert.deepEqual(store.ids(), ['m-1']);
+
+    await store.startOver();
+    assert.deepEqual(store.ids(), []);
+    const after = phone(memory, store, received);
+    await after.sync();
+    assert.equal(after.status().error, null);
+    assert.deepEqual(store.ids(), ['m-1']);
+  });
+
+  it('replaces a file damaged since, from the other device’s copy, after a relaunch', async () => {
+    const memory = createMemoryTransport();
+    await laptopWrote(memory, 'Planning');
+    const disk = memoryFiles();
+    const store = createMeetingStore({
+      files: disk.files,
+      cipher: async () => plain,
+    });
+    await store.load();
+    const received = memoryReceivedLog();
+    await phone(memory, store, received).sync();
+    assert.equal(store.meetings().length, 1);
+
+    disk.damage('m-1');
+    const relaunched = createMeetingStore({
+      files: disk.files,
+      cipher: async () => plain,
+    });
+    await relaunched.load();
+    assert.deepEqual(relaunched.meetings(), []);
+    const after = phone(memory, relaunched, received);
+    assert.equal(after.merged(meetingPath('laptop', 'm-1')), undefined);
+    await after.sync();
+    assert.equal(relaunched.meetings()[0]?.title, 'Planning');
+    assert.notEqual(after.merged(meetingPath('laptop', 'm-1')), undefined);
+  });
+
+  it('doesn’t count a file as read while the store wasn’t loaded to keep it', async () => {
+    const memory = createMemoryTransport();
+    await laptopWrote(memory, 'Planning');
+    const store = createMeetingStore({
+      files: memoryFiles().files,
+      cipher: async () => plain,
+    });
+    const received = memoryReceivedLog();
+    await phone(memory, store, received).sync();
+    assert.equal(received.get(meetingPath('laptop', 'm-1')), undefined);
+
+    await store.load();
+    await phone(memory, store, received).sync();
+    assert.deepEqual(store.ids(), ['m-1']);
   });
 });

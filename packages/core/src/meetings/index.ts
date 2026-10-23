@@ -28,6 +28,7 @@ export {
   documentHeads,
   importedDocument,
   loadDocument,
+  loadDocumentState,
   mergeDocuments,
   readDocument,
   sameDocument,

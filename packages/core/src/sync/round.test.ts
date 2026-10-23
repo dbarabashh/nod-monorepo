@@ -9,7 +9,7 @@ import { guardedRound } from './round.ts';
 import { Throttled } from './transport.ts';
 
 const waiting =
-  'The relay answered 429: it asked this device to wait, sync will try again later';
+  'The relay answered 429: it asked this device to wait, sync will try again in about a minute';
 
 describe('a round against a relay that asked to wait', () => {
   const key = randomKey();

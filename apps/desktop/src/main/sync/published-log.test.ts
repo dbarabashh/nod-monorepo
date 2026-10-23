@@ -38,7 +38,53 @@ describe('published log', () => {
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
       scope: 'vault-a:device-1',
       entries: { 'm-1': { heads: 'heads-1', version: 'v-1' } },
+      received: {},
     });
+  });
+
+  it('remembers what it read of other devices across restarts, until the place stops listing it', async () => {
+    const file = join(dir(), 'sync-published.json');
+    const logs = createPublishedLogs(file, 0);
+    const log = await logs.open('vault-a:device-1');
+    const path = 'devices/laptop/meetings/m-1.bin';
+    log.received?.set(path, { version: 'v-1', heads: 'heads-1' });
+    log.received?.set('devices/laptop/meetings/m-2.bin', {
+      version: 'v-2',
+      heads: 'heads-2',
+    });
+    await settle();
+    await logs.flushed();
+
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), {
+      scope: 'vault-a:device-1',
+      entries: {},
+      received: {
+        [path]: { version: 'v-1', heads: 'heads-1' },
+        'devices/laptop/meetings/m-2.bin': {
+          version: 'v-2',
+          heads: 'heads-2',
+        },
+      },
+    });
+    const again = await createPublishedLogs(file, 0).open('vault-a:device-1');
+    assert.deepEqual(again.received?.get(path), {
+      version: 'v-1',
+      heads: 'heads-1',
+    });
+    const other = await createPublishedLogs(file, 0).open('vault-b:device-2');
+    assert.equal(other.received?.get(path), undefined);
+
+    const pruning = createPublishedLogs(file, 0);
+    const kept = await pruning.open('vault-a:device-1');
+    kept.received?.prune((stale) => stale !== path);
+    await settle();
+    await pruning.flushed();
+    const after = await createPublishedLogs(file, 0).open('vault-a:device-1');
+    assert.notEqual(after.received?.get(path), undefined);
+    assert.equal(
+      after.received?.get('devices/laptop/meetings/m-2.bin'),
+      undefined,
+    );
   });
 
   it('reads a log written before the place’s version was kept', async () => {
@@ -52,6 +98,10 @@ describe('published log', () => {
     );
     const log = await createPublishedLogs(file, 0).open('vault-a:device-1');
     assert.deepEqual(log.get('m-1'), { heads: 'heads-1', version: null });
+    assert.equal(
+      log.received?.get('devices/laptop/meetings/m-1.bin'),
+      undefined,
+    );
   });
 
   it('starts empty from a damaged file instead of failing sync', async () => {

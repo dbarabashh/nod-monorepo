@@ -1,6 +1,6 @@
 import {
   documentHeads,
-  loadDocument,
+  loadDocumentState,
   saveDocument,
   type DocumentState,
   type MeetingDocument,
@@ -11,6 +11,7 @@ import {
   devicesPrefix,
   meetingContext,
   meetingPath,
+  parseClosedPath,
   parseMeetingPath,
 } from './layout.ts';
 import {
@@ -43,13 +44,30 @@ export type SyncStatus = {
 // listed that copy under once it appeared there, or null until it did.
 export type PublishedEntry = { heads: string; version: string | null };
 
+// What this device read of another device's file and kept: the version the
+// place listed it under and the version of the meeting it held.
+export type ReceivedEntry = { version: string; heads: string };
+
+// Remembers across launches which files of other devices this device already
+// read, so starting the app doesn't fetch every one of them again. An entry
+// only spares the read while the store still holds the meeting: a store that
+// started over, or lost the file, gets it back from here. Entries the round
+// finds stale are pruned.
+export type ReceivedLog = {
+  get: (path: string) => ReceivedEntry | undefined;
+  set: (path: string, entry: ReceivedEntry) => void;
+  prune: (stale: (path: string) => boolean) => void;
+};
+
 // Remembers across launches which version of each meeting this device
 // already published, so starting the app doesn't write every meeting again,
 // and how the place lists each copy, so a copy the place changed behind this
-// device's back (restored from a backup, say) is written again.
+// device's back (restored from a backup, say) is written again. Kept in one
+// place with what was received, since both are scoped the same way.
 export type PublishedLog = {
   get: (meetingId: string) => PublishedEntry | undefined;
   set: (meetingId: string, entry: PublishedEntry) => void;
+  received?: ReceivedLog;
 };
 
 function memoryPublishedLog(): PublishedLog {
@@ -62,8 +80,26 @@ function memoryPublishedLog(): PublishedLog {
   };
 }
 
+export function memoryReceivedLog(): ReceivedLog {
+  const entries = new Map<string, ReceivedEntry>();
+  return {
+    get: (path) => entries.get(path),
+    set: (path, entry) => {
+      entries.set(path, entry);
+    },
+    prune: (stale) => {
+      for (const path of entries.keys()) {
+        if (stale(path)) {
+          entries.delete(path);
+        }
+      }
+    },
+  };
+}
+
 export type SyncEngine = {
-  // Takes the vault's listing when the caller already has it this round.
+  // Takes the vault's listing when the caller already has it this round. A
+  // listing with files left out costs reading them again next round.
   sync: (listed?: RemoteFile[]) => Promise<void>;
   status: () => SyncStatus;
   // The version of another device's file this device has merged, if any.
@@ -71,6 +107,9 @@ export type SyncEngine = {
   // Ends the round in progress at its next file and any later round, for a
   // device leaving the vault.
   stop: () => void;
+  // Drops what was read of a device whose files the caller removed from the
+  // vault, since no listing names that device any more.
+  forget: (deviceId: string) => void;
 };
 
 export function createSyncEngine(options: {
@@ -84,14 +123,12 @@ export function createSyncEngine(options: {
   const { transport, vault, store, onRemote, now } = options;
   const fileKey = fileKeyOf(vault.key);
   const publishedLog = options.publishedLog ?? memoryPublishedLog();
-  const seen = new Map<string, string>();
+  const received = publishedLog.received ?? memoryReceivedLog();
   // Files that can't be read as they are, with what to report until the
   // place lists another version of them.
   const unreadable = new Map<string, { version: string; message: string }>();
   // The version of each meeting other devices hold in the vault, by file.
   const held = new Map<string, Map<string, string>>();
-  // The version of each such file whose changes the store kept.
-  const contained = new Map<string, string>();
   // The version each own copy was listed under last round, unless this
   // device wrote it since.
   let lastListed = new Map<string, string>();
@@ -160,8 +197,8 @@ export function createSyncEngine(options: {
       meetingPath(vault.deviceId, id),
       maxDocumentBytes,
     );
-    const document = sealed && readSealed(sealed, vault.deviceId, id);
-    return document !== null && documentHeads(document) === heads;
+    const loaded = sealed && readSealed(sealed, vault.deviceId, id);
+    return loaded !== null && documentHeads(loaded.document) === heads;
   }
 
   async function publish(
@@ -194,24 +231,34 @@ export function createSyncEngine(options: {
     return true;
   }
 
+  function noteHeld(meetingId: string, path: string, heads: string) {
+    const versions = held.get(meetingId) ?? new Map<string, string>();
+    versions.set(path, heads);
+    held.set(meetingId, versions);
+  }
+
   async function receive(
     path: string,
     deviceId: string,
     meetingId: string,
-  ): Promise<boolean> {
+    version: string,
+  ): Promise<void> {
     const sealed = await transport.read(path, maxDocumentBytes);
     if (!sealed) {
-      return false;
+      return;
     }
-    const document = readSealed(sealed, deviceId, meetingId);
-    if (!document) {
+    const loaded = readSealed(sealed, deviceId, meetingId);
+    // A file holding another meeting than its name says, or none the app
+    // can read, is as unreadable as a damaged one: the store would refuse
+    // it every time.
+    if (!loaded || loaded.state.id !== meetingId) {
       throw new UnreadableFile(
         'A meeting from another device could not be read',
       );
     }
-    const versions = held.get(meetingId) ?? new Map<string, string>();
-    versions.set(path, documentHeads(document));
-    held.set(meetingId, versions);
+    const { document } = loaded;
+    const heads = documentHeads(document);
+    noteHeld(meetingId, path, heads);
     const { state, written, kept } = store.merge(meetingId, document);
     if (state) {
       onRemote(state);
@@ -220,14 +267,16 @@ export function createSyncEngine(options: {
     if (restored) {
       onRemote(restored);
     }
-    return kept;
+    if (kept) {
+      received.set(path, { version, heads });
+    }
   }
 
   function readSealed(
     sealed: Uint8Array,
     deviceId: string,
     meetingId: string,
-  ): MeetingDocument | null {
+  ): ReturnType<typeof loadDocumentState> {
     let plain: Uint8Array;
     try {
       plain = open(
@@ -238,7 +287,7 @@ export function createSyncEngine(options: {
     } catch {
       return null;
     }
-    return loadDocument(plain);
+    return loadDocumentState(plain);
   }
 
   // Stops at the first refusal for the whole vault, so a device over its
@@ -272,14 +321,20 @@ export function createSyncEngine(options: {
     const listed = new Map(files.map((file) => [file.path, file.version]));
     const ownListed = new Map<string, string>();
     const devices = new Set<string>();
+    const shown = new Set<string>();
     for (const file of files) {
       if (stopped) {
         return;
+      }
+      const closedBy = parseClosedPath(file.path);
+      if (closedBy) {
+        shown.add(closedBy);
       }
       const parsed = parseMeetingPath(file.path);
       if (!parsed) {
         continue;
       }
+      shown.add(parsed.deviceId);
       // A copy this device wrote of a meeting it no longer holds (it started
       // over, or was reinstalled with the same id) may be the only one left,
       // since devices don't write back what they only received.
@@ -291,7 +346,12 @@ export function createSyncEngine(options: {
       if (!own) {
         devices.add(parsed.deviceId);
       }
-      if (seen.get(file.path) === file.version) {
+      const known = received.get(file.path);
+      if (
+        known?.version === file.version &&
+        store.document(parsed.meetingId) !== undefined
+      ) {
+        noteHeld(parsed.meetingId, file.path, known.heads);
         continue;
       }
       const broken = unreadable.get(file.path);
@@ -300,15 +360,12 @@ export function createSyncEngine(options: {
         continue;
       }
       try {
-        const kept = await receive(
+        await receive(
           file.path,
           parsed.deviceId,
           parsed.meetingId,
+          file.version,
         );
-        seen.set(file.path, file.version);
-        if (kept) {
-          contained.set(file.path, file.version);
-        }
       } catch (error) {
         const message = messageOf(error);
         failures.push(message);
@@ -329,6 +386,13 @@ export function createSyncEngine(options: {
       ownListed.delete(id);
     }
     lastListed = ownListed;
+    // Only among devices the listing still shows: a listing a caller
+    // narrowed to leave a device out, or an unmounted folder that lists
+    // nothing, says nothing about the files it doesn't name.
+    received.prune((path) => {
+      const parsed = parseMeetingPath(path);
+      return parsed !== null && shown.has(parsed.deviceId) && !listed.has(path);
+    });
     status = {
       lastSyncedAt: failures.length === 0 ? now() : status.lastSyncedAt,
       devices: devices.size,
@@ -348,9 +412,17 @@ export function createSyncEngine(options: {
       return next;
     },
     status: () => status,
-    merged: (path) => contained.get(path),
+    merged: (path) => {
+      const parsed = parseMeetingPath(path);
+      return parsed && store.document(parsed.meetingId) !== undefined
+        ? received.get(path)?.version
+        : undefined;
+    },
     stop: () => {
       stopped = true;
+    },
+    forget: (deviceId) => {
+      received.prune((path) => parseMeetingPath(path)?.deviceId === deviceId);
     },
   };
 }

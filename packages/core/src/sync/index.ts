@@ -9,8 +9,11 @@ export {
 } from './layout.ts';
 export {
   createSyncEngine,
+  memoryReceivedLog,
   type PublishedEntry,
   type PublishedLog,
+  type ReceivedEntry,
+  type ReceivedLog,
   type SyncEngine,
   type SyncStatus,
   type SyncStore,
@@ -32,6 +35,8 @@ export {
 export {
   createRelayTransport,
   relayBase,
+  inAbout,
+  throttledMessage,
   type Fetch,
   type RelayTransport,
 } from './relay.ts';
@@ -48,6 +53,10 @@ export {
   type PairingCode,
   type PairingOffer,
 } from './pairing.ts';
-export { createPublishedLog, readPublishedEntries } from './published-log.ts';
+export {
+  createPublishedLog,
+  readPublishedEntries,
+  readReceivedEntries,
+} from './published-log.ts';
 export type { Merged } from '../meetings/index.ts';
 export { guardedRound, pausedMessage, type RoundOutcome } from './round.ts';

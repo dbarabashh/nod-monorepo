@@ -16,6 +16,7 @@ import {
   createRelayTransport,
   isSyncId,
   readPublishedEntries,
+  readReceivedEntries,
   requestPairingOffer,
   type PairingCode,
   type PairingOffer,
@@ -211,8 +212,10 @@ export async function publishedLogFor(
   return createPublishedLog({
     scope,
     entries: readPublishedEntries(stored, scope),
+    received: readReceivedEntries(stored, scope),
     delayMs: 1_000,
-    // Losing it only costs writing each meeting once more.
+    // Losing it only costs writing each meeting, and reading each file of
+    // another device, once more.
     save: (data) => {
       file
         .write(data)

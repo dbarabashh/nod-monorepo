@@ -320,9 +320,16 @@ export function saveDocument(document: MeetingDocument): Uint8Array {
 }
 
 export function loadDocument(bytes: Uint8Array): MeetingDocument | null {
+  return loadDocumentState(bytes)?.document ?? null;
+}
+
+export function loadDocumentState(
+  bytes: Uint8Array,
+): { document: MeetingDocument; state: DocumentState } | null {
   try {
     const document = Automerge.load<MeetingFields>(bytes);
-    return readDocument(document) ? document : null;
+    const state = readDocument(document);
+    return state ? { document, state } : null;
   } catch {
     return null;
   }
