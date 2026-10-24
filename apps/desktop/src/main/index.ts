@@ -66,7 +66,7 @@ import { createSharingController } from './sharing/controller.ts';
 import { createSharingHandlers } from './sharing/handlers.ts';
 import { broadcastSharing, registerSharingIpc } from './ipc/sharing.ts';
 import { createSyncScheduler } from './sync/scheduler.ts';
-import { relayBase } from '@nod/core/sync';
+import { relayBase, type Fetch } from '@nod/core/sync';
 import { createPublishedLogs } from './sync/published-log.ts';
 import { createSyncSettings } from './sync/settings.ts';
 
@@ -195,17 +195,35 @@ function offeredRelay(url: string): string | null {
   }
 }
 
-const sharingController = createSharingController({
+// A request that never ends would hold sync busy until a restart. Relays,
+// including ones named by a link, get no cookies or HTTP credentials from
+// the app's session and can't store any in it, so none can track this
+// device across requests or hosts.
+const relayFetch: Fetch = (url, init) =>
+  net.fetch(url, {
+    ...init,
+    credentials: 'omit',
+    signal: AbortSignal.timeout(relayTimeoutMs),
+  });
+
+const sharingOptions = {
   directory: path.join(app.getPath('userData'), 'sharing'),
   cipher: () => dataCipher(async () => true),
   publishedLogs,
+  fetch: relayFetch,
   newId: randomUUID,
   now: Date.now,
+};
+
+const sharingController = createSharingController({
+  ...sharingOptions,
   onChange: () => broadcastSharing(sharingController),
 });
 
 const syncController = createSyncController({
   sharing: sharingController,
+  endingSharing: () =>
+    createSharingController({ ...sharingOptions, onChange: () => {} }),
   settings: createSyncSettings({
     directory: app.getPath('userData'),
     keychain,
@@ -218,9 +236,7 @@ const syncController = createSyncController({
       summaryArrived(state.id);
     }
   },
-  // A request that never ends would hold sync busy until a restart.
-  fetch: (url, init) =>
-    net.fetch(url, { ...init, signal: AbortSignal.timeout(relayTimeoutMs) }),
+  fetch: relayFetch,
   newId: randomUUID,
   now: Date.now,
   onChange: () => broadcastSync(syncController),
@@ -522,11 +538,21 @@ app.whenReady().then(async () => {
     createSharingHandlers({
       controller: sharingController,
       place: () => syncController.sharedPlace(),
+      syncRelay: () => {
+        const state = syncController.state();
+        return state.status === 'ready' &&
+          !state.closed &&
+          state.transport?.kind === 'relay'
+          ? state.transport.url
+          : null;
+      },
       meeting: (id) => recorder.meetings().find((entry) => entry.id === id),
       meetingName,
+      recordShare: (id, copy) => recorder.recordShare(id, copy),
       gate: dialogGate,
       copyText: (text) => clipboard.writeText(text),
       syncSoon: () => syncScheduler.soon(),
+      now: Date.now,
     }),
   );
   registerSyncIpc(

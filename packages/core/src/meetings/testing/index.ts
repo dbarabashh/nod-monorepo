@@ -30,6 +30,24 @@ export function memoryFiles(): MemoryFiles {
   };
 }
 
+// One document's file in memory: null until written, gone once set aside.
+export function memorySingleFile(): {
+  read: () => Promise<Uint8Array | null>;
+  write: (data: Uint8Array) => Promise<void>;
+  setAside: () => Promise<void>;
+} {
+  let data: Uint8Array | null = null;
+  return {
+    read: async () => data,
+    write: async (next) => {
+      data = next;
+    },
+    setAside: async () => {
+      data = null;
+    },
+  };
+}
+
 export const plainCipher: Cipher = {
   encrypt: (plain) => plain,
   decrypt: (data) => data,

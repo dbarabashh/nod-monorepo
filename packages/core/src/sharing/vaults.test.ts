@@ -21,6 +21,7 @@ import type { SharedNote } from './note.ts';
 import { createSharesStore } from './shares-store.ts';
 import {
   oneToOneKeyId,
+  oneToOneKeys,
   oneToOneVault,
   sharedNoteDocuments,
   sharesDocuments,
@@ -48,13 +49,7 @@ async function device(
   const engine = createDocumentSyncEngine({
     transport,
     vault: { deviceId: blindedDeviceId(identity, vault.id, deviceId) },
-    documents: sharedNoteDocuments({
-      id: vault.id,
-      fileKey: vault.fileKey,
-      keyId: oneToOneKeyId(),
-      identity,
-      publishers: vault.publishers,
-    }),
+    documents: sharedNoteDocuments(oneToOneKeys(identity, vault)),
     store,
     onRemote: (state) => {
       if (state.kind === 'note') {

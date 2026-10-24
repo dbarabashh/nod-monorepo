@@ -1,7 +1,9 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import {
+  createRelayRequester,
   createRelayTransport,
+  relayTransportOver,
   retryAfterOf,
   throttledMessage,
   type Fetch,
@@ -40,6 +42,59 @@ describe('relay transport without a body stream', () => {
     await assert.rejects(
       at(whole(new Uint8Array(4))).read('devices/a/meetings/m.bin', 3),
       /more than expected/,
+    );
+  });
+});
+
+describe('identity-signed relay requests', () => {
+  it('signs the path with its query and the body, and sends no bearer token', async () => {
+    const signed: Array<{ method: string; path: string; body: number }> = [];
+    const sent: Array<Record<string, string>> = [];
+    const fetch: Fetch = async (_url, init) => {
+      sent.push(init.headers);
+      return {
+        status: 200,
+        ok: true,
+        headers: { get: () => null },
+        body: null,
+        arrayBuffer: async () => new TextEncoder().encode('[]').buffer,
+      };
+    };
+    const transport = relayTransportOver(
+      createRelayRequester({
+        url: 'https://relay.example.com/sync',
+        vaultId: 'ab'.repeat(16),
+        fetch,
+        authorization: {
+          kind: 'identity',
+          sign: (request) => {
+            signed.push({
+              method: request.method,
+              path: request.path,
+              body: request.body?.length ?? -1,
+            });
+            return 'Nod-Identity signed';
+          },
+        },
+      }),
+    );
+    await transport.list('devices/');
+    await transport.write('devices/d/notes/n.bin', new Uint8Array(3));
+    assert.deepEqual(signed, [
+      {
+        method: 'GET',
+        path: `/sync/v1/vaults/${'ab'.repeat(16)}/files?prefix=devices%2F`,
+        body: -1,
+      },
+      {
+        method: 'PUT',
+        path: `/sync/v1/vaults/${'ab'.repeat(16)}/files/devices/d/notes/n.bin`,
+        body: 3,
+      },
+    ]);
+    assert.deepEqual(
+      sent.map((headers) => headers.authorization),
+      ['Nod-Identity signed', 'Nod-Identity signed'],
     );
   });
 });
@@ -257,7 +312,7 @@ describe('a relay that asked to wait', () => {
       (error: unknown) =>
         error instanceof WritesRefused &&
         error.message ===
-          'The relay answered 429: it took every change it allows this hour, sync will try again later',
+          'The relay answered 429: it took every change it allows for now, sync will try again later',
     );
     assert.deepEqual([...((await transport.read(path, 10)) ?? [])], [1]);
     assert.equal(calls, 2);

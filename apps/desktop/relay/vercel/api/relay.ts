@@ -7,15 +7,12 @@ import {
   head,
   put,
 } from '@vercel/blob';
-// Vercel compiles each function file to JavaScript without rewriting import
-// paths, so the module is imported by the name it has at run time.
-// oxlint-disable-next-line import/extensions
 import {
   Conflict,
   createRelayHandler,
   versionOf,
   type Storage,
-} from '../relay.js';
+} from '../relay.ts';
 
 async function bytesOf(stream: ReadableStream<Uint8Array>) {
   const chunks: Uint8Array[] = [];

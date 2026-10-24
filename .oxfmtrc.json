@@ -1,5 +1,8 @@
 {
   "singleQuote": true,
   "printWidth": 80,
-  "sortPackageJson": false
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "apps/desktop/relay/dist/"
+  ]
 }

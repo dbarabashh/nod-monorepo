@@ -27,10 +27,14 @@ holds the sync layer both features use: meetings are kept by the store in
 `@nod/core/meetings`, the one the desktop app uses; `session.ts` is plain
 logic tested on Node; `device.ts` adapts both to Expo (`expo-file-system`,
 `expo-secure-store`, `expo/fetch`); and `sync.ts` runs them and exposes
-hooks. Notes shared with other people (`docs/decisions/0003-sharing.md`) ride
-on the same session: the core sharing session gets its files and relay from
-`device.ts`, and `features/shared-notes` shows and edits what arrives; adding
-people and sharing a meeting happen on the computer. `src/lib/random.ts` backs
+hooks. Notes shared with other people, one to one or in a team
+(`docs/decisions/0003-sharing.md`), ride on the same session: the core
+sharing session gets its files and relays from `device.ts` (a one-to-one
+vault goes through the person's own relay; a team vault is reached on the
+relay its access list lives on, every request signed by the person's
+identity), and `features/shared-notes` shows and edits what arrives, read
+only where the person is a reader; adding people, joining and managing teams
+and sharing a meeting happen on the computer. `src/lib/random.ts` backs
 `crypto.getRandomValues` with `expo-crypto` and is imported first.
 
 Recording transcribes on the phone with whisper.cpp (`whisper.rn`), the

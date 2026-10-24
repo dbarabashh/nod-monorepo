@@ -35,6 +35,7 @@ describe('reading a meetings export', () => {
           summary: '## Decisions\n- Ship on Friday',
           summaryEdited: false,
           folder: null,
+          sharedAs: [],
           transcript: [
             {
               id: 'imported-5f0c1e2a-0b7d-4c55-9a51-3c1a2b3c4d5e-00001',

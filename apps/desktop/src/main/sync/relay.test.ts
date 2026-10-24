@@ -172,34 +172,38 @@ describe('relay transport', () => {
     );
   });
 
-  it('needs the key for every path, including the old pairing area', async () => {
+  it('needs the key for every file, and stores nothing outside a vault’s layout', async () => {
     await startRelay();
     const owner = transport(ownerToken);
     await owner.register();
-    await owner.write('pairing/r1/offer.json', Buffer.from('{}'));
+    await owner.write('devices/a/meetings/m1.bin', Buffer.from('sealed'));
     const stranger = transport(null);
-    await assert.rejects(stranger.list('pairing/'), /401/);
+    await assert.rejects(stranger.list('devices/'), /401/);
     await assert.rejects(
-      stranger.read('pairing/r1/offer.json', 1_000_000),
+      stranger.read('devices/a/meetings/m1.bin', 1_000_000),
       /401/,
     );
-    await assert.rejects(
-      stranger.write('pairing/r1/request.json', Buffer.from('{}')),
-      /401/,
-    );
-    await assert.rejects(
-      stranger.write('pairing/r1/reveal.json', Buffer.from('{}')),
-      /401/,
-    );
-    await assert.rejects(stranger.remove('pairing/r1/offer.json'), /401/);
     await assert.rejects(
       stranger.write('devices/x/meetings/m.bin', Buffer.from('x')),
       /401/,
     );
     await assert.rejects(stranger.remove('devices/a/meetings/m1.bin'), /401/);
+    await assert.rejects(
+      stranger.write('pairing/r1/request.json', Buffer.from('{}')),
+      /401/,
+    );
+    await assert.rejects(
+      owner.write('pairing/r1/offer.json', Buffer.from('{}')),
+      /400/,
+    );
+    await assert.rejects(owner.list('pairing/'), /400/);
+    await assert.rejects(
+      owner.write('devices/a/other.bin', Buffer.from('x')),
+      /400/,
+    );
     assert.deepEqual(
-      (await owner.list('pairing/')).map((file) => file.path),
-      ['pairing/r1/offer.json'],
+      (await owner.list('devices/')).map((file) => file.path),
+      ['devices/a/meetings/m1.bin'],
     );
   });
 

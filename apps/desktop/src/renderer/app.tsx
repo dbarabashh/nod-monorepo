@@ -18,7 +18,8 @@ import {
 import { SettingsView } from './features/settings/index.ts';
 import {
   SharedNotesView,
-  SharingPanel,
+  PeoplePanel,
+  TeamsPanel,
   useShareTargets,
 } from './features/sharing/index.ts';
 import {
@@ -53,8 +54,16 @@ function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [meetingsHome, setMeetingsHome] = useState(0);
   const [folder, setFolder] = useState<string | null>(null);
+  const [openNote, setOpenNote] = useState<{
+    target: string;
+    id: string;
+  } | null>(null);
   const meetings = useMeetingList();
   const shareTargets = useShareTargets();
+  const openSharedNote = useCallback((target: string, id: string) => {
+    setOpenNote({ target, id });
+    setPage('shared');
+  }, []);
 
   const showFolder = useCallback((next: string | null) => {
     setFolder(next);
@@ -115,7 +124,10 @@ function Shell() {
             <NavItem
               icon="document"
               current={page === 'shared'}
-              onClick={() => setPage('shared')}
+              onClick={() => {
+                setOpenNote(null);
+                setPage('shared');
+              }}
             >
               Shared notes
             </NavItem>
@@ -143,9 +155,13 @@ function Shell() {
               />
             )}
             shareTargets={shareTargets}
+            onOpenSharedNote={openSharedNote}
           />
         ) : page === 'shared' ? (
-          <SharedNotesView />
+          <SharedNotesView
+            key={openNote ? `${openNote.target}:${openNote.id}` : ''}
+            open={openNote}
+          />
         ) : (
           <SettingsView
             audio={
@@ -158,7 +174,8 @@ function Shell() {
             summaries={<ModelsPanel kind="summary" />}
             assistants={<AssistantsPanel />}
             sync={<SyncPanel />}
-            sharing={<SharingPanel />}
+            people={<PeoplePanel />}
+            teams={<TeamsPanel />}
             recovery={<RecoveryPanel />}
             import={<ImportPanel />}
           />

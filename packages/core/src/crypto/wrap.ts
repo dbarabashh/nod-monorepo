@@ -1,7 +1,7 @@
 import { gcm } from '@noble/ciphers/aes.js';
 import { randomBytes } from '@noble/ciphers/utils.js';
 import { x25519 } from '@noble/curves/ed25519.js';
-import { nonceLength, tagLength } from './aead.ts';
+import { keyLength, nonceLength, tagLength } from './aead.ts';
 import { bytesOf, concatBytes } from './encoding.ts';
 import { deriveKey } from './vault-keys.ts';
 
@@ -21,13 +21,14 @@ function wrappingKeyFor(
   );
 }
 
-// A key handed to one person: sealed under a key only they and a fresh
+// Something handed to one person: sealed under a key only they and a fresh
 // ephemeral key can derive, with the context (which vault, record,
-// generation and recipient) bound in, so a wrap can't be replayed anywhere
-// else. The ephemeral public key travels in front of the ciphertext.
-export function wrapKey(
+// generation and recipient) bound in, so it can't be replayed anywhere else.
+// The ephemeral public key travels in front of the ciphertext. Keys are
+// wrapped this way, and so is the name a joiner sends their inviter.
+export function sealFor(
   recipientPublicKey: Uint8Array,
-  key: Uint8Array,
+  plain: Uint8Array,
   context: string,
 ): Uint8Array {
   const ephemeralKey = randomBytes(ephemeralLength);
@@ -37,19 +38,19 @@ export function wrapKey(
     wrappingKeyFor(secret, ephemeralPublicKey, recipientPublicKey),
     nonce,
     bytesOf(context),
-  ).encrypt(key);
+  ).encrypt(plain);
   return concatBytes(ephemeralPublicKey, body);
 }
 
-export function unwrapKey(
+export function openFor(
   wrappingKey: Uint8Array,
-  wrapped: Uint8Array,
+  sealed: Uint8Array,
   context: string,
 ): Uint8Array {
-  if (wrapped.length < ephemeralLength + tagLength) {
+  if (sealed.length < ephemeralLength + tagLength) {
     throw new Error('Wrapped key could not be opened');
   }
-  const ephemeralPublicKey = wrapped.subarray(0, ephemeralLength);
+  const ephemeralPublicKey = sealed.subarray(0, ephemeralLength);
   try {
     const secret = x25519.getSharedSecret(wrappingKey, ephemeralPublicKey);
     return gcm(
@@ -60,8 +61,28 @@ export function unwrapKey(
       ),
       nonce,
       bytesOf(context),
-    ).decrypt(wrapped.subarray(ephemeralLength));
+    ).decrypt(sealed.subarray(ephemeralLength));
   } catch {
     throw new Error('Wrapped key could not be opened');
   }
+}
+
+export function wrapKey(
+  recipientPublicKey: Uint8Array,
+  key: Uint8Array,
+  context: string,
+): Uint8Array {
+  return sealFor(recipientPublicKey, key, context);
+}
+
+export function unwrapKey(
+  wrappingKey: Uint8Array,
+  wrapped: Uint8Array,
+  context: string,
+): Uint8Array {
+  const key = openFor(wrappingKey, wrapped, context);
+  if (key.length !== keyLength) {
+    throw new Error('Wrapped key could not be opened');
+  }
+  return key;
 }

@@ -17,6 +17,8 @@
     "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts relay forge.config.mts vite.main.config.mts vite.preload.config.mts vite.renderer.config.mts",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
+    "relay:build": "node relay/build.ts",
+    "relay:deploy": "node relay/build.ts && node relay/deploy.ts",
     "test": "node --test \"src/**/*.test.ts\" \"relay/**/*.test.ts\""
   },
   "devDependencies": {

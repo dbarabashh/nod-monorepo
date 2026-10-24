@@ -9,6 +9,8 @@ import {
 } from '../crypto/index.ts';
 import {
   addPeer,
+  addTeam,
+  leaveTeam,
   createSharesDocument,
   loadSharesDocument,
   mergeSharesDocuments,
@@ -42,15 +44,57 @@ describe('shares document', () => {
     assert.throws(() => addPeer(shares, 'nod-id:v1:junk'), /identity card/);
   });
 
-  // Teams come with the second change; a list written by a newer device
-  // already reads here.
-  it('reads the teams a newer device wrote', () => {
-    const shares = Automerge.change(createSharesDocument(), (fields) => {
-      fields.teams['vault-t'] = { host: 'relay.example', leftAt: 6_000 };
-    });
+  it('reads teams, and leaves out an entry with no team vault id or relay', () => {
+    const vaultId = 'ab'.repeat(16);
+    const shares = Automerge.change(
+      addTeam(createSharesDocument(), vaultId, {
+        host: 'https://relay.example/',
+        request: null,
+        invitedBy: null,
+        replaces: null,
+      }),
+      (fields) => {
+        fields.teams['vault-t'] = { host: 'relay.example', leftAt: 6_000 };
+        fields.teams['ef'.repeat(16)] = { host: '', leftAt: null };
+        fields.teams['12'.repeat(16)] = {
+          host: 'http://relay.example/',
+          leftAt: null,
+        };
+      },
+    );
     assert.deepEqual(readSharesDocument(saveAndLoad(shares))?.teams, [
-      { vaultId: 'vault-t', host: 'relay.example', leftAt: 6_000 },
+      {
+        vaultId,
+        host: 'https://relay.example/',
+        leftAt: null,
+        request: null,
+        invitedBy: null,
+        replaces: null,
+      },
     ]);
+    const asked = addTeam(shares, 'cd'.repeat(16), {
+      host: 'https://other.example/',
+      request: 'ef'.repeat(32),
+      invitedBy: { invite: 'ab'.repeat(32), identity: '12'.repeat(32) },
+      replaces: '34'.repeat(32),
+    });
+    assert.deepEqual(readSharesDocument(asked)?.teams[1], {
+      vaultId: 'cd'.repeat(16),
+      host: 'https://other.example/',
+      leftAt: null,
+      request: 'ef'.repeat(32),
+      invitedBy: { invite: 'ab'.repeat(32), identity: '12'.repeat(32) },
+      replaces: '34'.repeat(32),
+    });
+    const left = leaveTeam(asked, vaultId, 7_000);
+    assert.deepEqual(readSharesDocument(left)?.teams[0], {
+      vaultId,
+      host: 'https://relay.example/',
+      leftAt: 7_000,
+      request: null,
+      invitedBy: null,
+      replaces: null,
+    });
   });
 
   it('keeps shares two devices added at once, and a stop either made', () => {

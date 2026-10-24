@@ -306,6 +306,7 @@ describe('importing meetings', () => {
       summaryEdited: false,
       summaryStatus: 'idle',
       problem: null,
+      sharedAs: [],
     });
     assert.deepEqual(await reopened.recorder.list(), [
       {

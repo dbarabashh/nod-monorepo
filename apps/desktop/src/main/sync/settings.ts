@@ -16,7 +16,15 @@ export type Vault = {
   transport: TransportSettings | null;
   recoveryConfirmed: boolean;
   closed: boolean;
+  // The key and device id this device had under its previous phrase, kept
+  // only while that identity's teams are still being handed to this one: a
+  // change of phrase that stops part way (a crash, a quit, a relay that
+  // failed) is finished by later rounds. The device id names the copies the
+  // old identity published.
+  handingOver?: HandingOver | null;
 };
+
+export type HandingOver = { key: Uint8Array; deviceId: string };
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
@@ -47,6 +55,45 @@ export function createSyncSettings(options: {
   keychain: KeyWrap;
 }) {
   const settingsFile = path.join(options.directory, 'sync.json');
+
+  function wrapKey(key: Uint8Array): string {
+    return Buffer.from(
+      options.keychain.wrap(Buffer.from(key).toString('base64')),
+    ).toString('base64');
+  }
+
+  // A damaged old key only stops a hand-over from finishing; it never
+  // makes the vault itself unreadable.
+  function handingOverOf(stored: unknown): { handingOver?: HandingOver } {
+    if (typeof stored !== 'object' || stored === null) {
+      return {};
+    }
+    const key = field(stored, 'key');
+    const deviceId = field(stored, 'deviceId');
+    if (
+      typeof key !== 'string' ||
+      typeof deviceId !== 'string' ||
+      !isSyncId(deviceId)
+    ) {
+      return {};
+    }
+    try {
+      return { handingOver: { key: unwrapKey(key), deviceId } };
+    } catch {
+      return {};
+    }
+  }
+
+  function unwrapKey(wrapped: string): Uint8Array {
+    const key = Buffer.from(
+      options.keychain.unwrap(Buffer.from(wrapped, 'base64')),
+      'base64',
+    );
+    if (key.length !== keyLength) {
+      throw new Error('The sync key is damaged');
+    }
+    return key;
+  }
   let writing: Promise<void> = Promise.resolve();
 
   return {
@@ -77,13 +124,8 @@ export function createSyncSettings(options: {
       if (typeof wrapped !== 'string') {
         throw new Error('Sync settings are damaged');
       }
-      const key = Buffer.from(
-        options.keychain.unwrap(Buffer.from(wrapped, 'base64')),
-        'base64',
-      );
-      if (key.length !== keyLength) {
-        throw new Error('The sync key is damaged');
-      }
+      const key = unwrapKey(wrapped);
+      const previous = field(raw, 'handingOver');
       return {
         id: vaultIdOf(key),
         key,
@@ -91,6 +133,7 @@ export function createSyncSettings(options: {
         transport,
         recoveryConfirmed: field(raw, 'recoveryConfirmed') === true,
         closed: field(raw, 'closed') === true,
+        ...handingOverOf(previous),
       };
     },
     // One file holds the wrapped key and everything tied to it, so a failed
@@ -106,9 +149,13 @@ export function createSyncSettings(options: {
     await writeAtomically(
       settingsFile,
       JSON.stringify({
-        key: Buffer.from(
-          options.keychain.wrap(Buffer.from(vault.key).toString('base64')),
-        ).toString('base64'),
+        key: wrapKey(vault.key),
+        handingOver: vault.handingOver
+          ? {
+              key: wrapKey(vault.handingOver.key),
+              deviceId: vault.handingOver.deviceId,
+            }
+          : null,
         deviceId: vault.deviceId,
         transport: vault.transport,
         recoveryConfirmed: vault.recoveryConfirmed,

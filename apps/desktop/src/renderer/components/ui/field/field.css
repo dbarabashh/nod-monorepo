@@ -51,6 +51,11 @@
     resize: vertical;
   }
 
+  &:is(select) {
+    inline-size: auto;
+    cursor: default;
+  }
+
   &:hover:not(:disabled),
   &:focus-visible {
     background-color: var(--color-field-hover);

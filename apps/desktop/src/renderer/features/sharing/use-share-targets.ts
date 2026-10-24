@@ -1,18 +1,23 @@
-import type { ShareTargets } from '../../lib/share-targets.ts';
+import { useMemo } from 'react';
+import { shareTargetsOf, type ShareTargets } from '../../lib/share-targets.ts';
 import { useAsync } from '../../lib/use-async.ts';
 import { getSharingState, onSharingChanged, shareMeeting } from './api.ts';
 
-async function share(meetingId: string, peer: string): Promise<void> {
-  await shareMeeting(meetingId, peer);
+async function share(meetingId: string, target: string): Promise<void> {
+  await shareMeeting(meetingId, target);
 }
 
 export function useShareTargets(): ShareTargets | null {
   const { state } = useAsync(getSharingState, onSharingChanged);
-  if (state.status !== 'ready' || state.value.status !== 'ready') {
-    return null;
-  }
-  const peers = state.value.peers
-    .filter((peer) => peer.stoppedAt === null)
-    .map((peer) => ({ identity: peer.identity, code: peer.code }));
-  return peers.length === 0 ? null : { peers, share };
+  const sharing =
+    state.status === 'ready' && state.value.status === 'ready'
+      ? state.value
+      : null;
+  return useMemo(() => {
+    if (!sharing) {
+      return null;
+    }
+    const { targets, known } = shareTargetsOf(sharing);
+    return known.length === 0 ? null : { targets, known, share };
+  }, [sharing]);
 }

@@ -13,6 +13,8 @@ import {
   secureVaults,
   sharedPlaceFor,
   sharesFileFor,
+  teamFilesFor,
+  teamRelays,
 } from './device.ts';
 import {
   createSharingSession,
@@ -109,6 +111,8 @@ export const meetingStore = store;
 const sharing = createSharingSession({
   sharesFileFor,
   noteFilesFor,
+  teamFilesFor,
+  relays: teamRelays,
   cipher: () => meetingCipher('open'),
   publishedLogFor: publishedLogIn,
   newId: randomUUID,
@@ -205,26 +209,26 @@ function view(): SyncView {
 }
 
 export function getSharedNote(
-  peer: string,
+  target: string,
   id: string,
 ): Promise<SharedNoteDetail> {
-  return sharing.note(peer, id);
+  return sharing.note(target, id);
 }
 
 export async function editSharedNote(
-  peer: string,
+  target: string,
   id: string,
   summary: string,
 ): Promise<void> {
-  await sharing.editNote(peer, id, summary);
+  await sharing.editNote(target, id, summary);
   syncSoon();
 }
 
 export async function deleteSharedNote(
-  peer: string,
+  target: string,
   id: string,
 ): Promise<void> {
-  await sharing.deleteNote(peer, id);
+  await sharing.deleteNote(target, id);
   syncSoon();
 }
 

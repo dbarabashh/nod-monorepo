@@ -17,6 +17,7 @@ type MeetingDetailProps = {
   now: Date;
   actions: ReactNode;
   shareTargets: ShareTargets | null;
+  onOpenSharedNote: (target: string, id: string) => void;
   onBack: () => void;
 };
 
@@ -26,6 +27,7 @@ export function MeetingDetail({
   now,
   actions,
   shareTargets,
+  onOpenSharedNote,
   onBack,
 }: MeetingDetailProps) {
   const titleId = useId();
@@ -100,7 +102,12 @@ export function MeetingDetail({
               )}
             </ul>
           </div>
-          <MeetingTranscript meetingId={meeting.id} status={meeting.status} />
+          <MeetingTranscript
+            meetingId={meeting.id}
+            status={meeting.status}
+            shareTargets={shareTargets}
+            onOpenSharedNote={onOpenSharedNote}
+          />
         </div>
       </div>
     </article>

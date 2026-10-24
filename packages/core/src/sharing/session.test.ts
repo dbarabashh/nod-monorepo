@@ -49,7 +49,10 @@ function person(rootKey: Uint8Array, deviceId: string) {
 
 const relay = () => {
   const transport = createMemoryTransport();
-  const place: SharedPlace = { name: 'memory', open: async () => transport };
+  const place: SharedPlace = {
+    name: 'memory',
+    open: async () => transport,
+  };
   return { transport, place };
 };
 
@@ -94,10 +97,10 @@ describe('sharing session', () => {
     const seen = bob.session.snapshot();
     assert.equal(seen.status, 'ready');
     assert.deepEqual(
-      seen.notes.map((note) => [note.title, note.peerCode]),
+      seen.notes.map((note) => [note.title, note.label]),
       [['Planning', identityCodeOf(identityOf(alice.rootKey).publicKey)]],
     );
-    const note = await bob.session.note(seen.notes[0]?.peer ?? '', shared.id);
+    const note = await bob.session.note(seen.notes[0]?.target ?? '', shared.id);
     assert.equal(note.summary, 'We plan to ship sharing.');
     assert.equal(transport.paths().length, 1);
     assert.match(transport.paths()[0] ?? '', /^devices\/[0-9a-f]{64}\/notes\//);

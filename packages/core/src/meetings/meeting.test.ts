@@ -14,6 +14,7 @@ import {
   moveToFolder,
   parseMeeting,
   recordedMs,
+  recordShare,
   renameMeeting,
   resumeMeeting,
   setSummary,
@@ -77,6 +78,7 @@ describe('reading a stored meeting', () => {
         titleEdited: false,
         generatedTitle: null,
         folder: null,
+        sharedAs: [],
       },
     );
   });
@@ -361,6 +363,52 @@ describe('the transcript', () => {
         transcript: [{ speaker: 'robot', startMs: 0, endMs: 1, text: 'x' }],
       }),
       null,
+    );
+  });
+});
+
+describe('shared copies', () => {
+  it('records each note once, newest replacing an entry for the same note', () => {
+    const meeting = startMeeting('m1', 'Plan', 1_000);
+    const target = 'ef'.repeat(16);
+    const kind = 'team';
+    const once = recordShare(meeting, {
+      noteId: 'n1',
+      target,
+      kind,
+      sharedAt: 1,
+    });
+    const again = recordShare(once, {
+      noteId: 'n1',
+      target,
+      kind,
+      sharedAt: 2,
+    });
+    assert.deepEqual(again.sharedAs, [
+      { noteId: 'n1', target, kind, sharedAt: 2 },
+    ]);
+    assert.deepEqual(meeting.sharedAs, []);
+  });
+
+  it('reads shares as a list sorted by time, leaving out what it can’t read', () => {
+    const target = 'ef'.repeat(16);
+    const read = parseMeeting({
+      ...startMeeting('m1', 'Plan', 1_000),
+      sharedAs: [
+        { noteId: 'n2', target, kind: 'team', sharedAt: 3 },
+        { noteId: 7 },
+        { noteId: 'n1', target, kind: 'person', sharedAt: 1 },
+        { noteId: 'n3', target, kind: 'group', sharedAt: 2 },
+      ],
+    });
+    assert.deepEqual(
+      read?.sharedAs.map((copy) => copy.noteId),
+      ['n1', 'n2'],
+    );
+    assert.deepEqual(
+      parseMeeting({ ...startMeeting('m1', 'Plan', 1), sharedAs: { n1: {} } })
+        ?.sharedAs,
+      [],
     );
   });
 });

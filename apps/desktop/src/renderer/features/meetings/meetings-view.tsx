@@ -33,6 +33,7 @@ type MeetingsViewProps = {
   recordButton: ReactNode;
   meetingActions: (meeting: Meeting) => ReactNode;
   shareTargets: ShareTargets | null;
+  onOpenSharedNote: (target: string, id: string) => void;
 };
 
 export function MeetingsView({
@@ -42,6 +43,7 @@ export function MeetingsView({
   recordButton,
   meetingActions,
   shareTargets,
+  onOpenSharedNote,
 }: MeetingsViewProps) {
   const { state, retry } = meetings;
   const [query, setQuery] = useState('');
@@ -204,6 +206,7 @@ export function MeetingsView({
         now={now}
         actions={meetingActions(selected)}
         shareTargets={shareTargets}
+        onOpenSharedNote={onOpenSharedNote}
         onBack={() => {
           setReturnTo(selected.id);
           setSelectedId(null);

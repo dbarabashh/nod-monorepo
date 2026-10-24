@@ -80,6 +80,7 @@ describe('createRecorder', () => {
         titleEdited: false,
         generatedTitle: null,
         folder: null,
+        sharedAs: [],
       },
     ]);
   });
@@ -108,6 +109,7 @@ describe('createRecorder', () => {
       titleEdited: false,
       generatedTitle: null,
       folder: null,
+      sharedAs: [],
     };
     const { recorder, advance, saved } = setup([earlier]);
     await recorder.load();
@@ -146,6 +148,7 @@ describe('createRecorder', () => {
       titleEdited: false,
       generatedTitle: null,
       folder: null,
+      sharedAs: [],
     });
     assert.equal(recorder.summaries()[0]?.status, 'finished');
     await assert.rejects(recorder.resume(id), /cannot be resumed/);
@@ -457,6 +460,7 @@ describe('createRecorder', () => {
         titleEdited: false,
         generatedTitle: null,
         folder: 'Clients',
+        sharedAs: [],
       },
     ]);
     await recorder.load();
@@ -532,6 +536,7 @@ describe('createRecorder', () => {
     const filed = (id: string, title: string): Meeting => ({
       ...startMeeting(id, title, 0),
       folder: 'Clients',
+      sharedAs: [],
     });
     const disk = new Map([
       ['a', filed('a', 'Alpha')],

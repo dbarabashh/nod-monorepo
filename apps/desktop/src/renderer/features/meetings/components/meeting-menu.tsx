@@ -90,7 +90,7 @@ function MenuItems({
   }
   return (
     <>
-      {shareTargets && (
+      {shareTargets && shareTargets.targets.length > 0 && (
         <ShareItems meetingId={meetingId} targets={shareTargets} />
       )}
       <PopoverItem
@@ -121,19 +121,19 @@ function ShareItems({
       <p className="menu-popover__note" role="status">
         {shareNote(done, error)}
       </p>
-      {targets.peers.map((peer) => (
+      {targets.targets.map((entry) => (
         <PopoverItem
-          key={peer.identity}
-          icon="document"
+          key={entry.target}
+          icon={entry.kind === 'team' ? 'people' : 'person'}
           disabled={busy}
           onClick={() => {
             setDone(false);
             run(() =>
-              targets.share(meetingId, peer.identity).then(() => setDone(true)),
+              targets.share(meetingId, entry.target).then(() => setDone(true)),
             );
           }}
         >
-          {peer.code}
+          {entry.label}
         </PopoverItem>
       ))}
       <PopoverSeparator />

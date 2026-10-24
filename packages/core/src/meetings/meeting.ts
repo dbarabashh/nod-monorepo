@@ -1,3 +1,6 @@
+import { isSyncId } from '../sync/layout.ts';
+import { field } from './field.ts';
+
 export type Segment = {
   startedAt: number;
   endedAt: number;
@@ -13,6 +16,16 @@ export type TranscriptLine = {
   text: string;
 };
 
+// Where a meeting's notes were shared: the note's id and the person or team
+// it went to, so the app can show it and open the copy. The target is the
+// share target the sharing code knows; the meeting only carries it.
+export type SharedCopy = {
+  noteId: string;
+  target: string;
+  kind: 'person' | 'team';
+  sharedAt: number;
+};
+
 export type Meeting = {
   id: string;
   title: string;
@@ -24,6 +37,7 @@ export type Meeting = {
   titleEdited: boolean;
   generatedTitle: string | null;
   folder: string | null;
+  sharedAs: SharedCopy[];
 };
 
 export function startMeeting(id: string, title: string, now: number): Meeting {
@@ -38,7 +52,48 @@ export function startMeeting(id: string, title: string, now: number): Meeting {
     titleEdited: false,
     generatedTitle: null,
     folder: null,
+    sharedAs: [],
   };
+}
+
+export function recordShare(meeting: Meeting, copy: SharedCopy): Meeting {
+  return {
+    ...meeting,
+    sharedAs: [
+      ...meeting.sharedAs.filter((entry) => entry.noteId !== copy.noteId),
+      copy,
+    ],
+  };
+}
+
+// Documents from before sharing have no such field; an entry this version
+// can't read is left out rather than hiding the meeting.
+export function sharedCopiesOf(value: unknown): SharedCopy[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const copies: SharedCopy[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) {
+      continue;
+    }
+    const noteId = field(entry, 'noteId');
+    const target = field(entry, 'target');
+    const kind = field(entry, 'kind');
+    const sharedAt = field(entry, 'sharedAt');
+    if (
+      typeof noteId === 'string' &&
+      isSyncId(noteId) &&
+      typeof target === 'string' &&
+      isSyncId(target) &&
+      (kind === 'person' || kind === 'team') &&
+      typeof sharedAt === 'number' &&
+      Number.isFinite(sharedAt)
+    ) {
+      copies.push({ noteId, target, kind, sharedAt });
+    }
+  }
+  return copies.sort((a, b) => a.sharedAt - b.sharedAt);
 }
 
 export function resumeMeeting(meeting: Meeting, now: number): Meeting {
@@ -270,10 +325,6 @@ export function recordedMs(meeting: Meeting): number {
   );
 }
 
-function field(value: object, key: string): unknown {
-  return Reflect.get(value, key);
-}
-
 function parseSegment(raw: unknown): Segment | null {
   if (typeof raw !== 'object' || raw === null) {
     return null;
@@ -365,5 +416,6 @@ export function parseMeeting(raw: unknown): Meeting | null {
     titleEdited,
     generatedTitle,
     folder: folderName(field(raw, 'folder')),
+    sharedAs: sharedCopiesOf(field(raw, 'sharedAs')),
   };
 }

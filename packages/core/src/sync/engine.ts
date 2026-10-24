@@ -52,6 +52,11 @@ export type SyncDocuments<D, S> = {
   load: (plain: Uint8Array) => { document: D; id: string; state: S } | null;
   heads: (document: D) => string;
   save: (document: D) => Uint8Array;
+  // false for a copy this device must not take although it opened: one from
+  // a publisher who has lost the right to write. It counts as absent,
+  // quietly, until the place lists another version of it, so a device that
+  // holds the document publishes a copy of its own for the others.
+  admit?: (sealed: Uint8Array) => boolean;
 };
 
 export type SyncStatus = {
@@ -130,6 +135,9 @@ export type SyncEngine = {
   // Drops what was read of a device whose files the caller removed from the
   // vault, since no listing names that device any more.
   forget: (deviceId: string) => void;
+  // Reads every file again at the next round, for a caller whose rules on
+  // what to take changed (someone lost the right to write).
+  recheck?: () => void;
 };
 
 // Meetings in a person's own vault: version 1 files under the vault's file
@@ -201,6 +209,7 @@ export function createDocumentSyncEngine<D, S>(options: {
   // Files that can't be read as they are, with what to report until the
   // place lists another version of them.
   const unreadable = new Map<string, { version: string; message: string }>();
+  const refused = new Map<string, string>();
   // The version of each document other devices hold in the vault, by file.
   const held = new Map<string, Map<string, string>>();
   // The version each own copy was listed under last round, unless this
@@ -327,6 +336,10 @@ export function createDocumentSyncEngine<D, S>(options: {
       );
     }
     const { document } = loaded;
+    if (documents.admit && !documents.admit(sealed)) {
+      refused.set(path, version);
+      return;
+    }
     const heads = documents.heads(document);
     noteHeld(id, path, heads);
     const { state, written, kept } = store.merge(id, document);
@@ -415,6 +428,9 @@ export function createDocumentSyncEngine<D, S>(options: {
         noteHeld(parsed.id, file.path, known.heads);
         continue;
       }
+      if (refused.get(file.path) === file.version) {
+        continue;
+      }
       const broken = unreadable.get(file.path);
       if (broken?.version === file.version) {
         failures.push(broken.message);
@@ -480,6 +496,11 @@ export function createDocumentSyncEngine<D, S>(options: {
     forget: (deviceId) => {
       received.prune((path) => documents.parse(path)?.deviceId === deviceId);
     },
+    recheck: () => {
+      received.prune(() => true);
+      refused.clear();
+      held.clear();
+    },
   };
 }
 
@@ -517,6 +538,11 @@ export function composeEngines(engines: SyncEngine[]): SyncEngine {
     forget: (deviceId) => {
       for (const engine of engines) {
         engine.forget(deviceId);
+      }
+    },
+    recheck: () => {
+      for (const engine of engines) {
+        engine.recheck?.();
       }
     },
   };

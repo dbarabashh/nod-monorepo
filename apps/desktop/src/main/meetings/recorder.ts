@@ -11,12 +11,14 @@ import {
   importedCopyId,
   maxImportCopies,
   moveToFolder,
+  recordShare,
   renameMeeting,
   resumeMeeting,
   setSummary,
   startMeeting,
   type DocumentState,
   type Meeting,
+  type SharedCopy,
   type TranscriptLine,
 } from '@nod/core/meetings';
 import type {
@@ -51,6 +53,7 @@ export type Recorder = {
   removeMany: (ids: readonly string[]) => Promise<MeetingsDeleteResult>;
   rename: (id: string, title: string) => Promise<void>;
   moveToFolder: (id: string, folder: string | null) => Promise<void>;
+  recordShare: (id: string, copy: SharedCopy) => Promise<void>;
   renameFolder: (from: string, to: string) => Promise<string>;
   removeFolder: (name: string) => Promise<void>;
   applyRemote: (state: DocumentState) => void;
@@ -300,6 +303,7 @@ export function createRecorder(options: {
         summaryEdited: meeting.summaryEdited,
         summaryStatus: summaryStatus.get(id) ?? 'idle',
         problem: problemOf(id),
+        sharedAs: meeting.sharedAs,
       };
     },
     transcriptOf: lookup,
@@ -335,6 +339,8 @@ export function createRecorder(options: {
       update(id, (meeting) => renameMeeting(meeting, title)),
     moveToFolder: (id, folder) =>
       update(id, (meeting) => moveToFolder(meeting, folder)),
+    recordShare: (id, copy) =>
+      update(id, (meeting) => recordShare(meeting, copy)),
     renameFolder: async (from, to) => {
       const name = folderName(to);
       if (name === null) {

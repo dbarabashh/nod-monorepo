@@ -20,7 +20,9 @@ import {
   type Merged,
 } from '../meetings/index.ts';
 import {
+  createDocumentSyncEngine,
   createSyncEngine,
+  meetingDocuments,
   memoryReceivedLog,
   type PublishedEntry,
   type PublishedLog,
@@ -1004,5 +1006,57 @@ describe('what was received, against a store that lost it', () => {
     await store.load();
     await phone(memory, store, received).sync();
     assert.deepEqual(store.ids(), ['m-1']);
+  });
+});
+
+describe('copies a document kind refuses', () => {
+  it('takes nothing from a refused copy, says nothing, and reads it again after a recheck', async () => {
+    const relay = createMemoryTransport();
+    const vault = { id: vaultIdOf(key), key };
+    const planning = createDocument(startMeeting('m-1', 'Planning', 1_000));
+    await relay.write(
+      meetingPath('laptop', 'm-1'),
+      seal(
+        fileKeyOf(key),
+        saveDocument(planning),
+        meetingContext(vault.id, 'laptop', 'm-1'),
+      ),
+    );
+    let allowed = false;
+    let reads = 0;
+    const merged: string[] = [];
+    const engine = createDocumentSyncEngine({
+      transport: {
+        ...relay,
+        read: (path, maxBytes) => {
+          reads += 1;
+          return relay.read(path, maxBytes);
+        },
+      },
+      vault: { deviceId: 'phone' },
+      documents: { ...meetingDocuments(vault), admit: () => allowed },
+      store: {
+        ids: () => [],
+        document: () => undefined,
+        merge: (id) => {
+          merged.push(id);
+          return nothing;
+        },
+      },
+      onRemote: () => {},
+      now: () => 1,
+    });
+    await engine.sync();
+    assert.deepEqual(merged, []);
+    assert.equal(engine.status().error, null);
+    assert.equal(reads, 1);
+    // The same version isn't fetched again while it stays refused.
+    await engine.sync();
+    assert.equal(reads, 1);
+    allowed = true;
+    engine.recheck?.();
+    await engine.sync();
+    assert.deepEqual(merged, ['m-1']);
+    assert.equal(reads, 2);
   });
 });

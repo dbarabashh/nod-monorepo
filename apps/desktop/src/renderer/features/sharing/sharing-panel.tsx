@@ -1,5 +1,11 @@
-import { useState } from 'react';
-import type { SharingPeer } from '../../../shared/ipc.ts';
+import { useState, type ReactNode } from 'react';
+import type {
+  SharingPeer,
+  SharingState,
+  TeamInfo,
+} from '../../../shared/ipc.ts';
+
+type SharingReady = Extract<SharingState, { status: 'ready' }>;
 import { Button, Field, Textarea } from '../../components/ui/index.ts';
 import { useAction } from '../../lib/use-action.ts';
 import { useAsync } from '../../lib/use-async.ts';
@@ -10,6 +16,8 @@ import {
   showIdentityCard,
   stopSharingPeer,
 } from './api.ts';
+import { TeamCard } from './components/team-card.tsx';
+import { CreateTeam, JoinTeam } from './components/team-forms.tsx';
 import './sharing.css';
 
 function AddPerson() {
@@ -98,9 +106,34 @@ function People({ peers }: { peers: SharingPeer[] }) {
   );
 }
 
-export function SharingPanel() {
+function Teams({ teams, me }: { teams: TeamInfo[]; me: string }) {
+  return (
+    <section className="sharing__box" aria-label="Teams">
+      <h3 className="sharing__box-title">Teams</h3>
+      {teams.length === 0 ? (
+        <p className="sharing__note">
+          No teams yet. Create one below, or join one from a link someone sent
+          you.
+        </p>
+      ) : (
+        <div className="sharing__teams">
+          {teams.map((team) => (
+            <TeamCard key={team.vaultId} team={team} me={me} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Both pages need the identity's sharing state, and neither exists before
+// a recovery phrase does.
+function WithSharing({
+  children,
+}: {
+  children: (sharing: SharingReady) => ReactNode;
+}) {
   const { state } = useAsync(getSharingState, onSharingChanged);
-  const { busy, error, run } = useAction();
 
   if (state.status === 'loading') {
     return <p className="sharing__note">Checking sharing…</p>;
@@ -120,18 +153,25 @@ export function SharingPanel() {
       </p>
     );
   }
+  return <div className="sharing">{children(sharing)}</div>;
+}
+
+function Identity({
+  sharing,
+  about,
+}: {
+  sharing: SharingReady;
+  about: string;
+}) {
+  const { busy, error, run } = useAction();
+
   return (
-    <div className="sharing">
+    <>
       <dl className="sharing__facts">
         <dt>Your identity code</dt>
         <dd data-selectable>{sharing.code}</dd>
       </dl>
-      <p className="sharing__note">
-        Your identity comes from your recovery phrase, so every device of yours
-        has it. Send your card to someone and add theirs, and the two of you can
-        share notes. Notes travel encrypted through the folder or relay you sync
-        with, and only the two of you can read them.
-      </p>
+      <p className="sharing__note">{about}</p>
       <div className="sharing__actions">
         <Button
           variant="primary"
@@ -146,8 +186,41 @@ export function SharingPanel() {
           {error ?? sharing.error}
         </p>
       )}
-      <People peers={sharing.peers} />
-      <AddPerson />
-    </div>
+    </>
+  );
+}
+
+export function PeoplePanel() {
+  return (
+    <WithSharing>
+      {(sharing) => (
+        <>
+          <Identity
+            sharing={sharing}
+            about="Your identity comes from your recovery phrase, so every device of yours has it. Send your card to the person and add theirs. Notes you share travel encrypted through the folder or relay you sync with."
+          />
+          <People peers={sharing.peers} />
+          <AddPerson />
+        </>
+      )}
+    </WithSharing>
+  );
+}
+
+export function TeamsPanel() {
+  return (
+    <WithSharing>
+      {(sharing) => (
+        <>
+          <Identity
+            sharing={sharing}
+            about="An owner or admin can add you to their team by your identity card, or send you an invite link. A team’s notes travel encrypted through its relay."
+          />
+          <Teams teams={sharing.teams} me={sharing.code} />
+          <CreateTeam />
+          <JoinTeam />
+        </>
+      )}
+    </WithSharing>
   );
 }

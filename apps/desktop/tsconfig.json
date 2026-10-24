@@ -19,5 +19,5 @@
     }
   },
   "include": ["src/**/*", "relay/**/*", "*.ts", "*.mts", "scripts/**/*"],
-  "exclude": ["relay/vercel/api", "relay/vercel/node_modules"]
+  "exclude": ["relay/vercel/api", "relay/vercel/node_modules", "relay/dist"]
 }

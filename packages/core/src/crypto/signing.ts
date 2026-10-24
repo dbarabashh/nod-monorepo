@@ -9,7 +9,8 @@ export type SigningPurpose =
   | 'nod:sig:acl:v1'
   | 'nod:sig:file:v2'
   | 'nod:sig:relay:v1'
-  | 'nod:sig:join:v1';
+  | 'nod:sig:join:v1'
+  | 'nod:sig:invite:v1';
 
 // One identity key signs cards, access-list records, files, relay requests
 // and join proofs. Each message starts with the purpose and frames every
@@ -48,8 +49,13 @@ export function verify(
   ) {
     return false;
   }
+  // RFC 8032 rules rather than the library's ZIP-215 default, which accepts
+  // small-order public keys anyone can sign for, and other spellings of one
+  // point.
   try {
-    return ed25519.verify(signature, framed(purpose, fields), publicKey);
+    return ed25519.verify(signature, framed(purpose, fields), publicKey, {
+      zip215: false,
+    });
   } catch {
     return false;
   }

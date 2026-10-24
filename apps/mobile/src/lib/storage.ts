@@ -16,6 +16,10 @@ export const sharesDirectory = (vaultId: string) =>
   new Directory(sharingDirectory(), vaultId);
 export const sharedVaultDirectory = (vaultId: string) =>
   new Directory(sharingDirectory(), 'shared', vaultId);
+export const teamDirectory = (vaultId: string) =>
+  new Directory(sharingDirectory(), 'teams', vaultId);
+export const teamNotesDirectory = (vaultId: string) =>
+  new Directory(teamDirectory(vaultId), 'notes');
 
 // A file replaced by a move loses the flag, so files are marked after every
 // write; a folder keeps it, and it covers everything inside it.

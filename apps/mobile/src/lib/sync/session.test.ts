@@ -794,6 +794,7 @@ describe('sharing on the phone', () => {
       sharing: {
         load: async (vault) => {
           seen.push(vault ? vault.deviceId : null);
+          return vault !== null;
         },
         sharesEngine: async () => {
           sharesRounds += 1;
@@ -802,7 +803,7 @@ describe('sharing on the phone', () => {
         round: async (place) => {
           rounds.push(place?.name ?? 'none');
         },
-        endAll: async () => {},
+        leaveDevice: async () => {},
       },
       sharedPlaceFor: (vault) => ({
         name: vault.relayUrl,
@@ -823,5 +824,64 @@ describe('sharing on the phone', () => {
     assert.deepEqual(seen, [null, 'phone-1', null]);
     await session.refresh();
     assert.deepEqual(rounds, [relay, relay]);
+  });
+
+  it('takes only this phone out of the shares when it unpairs or pairs with another phrase', async () => {
+    const key = randomKey();
+    const { transport } = memoryRelay();
+    const store = createMeetingStore({
+      files: memoryFiles(),
+      cipher: async () => cipher,
+    });
+    await store.load();
+    let saved: StoredVault | null = null;
+    let ids = 0;
+    const left: string[] = [];
+    const session = createSyncSession({
+      vaults: {
+        load: async () => saved,
+        save: async (vault) => {
+          saved = vault;
+        },
+        clear: async () => {
+          saved = null;
+        },
+      },
+      store,
+      transportFor: () => transport,
+      onRemote: () => {},
+      onChange: () => {},
+      newId: () => `phone-${(ids += 1)}`,
+      now: () => 5,
+      sharing: {
+        load: async () => true,
+        sharesEngine: async () => null,
+        round: async () => {},
+        leaveDevice: async (place) => {
+          left.push(place?.name ?? 'none');
+        },
+      },
+      sharedPlaceFor: (vault) => ({
+        name: vault.relayUrl,
+        open: async () => transport,
+      }),
+    });
+    await session.load();
+
+    await session.pair({ key, relayUrl: relay });
+    await session.refresh();
+    assert.deepEqual(left, []);
+    await session.unpair();
+    assert.deepEqual(left, [relay]);
+
+    await session.pair({ key, relayUrl: relay });
+    await session.refresh();
+    await transport.write(
+      closedPath('laptop'),
+      sealClosedNotice(fileKeyOf(key), vaultIdOf(key), 'laptop', 9),
+    );
+    await session.refresh();
+    await session.pair({ key: randomKey(), relayUrl: relay });
+    assert.deepEqual(left, [relay, relay]);
   });
 });

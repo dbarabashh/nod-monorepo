@@ -3,6 +3,8 @@ import path from 'node:path';
 import type { DocumentState } from '@nod/core/meetings';
 import {
   fileKeyOf,
+  identityCard,
+  identityOf,
   keyFromRecoveryPhrase,
   randomKey,
   recoveryPhrase,
@@ -36,7 +38,12 @@ import type { SharedPlace, SharingController } from '../sharing/controller.ts';
 import { createFolderTransport } from './folder-transport.ts';
 import { createRelayTransport, type Fetch } from '@nod/core/sync';
 import type { PublishedLogs } from './published-log.ts';
-import type { SyncSettings, TransportSettings, Vault } from './settings.ts';
+import type {
+  HandingOver,
+  SyncSettings,
+  TransportSettings,
+  Vault,
+} from './settings.ts';
 
 const folderName = 'nod-sync';
 
@@ -56,6 +63,8 @@ function placeNameOf(transport: TransportSettings): string {
 }
 
 const forgetBatch = 8;
+const handOverRetryMs = 5 * 60 * 1000;
+const handOverPending = 'Sharing is still moving to the new phrase.';
 
 export type PhrasePreview = {
   vaultCode: string;
@@ -65,9 +74,26 @@ export type PhrasePreview = {
   // How long the place that could be reached asked this device to wait.
   waitMs: number | null;
   devices: number | null;
+  // Teams the phrase before this one managed are still being handed over;
+  // switching now leaves them with it.
+  handingOver: boolean;
 };
 
 export class UnreachableError extends Error {}
+
+// The teams this identity manages whose list can't be read now, which a
+// change of phrase can't hand over; empty when they couldn't be checked.
+export class UnreachableTeamsError extends Error {
+  readonly teams: string[];
+  constructor(teams: string[]) {
+    super(
+      teams.length === 0
+        ? 'The teams you manage couldn’t be checked, so the phrase wasn’t changed'
+        : 'Some teams you manage can’t be reached, so the phrase wasn’t changed',
+    );
+    this.teams = teams;
+  }
+}
 
 // Two messages shown together read as two sentences.
 function sentences(...parts: Array<string | null>): string | null {
@@ -98,7 +124,20 @@ export function createSyncController(options: {
   defaultRelay: string | null;
   sharing?: Pick<
     SharingController,
-    'load' | 'sharesEngine' | 'round' | 'endAll'
+    | 'load'
+    | 'sharesEngine'
+    | 'round'
+    | 'leaveDevice'
+    | 'unreachableTeams'
+    | 'endIdentity'
+    | 'snapshot'
+  >;
+  // A second session, apart from the one the app shows, that a hand-over
+  // left unfinished loads the old identity into, so nothing the user does in
+  // the meantime runs as an identity that is ending.
+  endingSharing?: () => Pick<
+    SharingController,
+    'load' | 'unreachableTeams' | 'endIdentity' | 'snapshot'
   >;
 }) {
   const { settings, store, onRemote, fetch, newId, now, onChange, sharing } =
@@ -110,6 +149,11 @@ export function createSyncController(options: {
   // Outlives sync rounds and confirming the phrase, unlike error: only the
   // next change of phrase clears it.
   let warning: string | null = null;
+  // What a phrase change finished at a later start still has to do, or
+  // couldn’t do; it outlives the warnings a change of its own replaces.
+  let handOverNote: string | null = null;
+  // When a hand-over that couldn't finish is tried again.
+  let handOverAfter = 0;
   let closedUnsaved = false;
   let inFlight: Promise<void> = Promise.resolve();
   let busy = false;
@@ -131,14 +175,18 @@ export function createSyncController(options: {
         now,
       });
     }
-    // An unmounted drive looks like an empty folder; removing from it would
-    // seem to work while the files stay where the drive is.
-    await stat(transport.folder).catch(() => {
-      throw new Error('The sync folder can’t be found');
-    });
+    await assertMounted(transport.folder);
     return createFolderTransport(
       path.join(transport.folder, folderName, target.id),
     );
+  }
+
+  // An unmounted drive looks like an empty folder; removing from it would
+  // seem to work while the files stay where the drive is.
+  async function assertMounted(folder: string) {
+    await stat(folder).catch(() => {
+      throw new Error('The sync folder can’t be found');
+    });
   }
 
   function transportFor(
@@ -166,9 +214,9 @@ export function createSyncController(options: {
     return {
       name: placeNameOf(transport),
       open: async (target) => {
-        const place = await placeFor(target, transport);
-        await place.register?.();
-        return place;
+        const opened = await placeFor(target, transport);
+        await opened.register?.();
+        return opened;
       },
     };
   }
@@ -273,6 +321,110 @@ export function createSyncController(options: {
     await connect();
   }
 
+  // The session reports what went partly wrong in its state, which loading
+  // another vault clears, so it is read right after the call.
+  async function sharingStep<T>(
+    step: () => Promise<T> | undefined,
+    fallback: T,
+  ): Promise<{ value: T; trouble: string | null }> {
+    try {
+      const value = (await step()) ?? fallback;
+      const state = sharing?.snapshot();
+      return {
+        value,
+        trouble: state?.status === 'ready' ? state.error : null,
+      };
+    } catch (failure) {
+      return { value: fallback, trouble: messageOf(failure) };
+    }
+  }
+
+  // A team this identity manages that can't be reached now isn't handed to
+  // the new phrase, so the user agrees to leave it behind first.
+  async function assertTeamsReachable() {
+    const teams = await sharing?.unreachableTeams().catch(() => null);
+    if (teams === null || (teams && teams.length > 0)) {
+      throw new UnreachableTeamsError(teams ?? []);
+    }
+  }
+
+  // A change of phrase that stopped before the old identity handed its
+  // teams over. The old identity loads into a session of its own and, only
+  // once every team it may manage can be reached (one it can't reach would
+  // be left to it), ends there while the app's session holds no identity.
+  // Until every team is handed over the old key stays, and rounds try again
+  // no more often than `handOverRetryMs`.
+  async function resumeHandOver(next: Vault, previous: HandingOver) {
+    const separate = options.endingSharing;
+    // Without a session apart from the app's, the old identity would run
+    // where the user acts, so the hand-over waits for one.
+    if (now() < handOverAfter || (sharing && !separate)) {
+      return;
+    }
+    busy = true;
+    const ending = sharing && separate ? separate() : null;
+    let unloaded = false;
+    try {
+      if (!ending) {
+        await finishHandOver(next);
+        return;
+      }
+      handOverAfter = now() + handOverRetryMs;
+      if (!(await ending.load(previous))) {
+        handOverNote =
+          'Sharing is still moving to the new phrase: the old phrase’s shares couldn’t be read.';
+        return;
+      }
+      const unreachable = await ending.unreachableTeams().catch(() => null);
+      if (unreachable === null || unreachable.length > 0) {
+        handOverNote =
+          'Sharing is still moving to the new phrase. It finishes once the teams can be reached.';
+        return;
+      }
+      unloaded = true;
+      await sharing?.load(null);
+      // Loaded again now that the app's session is gone, so nothing it
+      // wrote to a team's files in the meantime is missed.
+      if (!(await ending.load(previous))) {
+        handOverNote =
+          'Sharing is still moving to the new phrase: the old phrase’s shares couldn’t be read.';
+        return;
+      }
+      const ended = await ending.endIdentity(placeOf(next.transport), {
+        card: identityCard(identityOf(next.key)),
+        vaultId: next.id,
+      });
+      const snapshot = ending.snapshot();
+      const trouble = snapshot.status === 'ready' ? snapshot.error : null;
+      if (ended.unfinished.length > 0) {
+        handOverNote = `Sharing is still moving to the new phrase: ${trouble ?? `${ended.unfinished.join(', ')} isn’t handed over yet.`}`;
+        return;
+      }
+      await finishHandOver(next);
+      handOverAfter = 0;
+      handOverNote =
+        trouble && `Sharing didn’t fully move to the new phrase: ${trouble}`;
+    } catch (failure) {
+      handOverNote = `Sharing is still moving to the new phrase: ${messageOf(failure)}`;
+    } finally {
+      await ending?.load(null).catch(() => undefined);
+      if (unloaded) {
+        await sharing?.load(vault).catch(() => undefined);
+      }
+      busy = false;
+    }
+  }
+
+  async function finishHandOver(next: Vault) {
+    const done = { ...next, handingOver: null };
+    await settings.save(done);
+    vault = done;
+  }
+
+  function handingOverOf(current: Vault): HandingOver {
+    return { key: current.key, deviceId: current.deviceId };
+  }
+
   function requireVault(): Vault {
     if (!vault) {
       throw new Error('This device has no recovery phrase yet');
@@ -300,6 +452,7 @@ export function createSyncController(options: {
       busy = true;
       generation += 1;
       error = null;
+      handOverNote = null;
       // What the user asks for is one deliberate ask of the place, and may
       // be another place; a relay still refusing says so again.
       connectAfter = 0;
@@ -377,7 +530,11 @@ export function createSyncController(options: {
         connected: connection !== null,
         devices: status?.devices ?? 0,
         lastSyncedAt: status?.lastSyncedAt ?? null,
-        error: sentences(error ?? status?.error ?? null, warning),
+        error: sentences(
+          error ?? status?.error ?? null,
+          warning,
+          vault.handingOver ? (handOverNote ?? handOverPending) : handOverNote,
+        ),
         recoveryConfirmed: vault.recoveryConfirmed,
         closed: vault.closed,
       };
@@ -402,6 +559,7 @@ export function createSyncController(options: {
       }
       const replacing = unreadable !== null;
       const vaultCode = vaultCodeOf(vaultIdOf(key));
+      const handingOver = Boolean(current?.handingOver);
       if (!current?.transport) {
         return {
           vaultCode,
@@ -410,6 +568,7 @@ export function createSyncController(options: {
           reachable: true,
           waitMs: null,
           devices: null,
+          handingOver,
         };
       }
       const asked = (waitMs: number | null): PhrasePreview => ({
@@ -419,6 +578,7 @@ export function createSyncController(options: {
         reachable: waitMs === null,
         waitMs,
         devices: null,
+        handingOver,
       });
       if (stillWaiting(connectAfter, now())) {
         return asked(connectAfter - now());
@@ -455,11 +615,15 @@ export function createSyncController(options: {
         }
         if (current) {
           await leave(current, choices.leaveCopies);
-          // Another phrase is another identity: every share ends, best
-          // effort, before this device becomes someone else to its peers.
-          await sharing
-            ?.endAll(placeOf(current.transport))
-            .catch(() => undefined);
+          // Only this device moves: the person's other devices may still use
+          // the old phrase, so its identity and shares stay as they are.
+          const left = await sharingStep(
+            () => sharing?.leaveDevice(placeOf(current.transport)),
+            undefined,
+          );
+          warning =
+            left.trouble &&
+            `This device’s shared copies weren’t all removed: ${left.trouble}`;
         }
         await adopt(vaultOf(key, current?.transport ?? null, true));
         unreadable = null;
@@ -477,10 +641,18 @@ export function createSyncController(options: {
     // The new phrase is never sent anywhere, so a lost device can't get it;
     // the user enters it on the devices they keep. It is saved before the old
     // vault is touched, so a failure there can't lose it.
-    changePhrase: (leaveCopies: boolean) =>
+    changePhrase: (leaveCopies: boolean, leaveTeams = false) =>
       change(async () => {
         const current = requireVault();
         warning = null;
+        if (!leaveTeams) {
+          // A new old key would replace the one still handing over, leaving
+          // its teams to it, so the user agrees to that first.
+          if (current.handingOver) {
+            throw new UnreachableTeamsError([]);
+          }
+          await assertTeamsReachable();
+        }
         const next = vaultOf(randomKey(), current.transport, false);
         let old: Connection | null = null;
         if (current.transport) {
@@ -494,15 +666,37 @@ export function createSyncController(options: {
             }
           }
         }
-        // The identity changes with the phrase, so every one-to-one share
-        // ends: the copies come off the old place while it can be reached.
-        await sharing
-          ?.endAll(old ? placeOf(current.transport) : null)
-          .catch(() => undefined);
-        await settings.save(next);
-        vault = next;
+        // Saved with the old key beside it until the hand-over is done, so a
+        // crash in between finishes it at the next start.
+        await settings.save({ ...next, handingOver: handingOverOf(current) });
+        // The old identity ends while it is still loaded: its one-to-one
+        // shares stop, its copies come off the old place while it can be
+        // reached, and the teams it manages go to the new identity, whose
+        // shares list on this device names them before they are handed over.
+        const ended = await sharingStep(
+          () =>
+            sharing?.endIdentity(old ? placeOf(current.transport) : null, {
+              card: identityCard(identityOf(next.key)),
+              vaultId: next.id,
+            }),
+          null,
+        );
+        // Teams it couldn't hand over yet are finished by later rounds,
+        // which need the old key, unless the user agreed to leave them.
+        const unfinished =
+          !leaveTeams &&
+          sharing !== undefined &&
+          (ended.value === null || ended.value.unfinished.length > 0);
+        const saved = unfinished
+          ? { ...next, handingOver: handingOverOf(current) }
+          : next;
+        if (!unfinished) {
+          await settings.save(saved);
+        }
+        vault = saved;
         connection = null;
         await sharing?.load(next);
+        const sharingTrouble = ended.trouble;
         if (old) {
           let kept: string | null = null;
           try {
@@ -532,6 +726,11 @@ export function createSyncController(options: {
           warning =
             'The new phrase is saved, but the folder or relay couldn’t be reached, so your other devices weren’t told. Enter the new phrase on them now.';
         }
+        warning = sentences(
+          warning,
+          sharingTrouble &&
+            `Sharing didn’t fully move to the new phrase: ${sharingTrouble}`,
+        );
         await connect();
       }),
     recoveryPhrase: (): string => recoveryPhrase(requireVault().key),
@@ -653,6 +852,11 @@ export function createSyncController(options: {
       const round = inFlight.then(async () => {
         if (busy) {
           return;
+        }
+        const handing = vault?.handingOver;
+        if (vault && handing) {
+          await resumeHandOver(vault, handing);
+          onChange();
         }
         await connect();
         const current = connection;

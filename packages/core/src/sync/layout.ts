@@ -7,6 +7,7 @@ const noteFile = new RegExp(
   `^devices/(${idPattern})/notes/(${idPattern})\\.bin$`,
 );
 const sharesFile = new RegExp(`^devices/(${idPattern})/shares\\.bin$`);
+const membersFile = new RegExp(`^devices/(${idPattern})/members\\.bin$`);
 const wholeId = new RegExp(`^${idPattern}$`);
 
 export function isSyncId(value: string): boolean {
@@ -81,4 +82,18 @@ export function parseSharesPath(path: string): string | null {
 
 export function sharesContext(vaultId: string, deviceId: string): string {
   return `nod:shares:${vaultId}:${deviceId}`;
+}
+
+// A team's member names, written by its owners and admins beside their notes
+// and sealed like one.
+export function membersPath(deviceId: string): string {
+  return `devices/${deviceId}/members.bin`;
+}
+
+export function parseMembersPath(path: string): string | null {
+  return membersFile.exec(path)?.[1] ?? null;
+}
+
+export function membersContext(vaultId: string, deviceId: string): string {
+  return `nod:members:v2:${vaultId}:${deviceId}`;
 }

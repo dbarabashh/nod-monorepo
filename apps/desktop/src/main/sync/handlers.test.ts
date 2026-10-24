@@ -7,7 +7,7 @@ import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
 import { createSyncController } from './controller.ts';
-import { randomKey, recoveryPhrase } from '@nod/core/crypto';
+import { randomKey, recoveryPhrase, vaultIdOf } from '@nod/core/crypto';
 import { openPairingOffer, readPairingCode } from '@nod/core/sync';
 import {
   createSyncHandlers,
@@ -37,6 +37,7 @@ describe('sync handlers', () => {
     respond?: () => Response;
     showPairing?: (screen: PairingScreen) => Promise<void>;
     listenForPairing?: ListenForPairing;
+    sharing?: Parameters<typeof createSyncController>[0]['sharing'];
   }) {
     const store = createMeetingStore({
       directory: join(dir(), 'meetings'),
@@ -64,6 +65,7 @@ describe('sync handlers', () => {
       now: () => 1,
       onChange: () => {},
       defaultRelay: null,
+      sharing: options.sharing,
     });
     await controller.load();
     const asked: Question[] = [];
@@ -143,6 +145,26 @@ describe('sync handlers', () => {
     tick(10_000);
     assert.equal(await handlers.enterRecoveryPhrase(zeroKeyPhrase), true);
     assert.equal(controller.recoveryPhrase(), zeroKeyPhrase);
+  });
+
+  it('says before switching phrases that teams still being handed over stay behind', async () => {
+    const key = randomKey();
+    await createSyncSettings({ directory: dir(), keychain: reversing }).save({
+      id: vaultIdOf(key),
+      key,
+      deviceId: randomUUID(),
+      transport: null,
+      recoveryConfirmed: true,
+      closed: false,
+      handingOver: { key: randomKey(), deviceId: randomUUID() },
+    });
+    const { handlers, asked } = await setUp({ answers: [false] });
+
+    assert.equal(await handlers.enterRecoveryPhrase(zeroKeyPhrase), false);
+    assert.match(
+      asked[0]?.detail ?? '',
+      /still being handed to this one\. Switching now leaves them with that phrase/,
+    );
   });
 
   it('shows the phrase only in its own dialog, and records it written down only from there', async () => {
@@ -482,5 +504,58 @@ describe('sync handlers', () => {
     await handlers.changeRecoveryPhrase();
     assert.equal(asked.at(-1)?.message, 'Change the phrase anyway?');
     assert.notEqual(controller.recoveryPhrase(), zeroKeyPhrase);
+  });
+
+  it('names the teams it can’t hand over and changes the phrase only after a second yes', async () => {
+    let ended = 0;
+    const { controller, handlers, asked, tick } = await setUp({
+      answers: [true, true, false, true, true],
+      sharing: {
+        snapshot: () => ({ status: 'none' }),
+        load: async () => true,
+        sharesEngine: async () => null,
+        round: async () => {},
+        leaveDevice: async () => {},
+        unreachableTeams: async () => ['Road\n\nmap', 'Plans'],
+        endIdentity: async () => {
+          ended += 1;
+          return { handed: [], unfinished: [] };
+        },
+      },
+    });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+
+    await assert.rejects(handlers.changeRecoveryPhrase(), /can’t be reached/);
+    assert.equal(asked[1]?.message, 'Change your recovery phrase?');
+    assert.equal(asked[2]?.message, 'Change the phrase without these teams?');
+    assert.equal(
+      asked[2]?.detail.split('\n\n')[0],
+      'The relay of “Road map”, “Plans” can’t be reached right now, so those teams don’t move to the new phrase.',
+    );
+    assert.equal(controller.recoveryPhrase(), zeroKeyPhrase);
+    assert.equal(ended, 0);
+
+    tick(60_000);
+    await handlers.changeRecoveryPhrase();
+    assert.equal(
+      asked.at(-1)?.message,
+      'Change the phrase without these teams?',
+    );
+    assert.notEqual(controller.recoveryPhrase(), zeroKeyPhrase);
+    assert.equal(ended, 1);
+  });
+
+  it('says in the phrase-change dialog what happens to shares and teams', async () => {
+    const { handlers, asked } = await setUp({ answers: [true, false] });
+    await handlers.enterRecoveryPhrase(zeroKeyPhrase);
+    await handlers.changeRecoveryPhrase();
+    const detail = asked[1]?.detail ?? '';
+    assert.match(detail, /Notes you share with a person stop being shared/);
+    assert.match(
+      detail,
+      /Teams you own move to the new phrase, and your old identity is removed from them\./,
+    );
+    assert.match(detail, /ask the owner to remove your old identity/);
+    assert.match(detail, /Every other team has to invite you again\.$/);
   });
 });

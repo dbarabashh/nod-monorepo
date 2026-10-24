@@ -1,5 +1,15 @@
 export { keyLength, open, randomKey, seal } from './aead.ts';
-export { bytesOf, fromBase64, textOf, toBase64 } from './encoding.ts';
+export {
+  bytesOf,
+  concatBytes,
+  fromBase64,
+  fromBase64Url,
+  fromHex,
+  textOf,
+  toBase64,
+  toBase64Url,
+  toHex,
+} from './encoding.ts';
 export {
   blindedDeviceId,
   identityCard,
@@ -36,4 +46,15 @@ export {
   vaultCodeOf,
   vaultIdOf,
 } from './vault-keys.ts';
-export { unwrapKey, wrapKey } from './wrap.ts';
+export { openFor, sealFor, unwrapKey, wrapKey } from './wrap.ts';
+export {
+  relayRequestScheme,
+  relayRequestWindowMs,
+  signRelayRequest,
+  verifyRelayRequest,
+} from './relay-request.ts';
+export type {
+  RelayRequestParts,
+  VerifiedRelayRequest,
+} from './relay-request.ts';
+export { publicKeyLength, signatureLength } from './signing.ts';

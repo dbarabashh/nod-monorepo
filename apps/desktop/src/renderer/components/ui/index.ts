@@ -12,8 +12,9 @@ export {
   CardTitle,
 } from './card/card.tsx';
 export { cx } from './cx.ts';
+export { MarkdownEditor } from './editable/markdown-editor.tsx';
 export { EmptyState } from './empty-state/empty-state.tsx';
-export { Field, Input, Textarea } from './field/field.tsx';
+export { Field, Input, Select, Textarea } from './field/field.tsx';
 export { Icon, type IconName } from './icon/icon.tsx';
 export { InputGroup } from './input-group/input-group.tsx';
 export { List, ListRow } from './list/list.tsx';

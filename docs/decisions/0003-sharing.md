@@ -108,15 +108,25 @@ signing key's signature over both, as `nod-id:v1:<base64url>`; it is public,
 travels over any channel, and is checked by its signature before use. The
 card proves possession of the signing key only; a card that names someone
 else's wrapping key wastes a wrap and nothing more. A card shows a short
-**identity code** (the first 64 bits of SHA-256 of the signing public key,
-grouped like the vault code) so two people can compare it aloud.
+**identity code** (the first 80 bits of SHA-256 of the signing public key,
+in five groups of four hex digits) so two people can compare it aloud; 64
+bits would leave finding a second key with the same code within reach of a
+well-funded attacker.
+
+Signatures follow RFC 8032 strictly: the verifier refuses small-order public
+keys, which anyone can sign for, and other spellings of one point. A card
+whose wrapping key is of small order is refused too, since every shared
+secret with it is zero and a key change that wraps for it would fail. Every
+byte string a card or a record carries in base64url must be in its one
+canonical spelling, so a record can't take another id by spelling its
+signature another way.
 
 Everything the signing key signs (cards, access-list records, sealed files,
 relay requests, join proofs) is one binary framing defined in core, with
 fixed field order and length-prefixed fields, under a distinct prefix per use
 (`nod:sig:card:v1`, `nod:sig:acl:v1`, `nod:sig:file:v2`, `nod:sig:relay:v1`,
-`nod:sig:join:v1`), so a signature made for one purpose can't be presented as
-another. A record's id is SHA-256 of the record with its signature.
+`nod:sig:join:v1`, `nod:sig:invite:v1`), so a signature made for one purpose
+can't be presented as another. A record's id is SHA-256 of the record with its signature.
 
 ### Changing the phrase
 
@@ -125,22 +135,50 @@ reason to change it is that the old one may be in someone else's hands. So
 the switch hands every share over to the new identity and leaves the old one
 nothing:
 
-- for each team, the old identity signs an `accountsAdd` of the new
-  identity's card with its own role (a writer where it was an admin, since
-  only owners make admins), an owner signs an `ownerChange` to the new
-  identity as well, and the old identity signs a `requestRemove` for itself.
-  These records are queued at the switch and delivered on the next round, so
-  being offline never blocks the change (0001). A record needs the list's
-  current head as its previous id, so the device keeps the old signing key,
-  sealed as the root key is, for the one purpose of signing them again on
-  top of whatever head it finds, and discards it once every team has them.
-  Once they are in the list, the new identity removes the old one where it
-  has the right; elsewhere the dialog says that an owner or admin finishes
-  the removal;
+- before anything changes, the device reads the list of every team the old
+  identity manages; when one can't be reached, the change waits, or goes on
+  only if the person agrees to leave that team behind, since the old
+  identity's rights can only be passed on through the list;
+- for each team the old identity manages, it adds the new identity's card
+  (as an admin where it was the owner, as a writer where it was an admin,
+  since only owners make admins), and an owner hands ownership over with an
+  `ownerChange`, keeping a writer's role. The new identity's first round on
+  that team removes the old identity with an `accountsRemove`, which rotates
+  the key, so the old phrase opens nothing written from then on. Where the
+  old identity was an admin, the new one, a writer, can't remove it; the app
+  says to ask the owner;
+- for each team the old identity doesn't manage, it asks to leave
+  (`requestRemove`), and the new identity has to be invited again;
 - for each one-to-one vault, the device removes its own files from the vault,
-  as 0001 does with the old personal vault, and the peer's app says the share
-  ended when it sees them gone. One-to-one shares can't be revoked otherwise,
-  so the two people exchange cards again under the new identity.
+  as 0001 does with the old personal vault, and marks the share stopped. The
+  peer is not told; one-to-one shares can't be revoked, so the two people
+  exchange cards again under the new identity.
+
+The device keeps the old root key and its old device id in its settings,
+beside the new ones, until every team the old identity may manage is
+handed over. A team it can't hand over, because the relay failed part way
+or the app quit or crashed, stays in the old identity's shares list. Later
+sync rounds load the old identity into a session of their own, at most
+every few minutes, and check that every team in that list can be reached.
+Only then does the app's own session drop its identity while the old one
+ends, so nothing the user does runs as the identity that is ending, and a
+call that waited behind the end is refused rather than run as it. The old
+identity is never left with rights no device can pass on. Each step is safe
+to run twice: the list is read again first, and a successor already added
+isn't added again. Changing the phrase again, or entering another one,
+before that is done leaves those teams to the old identity, so the app asks
+first. Telling the old personal vault's other devices is not resumed, so
+after a crash they may need the new phrase entered by hand.
+
+A join request the old identity made and nobody answered yet can't be
+withdrawn, since no record does that; a manager who approves it later lets
+in an identity no device holds, and removes it like any member who left.
+
+Entering another existing phrase on a device is not a change of identity:
+other devices may go on with the old phrase. That device only takes its own
+copies out of the shared vaults and teams it was in; the old identity's
+shares and memberships stay as they are. The same holds for a phone that
+stops syncing or pairs with another phrase.
 
 ### Where a person's shares are kept
 
@@ -296,7 +334,7 @@ about who may do what.
 
 A team vault's id is the first 16 bytes of SHA-256 of its root record, as
 hex, not a derivation from the key, so rotating the key never moves the
-vault; it is also the id of the first key generation. The creator registers
+vault. The creator registers
 the vault by posting the root record to `/v1/vaults/<id>/acl`; the relay
 checks the hash and that the record is signed by the owner it names. Every
 later record is appended there and accepted only when it carries the current
@@ -305,24 +343,33 @@ produce one winner and one retry) and passes the validator against the state
 the list had.
 
 The two join records are the exception, since a non-member can't know the
-head: the relay accepts one without a previous id and files it in a relay
-envelope that names where it landed. Clients take such an envelope only for
-the two join types, treat a join record whose id they have already seen as
-a duplicate, and so a relay can neither replay a declined request nor move
-one between forks. The relay accepts a join record only with a valid join
+head: the relay accepts one without a previous id and appends it where it
+lands. Clients accept a record without a previous id only for the two join
+types and treat a join record whose id they have already seen as a
+duplicate; ids are stable because every signature has one spelling and
+Ed25519 signatures are deterministic, so a relay can't replay a declined
+request as a new one. The relay accepts a join record only with a valid join
 proof for a live invite, at most one pending per identity and invite, and at
 most thirty-two pending per invite. Only members read the list; a requester
 learns the outcome by asking `/v1/vaults/<id>/acl/<record id>` with a request
 signed by the identity in the record, which answers pending, declined or
 accepted, and once accepted they are a member and read the list.
 
-Every client keeps the latest validated head it has seen for each team vault
-and refuses a list that doesn't extend it, so a relay or folder that serves
-an older list can't hide a removal or a rotation. Every change that takes a
-right away (a removal, a demotion from writer, a revoked no-approval invite)
-rotates the key, so a key id also says which members could write at the time
-and a file sealed by someone who had lost the right is refused by the
-generation check alone.
+Every client keeps the list it last validated for each team vault and
+refuses one that doesn't extend it record for record, so a relay that serves
+an older list, or splices records out from before a join record, can't hide
+a removal or a rotation. A relay can still withhold new records; that is
+not detected. Every change that takes write away (a removal, a demotion
+from writer, a revoked no-approval invite) rotates the key, so a key id also
+says which members could write at the time. A demotion from admin to writer
+doesn't rotate: the person can still write, and clients take a members
+document only from someone who manages the team now.
+
+A relay refusing the list to an identity is its word, not the list's: the
+app keeps the team and says the relay refuses it, until a list the device
+validates leaves the identity out or the person leaves the team themselves.
+The relay's answer that a join request was declined is taken as given; a
+relay could deny the request anyway.
 
 A team vault has no token. The relay authenticates every request to it by a
 header `Authorization: Nod-Identity <identity> <time> <nonce> <signature>`:
@@ -330,7 +377,9 @@ the identity as base64url, the time in milliseconds since the epoch, a random
 nonce, and the identity's signature under the relay prefix over the relay
 host, the method, the path, the vault id, SHA-256 of the body, the time and
 the nonce. The relay accepts a time within five minutes of its own, remembers
-nonces for that window, and checks the identity's role in the list: readers
+the nonces of writes and deletes for that window (a replayed read returns
+only ciphertext its sender already holds), and checks the identity's role in
+the list: readers
 and writers read, writers write files under their own bound device folder,
 and files are deleted only by the identity bound to their folder or, for a
 folder whose identity has left the list, by an owner or admin. The relay
@@ -344,9 +393,13 @@ it.
 
 The relay sees the identities in the list, the roles, the member count, the
 device count and the file sizes and times, never a key, a name or a note.
-Members' display names live in a **members** document written by owners and
-admins, `{ schema: 1, names: { [identity]: string } }`, sealed and published
-like a note.
+The team's name and its members' display names live in a **members**
+document written by owners and admins,
+`{ schema: 1, team: string, names: { [identity]: string } }`, sealed and
+published like a note at `devices/<blinded device>/members.bin`. A person an
+owner or admin added by card learns where the team is from a **team link**,
+`nod-team:v1:<vault id>:<relay host>`, which holds nothing secret: a person the list doesn't name gets nothing from
+it.
 
 ### Invitations
 
@@ -358,16 +411,25 @@ random key that only the link holds, written with a signed request to
 `/v1/vaults/<id>/invites/<file id>` and fetched from there by anyone without
 one; the file id is the first 16 bytes of SHA-256 of the sealed file, as hex,
 which nobody can guess since the file holds fresh random keys. The file holds
-the team's name, the inviter's identity card, the vault id and the invite's
-private keys. The link is `nod-join:v1:<file id>:<file key, base64url>:<relay
-host>`, the host last so a port in it can't be mistaken for a field; the host
+the team's name, the inviter's identity card, the vault id, the role, the
+invite's private keys and, for an invite that needs no approval, the root
+key wrapped under the invite's wrapping key with its generation id, copied
+from the invite record, so the joiner needs nothing from a list they can't
+read yet. The inviter's identity signs all of it under the invite prefix, so
+a link can't name someone it doesn't come from, and the joiner refuses a
+file whose hash isn't the file id the link names. The link is `nod-join:v1:<vault id>:<file id>:<file key,
+base64url>:<relay host>`, the host last so a port in it can't be mistaken for
+a field; the host
 is validated like any relay address in 0001 (`https:`, a host and a short
 plain path, nothing else). The relay keeps at most eight invite files per
-vault, each for seven days, and the app re-creates one when an invite is
-shown again.
+vault, each for seven days; the invite record stays live until it is
+revoked, and the app says so.
 
 Someone opening the link fetches and opens the file, sees the team's name
-and who invited them, and appends a `requestJoin`: their identity card, the
+and who invited them, and appends a `requestJoin`. The first list they read
+once they are in must show that the identity the link named wrote the
+invite record; otherwise the app leaves the team and says why. A
+`requestJoin` carries their identity card, the
 invite record's id, their identity signed with the invite signing key under
 the join prefix as proof they hold the link, and the display name they chose,
 sealed under the inviter's wrapping key so the relay never sees it. Owners
@@ -381,12 +443,15 @@ and a role no higher than the invite's, and writes the name into the members
 document.
 
 An invite that needs no approval wraps the root key under the invite's
-wrapping public key inside the `invite` record itself, so the joiner takes
-it directly and appends an `inviteJoin` that re-wraps it under their own
-identity. The app warns that anyone who ever saw that link can join until it
-is revoked. Revoking such an invite rotates the key, and removing a member
-retires every no-approval invite in the same record, so a removed member who
-kept a link can't come back under a new identity.
+wrapping public key inside the `invite` record itself (and the invite file
+carries a copy), so the joiner takes it directly and appends an `inviteJoin`
+that re-wraps it under their own identity. The app warns that such a link
+works like a key: anyone who ever saw it can join until it is revoked, and
+anyone who has it and the team's files can read them without joining. Revoking such an invite rotates
+the key, and every key rotation (a removal, a demotion, a revocation, a
+`keyChange`) retires every no-approval invite, since the key its record
+wraps is no longer the current one; so a removed member who kept a link can't
+come back under a new identity.
 
 Wrapping a key for a recipient is X25519 between a fresh ephemeral key and
 the recipient's wrapping public key, HKDF-SHA256 of the shared secret (salt
@@ -394,71 +459,67 @@ the recipient's wrapping public key, HKDF-SHA256 of the shared secret (salt
 keys, 32 bytes), then AES-256-GCM with an all-zero nonce, since the key is
 used once, and
 `nod:wrap:<vault id>:<record type>:<key id>:<recipient wrapping public key>`
-as associated data, so a wrapped key can't be replayed into another record,
-generation or recipient, and an invite is a recipient like any other; the
-ephemeral public key is stored beside the ciphertext.
+as associated data, so a wrapped key can't be replayed into another vault,
+record, generation or recipient; the ephemeral public key is stored beside
+the ciphertext. The root record's wrap leaves the vault id empty, since the
+vault's id is the root's hash and doesn't exist yet when it is wrapped.
 
 ### Removal and rotation
 
 Removing a member is one `accountsRemove` record that also carries a **key
 change**: a new random root key wrapped under each remaining member's
-wrapping key and under each still-active approval invite's wrapping key,
-together with the old root key sealed under the new one with
-`nod:keychain:<vault id>:<old key id>:<new key id>` as associated data. The
-same key change rides on a demotion that takes write away, on the revocation
-of a no-approval invite, and on a `keyChange` of its own. A key generation's
-id is the first 16 bytes of SHA-256 of the record that introduced it (the
-root record for the first), so a file says which generation sealed it, and a
-member who holds the newest key opens every generation back to the first by
-following the chain. A person added later therefore reads the team's whole
-history, which is what a shared notebook is for. Keys that begin at joining
+wrapping key and nobody else's, together with the old root key sealed under
+the new one with `nod:keychain:<vault id>:<old key id>:<new key id>` as
+associated data. Invites get no wrap: an approval invite's private keys sit
+in a file anyone with the link opens, and the accept record wraps the key
+for the person it lets in. A key change wrapping for anyone but the
+remaining members is refused. The same key
+change rides on a demotion that takes write away, on the revocation of a
+no-approval invite, and on a `keyChange` of its own. A key generation's id is
+16 random bytes the record that introduces it names (the root record names
+the first), never used twice in one list; a hash of the record can't serve,
+since the record's wraps and chain have to name the generation before the
+record exists. A file says which generation sealed it, and a member who holds
+the newest key opens every generation back to the first by following the
+chain. A generation remembers everyone who could write while it was current,
+and a file is opened when its publisher is in that set. A copy is taken only
+from someone who can still write now: a removed or demoted writer who kept
+an old key can't edit or delete anything after the fact, and what they wrote
+before reaches everyone in the copies of the devices that still write, which
+publish their own copy once theirs is the only one taken. A person added
+later therefore reads the team's whole history, which is what a shared notebook is for. Keys that begin at joining
 were rejected: every generation would have to be kept and wrapped forever,
 and a note edited across a join would be half-readable.
 
 The validator can check that a key change wraps something for every
 remaining member, not what it wraps. A member whose wrap doesn't open, or
-opens to a key that doesn't unseal the chain, says so in the app, names the
-admin who wrote the record, and never seals anything under a key id it
-couldn't derive; an owner or admin who can open it repairs the list with a
-`keyChange`.
+opens to a key whose chain doesn't lead back to the generation before (an
+admin who wrapped a key of their own for one member), says so in the app,
+names the admin who wrote the record, and never seals anything under a key
+id it couldn't derive; an owner or admin who can open it repairs the list
+with a `keyChange`. A member who joined after the generation before can't
+check that, and would only notice that the others' files don't open.
 
 After a rotation a device seals a file under the new key the next time that
 file changes; files that haven't changed stay under their generation, since
 the removed member already had them and the chain keeps them readable for
-everyone else. A removed member's earlier files stay readable the same way,
-on the relay and on a folder alike. The relay refuses new files under the
+everyone else. The relay refuses new files under the
 old key id from then on, so the removed member can't read later edits. What
 they already received stays with them, as 0001 says of a lost device:
 nothing can take that back. The app says so when a member is removed.
 
-A member who leaves appends `requestRemove`; until an owner or admin answers
-it with an `accountsRemove`, they are still a member and the key is not
-rotated.
+A member who leaves appends `requestRemove`, once; until an owner or admin
+answers it with an `accountsRemove`, they are still a member and the key is
+not rotated.
 
-### Team vaults on the folder transport
+### Teams need a relay
 
-A folder (0001) has no server to run the validator, so a team vault there is
-weaker and the app says so:
-
-- the list lives at `devices/<blinded device>/acl.log`, written by the owner
-  and only there, so an owner with two devices never has two writers on one
-  file; clients take the longest valid chain among the owner's folders, and
-  an owner device that finds another of its folders ahead signs its own
-  unapplied records again on top of that chain, as devices do after a
-  refused append on the relay. Admins can't act on a folder;
-- joining by link is impossible, since an outsider can't read the folder;
-  the owner adds people by identity card (`accountsAdd`);
-- every client validates signatures, roles and key ids itself and ignores
-  files that fail, so a reader who writes a file is ignored, not stopped;
-- a removed member still holds the old key, so a file under an older
-  generation from an identity that no longer has write permission is read
-  only at a version this device already held before the rotation; a newer one is
-  ignored, and an ignored file counts as absent when a device decides
-  whether the vault lacks a note's version;
-- whoever the folder service still lets in can delete files. Removing a
-  person from the team does not remove them from the folder; the folder
-  service's own sharing is the real gate, and Nod can only stop handing them
-  new keys.
+A folder (0001) has no server to run the validator. A team kept there would
+have no single list, so two devices appending at the same moment fork it,
+and a removed member who keeps access to the folder can fork from before
+their removal and win new devices over. Teams live on a relay only; a
+person who syncs through a folder shares one to one through it, and makes or
+joins teams through a relay.
 
 ### Shared notes
 
@@ -478,12 +539,15 @@ A shared note is an Automerge document of its own, published at
 
 Sharing a meeting writes a new note from its title and summary into the
 chosen vault under this device's blinded id. Shared notes are listed on
-their own, by the person they are shared with; the meeting itself records
-nothing about it in this record's first change. A `sharedAs` field on the
-meeting, so the app can show where a meeting went and open the shared copy,
-comes with the team vault change, with its migration (documents from before
-it read it as empty, and devices that predate it carry it along untouched,
-as 0001 has them do for folders). From then on the note is its own text: the
+their own, by the person or team they are shared with, and the meeting
+records where its notes went in a `sharedAs` map keyed by note id (`{ target,
+sharedAt }`, the target being the peer's identity or the team vault's id), so
+the app can show it and open the copy; two devices sharing one meeting at
+once keep both entries. Documents from before the field read it as empty,
+devices that predate it carry it along untouched, as 0001 has them do for
+folders, and a meeting with no shares writes no such field, so an imported
+meeting's first change stays what earlier versions wrote. From then on the
+note is its own text: the
 team edits it, and the person's private summary is not changed by that, nor
 is the note changed by later edits to the private summary. Sharing again
 makes another note. A mirror that followed both sides would have two
@@ -518,8 +582,9 @@ compatibility tests against `node:crypto` live in
   validator from `@nod/core/sharing`, bundled into them at build time: the
   plain relay stays one file that runs with `node` and nothing installed,
   built from the workspace rather than written by hand, and the Vercel one
-  keeps its own package and deploy. The repository ships the built relay, so
-  self-hosting changes only in which file is run.
+  keeps its own package and deploy. The bundles are build output, made by
+  one command and never committed; self-hosting builds the one file and
+  runs it.
 - A relay that hasn't been updated keeps serving every personal vault as
   before and every one-to-one vault, since those are token vaults on the same
   routes. The hosted relay refuses the `notes/` and `shares.bin` paths it
@@ -532,7 +597,7 @@ compatibility tests against `node:crypto` live in
   re-publishing every meeting.
 - New formats, each with its migration path in core: sealed files version 2,
   the note, members and shares documents, the `sharedAs` field on meetings,
-  the `notes/`, `shares.bin` and `acl.log` paths in the layout, and the relay
+  the `notes/`, `shares.bin` and `members.bin` paths in the layout, and the relay
   routes `/acl`, `/acl/<record id>` and `/invites/`. Version 1 files and
   personal vaults are untouched.
 - The sync engine and the sync settings hold several vaults instead of one.
@@ -542,15 +607,38 @@ compatibility tests against `node:crypto` live in
 - The relay keeps more state per team vault (the list, device folder
   bindings, seen nonces, invite files) and does more work per request
   (signature checks, the validator).
-- A person's identity follows their phrase: changing the phrase hands every
-  team over to the new identity and ends every one-to-one share, which has
-  to be made again. Pairing a phone needs nothing new, since it gets the
-  root key and the shares document.
+- A person's identity follows their phrase: changing the phrase hands the
+  teams the old identity manages to the new one, which then removes the old
+  identity with a new key, asks to leave every other team, and ends every
+  one-to-one share, which has to be made again (see Changing the phrase).
+  Pairing a phone needs nothing new, since it gets the root key and the
+  shares document.
+- Nothing gives forward secrecy or recovery after a compromise for content:
+  a stolen phrase opens every one-to-one vault and every team generation
+  wrapped for that identity, back to each team's first. An owner who loses
+  their phrase can't be removed; the team can only be made again.
+- What a writer wrote and no device that still writes has taken is lost
+  when that writer is removed or demoted: no copy is taken from them after
+  that, and nothing tells the stale writer's last edit from one made after
+  the fact.
 - Readers have the key. Roles limit what the relay accepts, not what a member
   can copy; the app never suggests otherwise.
 - A malicious admin can lock members out or split them onto different keys;
-  the app makes that visible rather than preventing it, since the relay can't
-  read a wrap either.
+  the app makes a wrap that doesn't open, or doesn't lead back along the
+  chain, visible to the member it was meant for rather than preventing it,
+  since the relay can't read a wrap either. Managers also set display names,
+  so a name proves nothing; dialogs show the identity code beside it.
+- A relay can withhold new records of a list or serve different members
+  different heads; clients detect a list that goes back, not one that stops
+  growing. A join request's outcome (`/acl/<record id>`) is the relay's
+  word until the list shows the record that answers it. The relay also sees each identity's devices and, through network
+  addresses, can link blinded device ids across vaults.
+- A link to an invite that needs no approval works like a key, and the app
+  says so; the invite file on the relay lasts seven days, the invite record
+  until it is revoked.
+- The validator is a consensus rule: a record type an older client doesn't
+  know stops it reading that team's list, so a new record type ships to
+  every client and relay before anyone writes one.
 - Membership is visible to the relay as identities. Someone who can read the
   relay's storage learns who shares with whom, not what.
 - Showing and scanning identity cards, and approving join requests, are
@@ -561,9 +649,8 @@ compatibility tests against `node:crypto` live in
 - The work lands in two changes, each with its own review rounds: identity
   and the version 2 file in core together with one-to-one vaults and shared
   notes on desktop and mobile (the relay changes only its accepted paths);
-  then team vaults (the list, the relay's routes and signed requests, members
-  and roles in Settings, the join dialog, the folder transport's reduced
-  form).
+  then team vaults on a relay (the list, the relay's routes and signed
+  requests, members and roles in Settings, the join dialog).
 - A browser viewer for a single note is outside this record. It would need
   Automerge in the browser and a per-note read token on the relay, and gets
   a record of its own if it is ever built.

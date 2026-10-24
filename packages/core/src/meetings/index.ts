@@ -11,6 +11,8 @@ export {
   meetingText,
   parseMeeting,
   recordedMs,
+  recordShare,
+  sharedCopiesOf,
   folderName,
   moveToFolder,
   renameMeeting,
@@ -20,6 +22,7 @@ export {
   transcriptText,
   type Meeting,
   type MeetingPart,
+  type SharedCopy,
   type Speaker,
   type TranscriptLine,
 } from './meeting.ts';

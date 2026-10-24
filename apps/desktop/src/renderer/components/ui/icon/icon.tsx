@@ -26,9 +26,14 @@ export type IconName =
   | 'more'
   | 'pencil'
   | 'plus'
-  | 'close';
+  | 'close'
+  | 'person'
+  | 'people';
 
 const paths: Record<IconName, string> = {
+  person: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM3 13.5a5 5 0 0 1 10 0',
+  people:
+    'M6 7.5a2.25 2.25 0 1 0 0-4.5 2.25 2.25 0 0 0 0 4.5ZM1.5 13a4.5 4.5 0 0 1 9 0M10.5 3.1a2.25 2.25 0 0 1 0 4.3M12 9a4.5 4.5 0 0 1 2.5 4',
   search: 'M11 11l3 3M7 12A5 5 0 1 0 7 2a5 5 0 0 0 0 10Z',
   mic: 'M8 10a2 2 0 0 0 2-2V4a2 2 0 1 0-4 0v4a2 2 0 0 0 2 2Zm4-2a4 4 0 0 1-8 0m4 4v2',
   list: 'M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01',

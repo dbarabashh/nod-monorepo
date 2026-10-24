@@ -22,6 +22,12 @@ type MeetingFields = {
   titleEdited: boolean;
   generatedTitle: Automerge.ImmutableString | null;
   folder?: Automerge.ImmutableString | null;
+  // Keyed by note id, so two devices sharing the same meeting at once keep
+  // both copies.
+  sharedAs?: Record<
+    string,
+    { target: string; kind: 'person' | 'team'; sharedAt: number }
+  >;
   deletedAt: number | null;
 };
 
@@ -41,9 +47,9 @@ export function plainValue(value: unknown): unknown {
   return value instanceof Automerge.ImmutableString ? value.toString() : value;
 }
 
-export function field(value: object, key: string): unknown {
-  return Reflect.get(value, key);
-}
+import { field } from './field.ts';
+
+export { field };
 
 // Names a version of a document: equal for two documents that hold the same
 // changes, on every device.
@@ -86,8 +92,17 @@ function fieldsOf(meeting: Meeting): MeetingFields {
     titleEdited: meeting.titleEdited,
     generatedTitle: nameOf(meeting.generatedTitle),
     folder: nameOf(meeting.folder),
+    // Only when there is something to say: an imported meeting's first change
+    // must stay the one earlier versions wrote.
+    ...(meeting.sharedAs.length > 0 ? { sharedAs: sharedAsOf(meeting) } : {}),
     deletedAt: null,
   };
+}
+
+function sharedAsOf(meeting: Meeting): MeetingFields['sharedAs'] {
+  return Object.fromEntries(
+    meeting.sharedAs.map(({ noteId, ...copy }) => [noteId, copy]),
+  );
 }
 
 export function createDocument(meeting: Meeting): MeetingDocument {
@@ -119,14 +134,43 @@ export function fixedActor(key: string): string {
 // The same author with a different first change stops the meeting syncing for
 // good, so any change to how a meeting is written here (fields, schema, the
 // Automerge version) must bump the encoding, which the pinned test catches.
+// The author's name covers exactly the fields `import-1` knew, in that
+// order; a field added to the model later stays out of it.
 const importEncoding = 'import-1';
+
+function importFingerprint(meeting: Meeting): string {
+  const {
+    id,
+    title,
+    segments,
+    finishedAt,
+    transcript,
+    summary,
+    summaryEdited,
+    titleEdited,
+    generatedTitle,
+    folder,
+  } = meeting;
+  return JSON.stringify({
+    id,
+    title,
+    segments,
+    finishedAt,
+    transcript,
+    summary,
+    summaryEdited,
+    titleEdited,
+    generatedTitle,
+    folder,
+  });
+}
 
 export function importedDocument(meeting: Meeting): MeetingDocument {
   return Automerge.clone(
     Automerge.change(
       Automerge.init<MeetingFields>({
         actor: fixedActor(
-          `${importEncoding}:${documentSchema}:${JSON.stringify(meeting)}`,
+          `${importEncoding}:${documentSchema}:${importFingerprint(meeting)}`,
         ),
       }),
       { time: 0 },
@@ -208,6 +252,17 @@ function reconcile(fields: MeetingFields, previous: Meeting, next: Meeting) {
   }
   if (previous.folder !== next.folder) {
     fields.folder = nameOf(next.folder);
+  }
+  const known = new Set(previous.sharedAs.map((copy) => copy.noteId));
+  for (const copy of next.sharedAs) {
+    if (!known.has(copy.noteId)) {
+      fields.sharedAs ??= {};
+      fields.sharedAs[copy.noteId] = {
+        target: copy.target,
+        kind: copy.kind,
+        sharedAt: copy.sharedAt,
+      };
+    }
   }
   next.segments.forEach((segment, index) => {
     if (sameSegment(previous.segments[index], segment)) {
@@ -300,6 +355,7 @@ export function readDocument(document: MeetingDocument): DocumentState | null {
     return null;
   }
   const summary = field(raw, 'summary');
+  const sharedAs = field(raw, 'sharedAs');
   const meeting = parseMeeting({
     ...raw,
     title: plainValue(field(raw, 'title')),
@@ -307,6 +363,14 @@ export function readDocument(document: MeetingDocument): DocumentState | null {
     folder: plainValue(field(raw, 'folder')),
     transcript,
     summary: summary === '' ? null : summary,
+    // Stored as a map by note id, read as the list the model holds.
+    sharedAs:
+      typeof sharedAs === 'object' && sharedAs !== null
+        ? Object.entries(sharedAs).map(([noteId, copy]) => ({
+            noteId,
+            ...(typeof copy === 'object' && copy !== null ? copy : {}),
+          }))
+        : [],
   });
   if (!meeting) {
     return null;

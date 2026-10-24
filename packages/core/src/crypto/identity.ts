@@ -58,17 +58,36 @@ export function identityCard(identity: Identity): string {
   )}`;
 }
 
+// A small-order wrapping key gives an all-zero shared secret with every
+// key, which the curve library refuses: a card naming one would make every
+// key change that wraps for it fail. Clamping makes any scalar a multiple of
+// the cofactor, so one fixed scalar finds them all.
+const probeScalar = new Uint8Array(32).fill(7);
+
+function isUsableWrappingKey(publicKey: Uint8Array): boolean {
+  try {
+    x25519.getSharedSecret(probeScalar, publicKey);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function parseIdentityCard(text: string): IdentityCard | null {
   if (!text.startsWith(cardPrefix)) {
     return null;
   }
+  const body = text.slice(cardPrefix.length);
   let bytes: Uint8Array;
   try {
-    bytes = fromBase64Url(text.slice(cardPrefix.length));
+    bytes = fromBase64Url(body);
   } catch {
     return null;
   }
-  if (bytes.length !== publicKeyLength * 2 + signatureLength) {
+  if (
+    bytes.length !== publicKeyLength * 2 + signatureLength ||
+    toBase64Url(bytes) !== body
+  ) {
     return null;
   }
   const publicKey = bytes.subarray(0, publicKeyLength);
@@ -77,17 +96,20 @@ export function parseIdentityCard(text: string): IdentityCard | null {
     publicKeyLength * 2,
   );
   const signature = bytes.subarray(publicKeyLength * 2);
-  return verify(publicKey, signature, 'nod:sig:card:v1', [
-    publicKey,
-    wrappingPublicKey,
-  ])
+  return isUsableWrappingKey(wrappingPublicKey) &&
+    verify(publicKey, signature, 'nod:sig:card:v1', [
+      publicKey,
+      wrappingPublicKey,
+    ])
     ? { publicKey, wrappingPublicKey }
     : null;
 }
 
-// 64 bits of the identity, grouped like the vault code.
+// 80 bits of the identity, in five groups. People compare it aloud to know
+// a card is the person's, so finding another key with the same code has to
+// stay out of reach of anyone, not only of most.
 export function identityCodeOf(publicKey: Uint8Array): string {
-  return groupedCode(toHex(sha256(publicKey)));
+  return groupedCode(toHex(sha256(publicKey)), 5);
 }
 
 export function identityHex(publicKey: Uint8Array): string {

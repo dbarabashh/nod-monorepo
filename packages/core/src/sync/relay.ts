@@ -22,7 +22,7 @@ export type RelayResponse = {
 };
 
 export type RelayRequest = {
-  method: 'GET' | 'PUT' | 'DELETE';
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE';
   headers: Record<string, string>;
   body?: Uint8Array<ArrayBuffer>;
   redirect: 'error';
@@ -53,6 +53,7 @@ export function retryAfterOf(header: string | null, now = Date.now()): number {
 }
 
 const refusals: Record<number, string> = {
+  401: 'it didn’t accept this device’s signature; check that the computer’s clock is right',
   409: 'another change to this meeting is still finishing, sync will try again',
   413: 'this meeting is too large to sync through it',
   507: 'the space for your devices on it is full',
@@ -142,24 +143,74 @@ export async function readBody(
 
 export type RelayTransport = Transport & { register: () => Promise<void> };
 
-export function createRelayTransport(options: {
+// How a request to a vault proves who makes it: the vault's token, or a
+// signature by an identity the vault's access list knows.
+export type RelayAuthorization =
+  | { kind: 'token'; token: string }
+  | {
+      kind: 'identity';
+      sign: (request: {
+        method: string;
+        path: string;
+        body: Uint8Array | null;
+      }) => string;
+    }
+  | null;
+
+export type RelayRequester = {
+  base: URL;
+  vaultUrl: string;
+  request: (
+    url: string,
+    init: {
+      method: RelayRequest['method'];
+      headers?: Record<string, string>;
+      body?: Uint8Array<ArrayBuffer>;
+    },
+    known?: boolean,
+  ) => Promise<RelayResponse>;
+};
+
+// Every request to one vault on one relay passes here, so a wait the relay
+// asked for holds the listing, the closed notices, the list and the
+// registration as much as the files.
+export function createRelayRequester(options: {
   url: string;
   vaultId: string;
-  token: string | null;
+  authorization: RelayAuthorization;
   fetch: Fetch;
   now?: () => number;
-}): RelayTransport {
+}): RelayRequester {
   const base = relayBase(options.url);
   const now = options.now ?? (() => Date.now());
-  // Every request passes here, so a wait the relay asked for holds the
-  // listing, the closed notices and the registration as much as the files.
   let waiting: { until: number; message: string | null } | null = null;
   const vaultUrl = new URL(
     `v1/vaults/${encodeURIComponent(options.vaultId)}`,
     base.href.endsWith('/') ? base : `${base.href}/`,
   ).href;
-  const headers = (): Record<string, string> =>
-    options.token ? { authorization: `Bearer ${options.token}` } : {};
+  const { authorization } = options;
+  const headers = (
+    method: string,
+    url: string,
+    body: Uint8Array | null,
+  ): Record<string, string> => {
+    if (!authorization) {
+      return {};
+    }
+    if (authorization.kind === 'token') {
+      return { authorization: `Bearer ${authorization.token}` };
+    }
+    // The query is signed with the path: a listing's prefix is part of
+    // what is asked for.
+    const parsed = new URL(url);
+    return {
+      authorization: authorization.sign({
+        method,
+        path: `${parsed.pathname}${parsed.search}`,
+        body,
+      }),
+    };
+  };
 
   // A redirect could carry the token to another host, and a 404 on a write
   // would otherwise look like success and stop that file from syncing.
@@ -183,7 +234,10 @@ export function createRelayTransport(options: {
     const response = await options.fetch(url, {
       ...init,
       redirect: 'error',
-      headers: { ...headers(), ...init.headers },
+      headers: {
+        ...headers(init.method, url, init.body ?? null),
+        ...init.headers,
+      },
     });
     const missing = response.status === 404 && init.method === 'GET';
     const unchanged = response.status === 304 && known;
@@ -194,7 +248,7 @@ export function createRelayTransport(options: {
         refusal === 'new-vaults'
           ? 'it isn’t taking new vaults right now, sync will try again later'
           : refusal === 'writes'
-            ? 'it took every change it allows this hour, sync will try again later'
+            ? 'it took every change it allows for now, sync will try again later'
             : response.status === 429
               ? waitingReason(wait)
               : refusals[response.status];
@@ -216,6 +270,28 @@ export function createRelayTransport(options: {
     return response;
   }
 
+  return { base, vaultUrl, request };
+}
+
+export function createRelayTransport(options: {
+  url: string;
+  vaultId: string;
+  token: string | null;
+  fetch: Fetch;
+  now?: () => number;
+}): RelayTransport {
+  return relayTransportOver(
+    createRelayRequester({
+      ...options,
+      authorization:
+        options.token === null ? null : { kind: 'token', token: options.token },
+    }),
+  );
+}
+
+// The file API of one vault over a requester, whatever proves the request.
+export function relayTransportOver(requester: RelayRequester): RelayTransport {
+  const { vaultUrl, request } = requester;
   const listings = new Map<string, { version: string; files: RemoteFile[] }>();
 
   const fileUrl = (path: string) =>

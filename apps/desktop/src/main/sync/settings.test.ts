@@ -45,6 +45,48 @@ describe('sync settings', () => {
     );
   });
 
+  it('remembers the old key until the phrase change hands sharing over', async () => {
+    const settings = createSyncSettings({
+      directory: dir(),
+      keychain: reversing,
+    });
+    const previous = randomBytes(32);
+    const handing = {
+      ...vault(),
+      handingOver: { key: previous, deviceId: 'device-0' },
+    };
+    await settings.save(handing);
+    assert.deepEqual(await settings.load(), handing);
+    const plain = await readFile(join(dir(), 'sync.json'), 'utf8');
+    assert.equal(plain.includes(previous.toString('base64')), false);
+    const done = { ...handing, handingOver: null };
+    await settings.save(done);
+    assert.equal((await settings.load())?.handingOver, undefined);
+  });
+
+  it('keeps the vault readable when the old key beside it is damaged', async () => {
+    const settings = createSyncSettings({
+      directory: dir(),
+      keychain: reversing,
+    });
+    const saved = vault();
+    await settings.save({
+      ...saved,
+      handingOver: { key: randomBytes(32), deviceId: 'device-0' },
+    });
+    const file = join(dir(), 'sync.json');
+    const raw: unknown = JSON.parse(await readFile(file, 'utf8'));
+    assert.ok(typeof raw === 'object' && raw !== null);
+    await writeFile(
+      file,
+      JSON.stringify({
+        ...raw,
+        handingOver: { key: 'AAAA', deviceId: 'device-0' },
+      }),
+    );
+    assert.deepEqual(await settings.load(), saved);
+  });
+
   it('has no vault until one is saved', async () => {
     const settings = createSyncSettings({
       directory: dir(),

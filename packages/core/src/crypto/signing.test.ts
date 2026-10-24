@@ -63,3 +63,19 @@ describe('signing', () => {
     );
   });
 });
+
+describe('signing with a small-order key', () => {
+  it('accepts no signature for a key anyone can sign for', () => {
+    // The identity point encoded as a public key: every scalar times it is
+    // the identity, so under the lenient rules any signature R = identity,
+    // S = 0 verifies for any message.
+    const smallOrder = new Uint8Array(32);
+    smallOrder[0] = 1;
+    const signature = new Uint8Array(64);
+    signature[0] = 1;
+    assert.equal(
+      verify(smallOrder, signature, 'nod:sig:acl:v1', [bytesOf('anything')]),
+      false,
+    );
+  });
+});

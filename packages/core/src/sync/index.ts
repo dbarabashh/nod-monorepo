@@ -1,6 +1,9 @@
 export {
   closedPath,
   devicesPrefix,
+  membersContext,
+  membersPath,
+  parseMembersPath,
   isSyncId,
   meetingContext,
   meetingPath,
@@ -46,11 +49,17 @@ export {
   sealClosedNotice,
 } from './closing.ts';
 export {
+  createRelayRequester,
   createRelayTransport,
+  readBody,
   relayBase,
+  relayTransportOver,
   inAbout,
   throttledMessage,
   type Fetch,
+  type RelayAuthorization,
+  type RelayRequester,
+  type RelayResponse,
   type RelayTransport,
 } from './relay.ts';
 export {

@@ -40,6 +40,17 @@ export function toHex(bytes: Uint8Array): string {
   );
 }
 
+export function fromHex(text: string): Uint8Array {
+  if (text.length % 2 !== 0 || !/^[0-9a-f]*$/.test(text)) {
+    throw new Error('Not a hex string');
+  }
+  const bytes = new Uint8Array(text.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(text.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 export function toBase64Url(bytes: Uint8Array): string {
   return toBase64(bytes)
     .replace(/\+/g, '-')

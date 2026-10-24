@@ -6,6 +6,8 @@ import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { createRelay } from '../../../relay/server.ts';
 import {
+  identityCard,
+  identityOf,
   keyFromRecoveryPhrase,
   randomKey,
   recoveryPhrase,
@@ -20,11 +22,88 @@ import {
 import { createMeetingStore } from '../meetings/store.ts';
 import type { KeyWrap } from '../security/data-key.ts';
 import { useTempDir } from '../testing/temp-dir.ts';
-import { createSyncController, UnreachableError } from './controller.ts';
+import {
+  createSyncController,
+  UnreachableError,
+  UnreachableTeamsError,
+} from './controller.ts';
 import type { SyncState } from '../../shared/ipc.ts';
 import { createRelayTransport, type Fetch } from '@nod/core/sync';
 import { createSyncSettings } from './settings.ts';
 import { createPublishedLogs, type PublishedLogs } from './published-log.ts';
+
+type Sharing = NonNullable<
+  Parameters<typeof createSyncController>[0]['sharing']
+>;
+
+// The hooks a phrase change drives, doing nothing.
+function quietSharing(): Pick<
+  Sharing,
+  'leaveDevice' | 'unreachableTeams' | 'endIdentity' | 'snapshot'
+> {
+  return {
+    snapshot: () => ({ status: 'none' }),
+    leaveDevice: async () => {},
+    unreachableTeams: async () => [],
+    endIdentity: async () => ({ handed: [], unfinished: [] }),
+  };
+}
+
+// Records, in order, what a change of phrase asked of sharing, and which
+// vault was loaded at the time.
+function recordingSharing(options: {
+  unreachable?: () => Promise<string[]>;
+  // The teams ending the identity leaves unfinished.
+  unfinished?: () => string[];
+  // Whether a loaded identity's shares list opens.
+  sharesOpen?: boolean;
+  // What the session reports after ending the identity or leaving.
+  trouble?: string;
+}) {
+  const steps: string[] = [];
+  // Whose sharing each load was, in order.
+  const loads: Array<string | null> = [];
+  // The device id each identity was loaded with, in order.
+  const devices: Array<string | null> = [];
+  let loaded: string | null = null;
+  let error: string | null = null;
+  const handed = [{ link: 'nod-team:v1:handed', replaces: 'old' }];
+  const sharing: Sharing = {
+    snapshot: () => ({
+      status: 'ready',
+      code: '',
+      peers: [],
+      teams: [],
+      notes: [],
+      error,
+    }),
+    load: async (vault) => {
+      loaded = vault ? relayToken(vault.key) : null;
+      loads.push(loaded);
+      devices.push(vault?.deviceId ?? null);
+      error = null;
+      steps.push('load');
+      return vault !== null && (options.sharesOpen ?? true);
+    },
+    sharesEngine: async () => null,
+    round: async () => {},
+    leaveDevice: async (place) => {
+      steps.push(`leaveDevice ${place?.name ?? 'none'} as ${loaded}`);
+      error = options.trouble ?? null;
+    },
+    unreachableTeams: async () => {
+      steps.push('unreachableTeams');
+      return (await options.unreachable?.()) ?? [];
+    },
+    endIdentity: async (place, successor) => {
+      steps.push(`endIdentity ${place?.name ?? 'none'} as ${loaded}`);
+      steps.push(`successor ${successor.card} in ${successor.vaultId}`);
+      error = options.trouble ?? null;
+      return { handed, unfinished: options.unfinished?.() ?? [] };
+    },
+  };
+  return { sharing, steps, loads, devices };
+}
 
 const reversing: KeyWrap = {
   wrap: (plain) => Buffer.from(plain).reverse(),
@@ -45,6 +124,9 @@ describe('sync controller', () => {
       sharing?: NonNullable<
         Parameters<typeof createSyncController>[0]['sharing']
       >;
+      endingSharing?: Parameters<
+        typeof createSyncController
+      >[0]['endingSharing'];
     } = {},
   ) {
     const store = createMeetingStore({
@@ -77,6 +159,7 @@ describe('sync controller', () => {
       defaultRelay: options.defaultRelay ?? null,
       publishedLogs: options.publishedLogs,
       sharing: options.sharing,
+      endingSharing: options.endingSharing,
     });
     await controller.load();
     return { store, controller, received };
@@ -335,6 +418,7 @@ describe('sync controller', () => {
         reachable: true,
         waitMs: null,
         devices: null,
+        handingOver: false,
       },
     );
 
@@ -351,6 +435,7 @@ describe('sync controller', () => {
         reachable: true,
         waitMs: null,
         devices: 1,
+        handingOver: false,
       },
     );
     assert.deepEqual(
@@ -363,6 +448,7 @@ describe('sync controller', () => {
         reachable: true,
         waitMs: null,
         devices: 0,
+        handingOver: false,
       },
     );
     await assert.rejects(
@@ -382,6 +468,7 @@ describe('sync controller', () => {
         reachable: false,
         waitMs: null,
         devices: null,
+        handingOver: false,
       },
     );
   });
@@ -493,6 +580,7 @@ describe('sync controller', () => {
       reachable: true,
       waitMs: null,
       devices: null,
+      handingOver: false,
     });
     await reopened.controller.enterPhrase(phrase, {
       leaveCopies: false,
@@ -775,6 +863,7 @@ describe('sync controller', () => {
       reachable: false,
       waitMs,
       devices: null,
+      handingOver: false,
     });
     assert.deepEqual(
       withoutCode(
@@ -1176,6 +1265,7 @@ describe('sync controller', () => {
       sharing: {
         load: async (vault) => {
           seen.push(vault ? vault.deviceId : null);
+          return vault !== null;
         },
         sharesEngine: async () => ({
           sync: async (listed?: unknown[]) => {
@@ -1189,7 +1279,7 @@ describe('sync controller', () => {
         round: async (place) => {
           places.push(place?.name ?? null);
         },
-        endAll: async () => {},
+        ...quietSharing(),
       },
     });
     assert.deepEqual(seen, [null]);
@@ -1208,5 +1298,298 @@ describe('sync controller', () => {
     assert.equal(laptop.controller.sharedPlace(), null);
     await laptop.controller.refresh();
     assert.deepEqual(places, [shared]);
+  });
+
+  it('takes only this device out of sharing when it moves to another phrase', async () => {
+    const shared = await sharedFolder();
+    const { sharing, steps } = recordingSharing({});
+    const laptop = await device('laptop');
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const words = laptop.controller.recoveryPhrase();
+    const desktop = await device('desktop', { sharing });
+    await desktop.controller.create();
+    await desktop.controller.useFolder(shared);
+    const own = relayToken(
+      keyFromRecoveryPhrase(desktop.controller.recoveryPhrase()),
+    );
+    steps.length = 0;
+
+    await desktop.controller.enterPhrase(words, {
+      leaveCopies: false,
+      replaceUnreadable: false,
+    });
+
+    assert.deepEqual(steps, [`leaveDevice ${shared} as ${own}`, 'load']);
+  });
+
+  it('refuses to change the phrase while a team it manages can’t be reached, unless the user agreed', async () => {
+    const { sharing, steps } = recordingSharing({
+      unreachable: async () => ['Roadmap'],
+    });
+    const laptop = await device('laptop', { sharing });
+    await laptop.controller.create();
+    const phrase = laptop.controller.recoveryPhrase();
+    steps.length = 0;
+
+    const refused = await laptop.controller.changePhrase(false).then(
+      () => null,
+      (failure: unknown) => failure,
+    );
+    assert.ok(refused instanceof UnreachableTeamsError);
+    assert.deepEqual(refused.teams, ['Roadmap']);
+    assert.equal(laptop.controller.recoveryPhrase(), phrase);
+    assert.deepEqual(steps, ['unreachableTeams']);
+
+    steps.length = 0;
+    await laptop.controller.changePhrase(false, true);
+    assert.notEqual(laptop.controller.recoveryPhrase(), phrase);
+    assert.equal(steps.includes('unreachableTeams'), false);
+  });
+
+  it('refuses a phrase change when the teams couldn’t be checked at all', async () => {
+    const { sharing } = recordingSharing({
+      unreachable: async () => {
+        throw new Error('shares list unreadable');
+      },
+    });
+    const laptop = await device('laptop', { sharing });
+    await laptop.controller.create();
+    const phrase = laptop.controller.recoveryPhrase();
+    await assert.rejects(
+      laptop.controller.changePhrase(false),
+      (failure: unknown) =>
+        failure instanceof UnreachableTeamsError && failure.teams.length === 0,
+    );
+    assert.equal(laptop.controller.recoveryPhrase(), phrase);
+  });
+
+  it('ends the old identity, naming the new vault for the teams it hands over, before loading the new one', async () => {
+    const shared = await sharedFolder();
+    const { sharing, steps } = recordingSharing({});
+    const laptop = await device('laptop', { sharing });
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const old = relayToken(
+      keyFromRecoveryPhrase(laptop.controller.recoveryPhrase()),
+    );
+    steps.length = 0;
+
+    await laptop.controller.changePhrase(false);
+
+    const next = keyFromRecoveryPhrase(laptop.controller.recoveryPhrase());
+    assert.deepEqual(steps, [
+      'unreachableTeams',
+      `endIdentity ${shared} as ${old}`,
+      `successor ${identityCard(identityOf(next))} in ${vaultIdOf(next)}`,
+      'load',
+    ]);
+  });
+
+  // A device stopped after the new phrase was saved with the old key beside
+  // it, before sharing was handed over.
+  async function stoppedMidChange(shared: string) {
+    const laptop = await device('laptop', {
+      sharing: recordingSharing({}).sharing,
+    });
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const old = keyFromRecoveryPhrase(laptop.controller.recoveryPhrase());
+    const next = randomKey();
+    const settings = createSyncSettings({
+      directory: join(dir(), 'laptop'),
+      keychain: reversing,
+    });
+    const saved = await settings.load();
+    assert.ok(saved);
+    await settings.save({
+      ...saved,
+      id: vaultIdOf(next),
+      key: next,
+      deviceId: randomUUID(),
+      handingOver: { key: old, deviceId: saved.deviceId },
+    });
+    return { old, oldDevice: saved.deviceId, next, settings };
+  }
+
+  it('finishes handing sharing over in the first round after a restart, ending the old identity in a session of its own', async () => {
+    const shared = await sharedFolder();
+    const { old, oldDevice, next, settings } = await stoppedMidChange(shared);
+    const live = recordingSharing({});
+    const ending = recordingSharing({});
+    const restarted = await device('laptop', {
+      sharing: live.sharing,
+      endingSharing: () => ending.sharing,
+    });
+    assert.deepEqual(live.loads, [relayToken(next)]);
+
+    await restarted.controller.refresh();
+
+    // The app's session holds no identity while the old one ends.
+    assert.deepEqual(live.loads, [relayToken(next), null, relayToken(next)]);
+    // Loaded again once the app's session is gone, before it ends.
+    assert.deepEqual(ending.steps, [
+      'load',
+      'unreachableTeams',
+      'load',
+      `endIdentity ${shared} as ${relayToken(old)}`,
+      `successor ${identityCard(identityOf(next))} in ${vaultIdOf(next)}`,
+      'load',
+    ]);
+    assert.deepEqual(ending.loads, [relayToken(old), relayToken(old), null]);
+    assert.deepEqual(ending.devices, [oldDevice, oldDevice, null]);
+    assert.equal(restarted.controller.recoveryPhrase(), recoveryPhrase(next));
+    assert.equal((await settings.load())?.handingOver, undefined);
+    ending.steps.length = 0;
+    await restarted.controller.refresh();
+    assert.deepEqual(ending.steps, []);
+  });
+
+  // Whether the app's session was unloaded tells whether the old identity
+  // got as far as ending: a check that fails first leaves the app alone.
+  for (const [why, setup, note, unloaded] of [
+    [
+      'a team it may manage can’t be reached',
+      { unreachable: async () => ['Roadmap'] },
+      'Sharing is still moving to the new phrase. It finishes once the teams can be reached.',
+      false,
+    ],
+    [
+      'a team wasn’t handed over',
+      { unfinished: () => ['Roadmap'] },
+      'Sharing is still moving to the new phrase: Roadmap isn’t handed over yet.',
+      true,
+    ],
+    [
+      'the old identity’s shares can’t be read',
+      { sharesOpen: false },
+      'Sharing is still moving to the new phrase: the old phrase’s shares couldn’t be read.',
+      false,
+    ],
+  ] satisfies Array<
+    [string, Parameters<typeof recordingSharing>[0], string, boolean]
+  >) {
+    it(`keeps the old key and tries again later while ${why}`, async () => {
+      const shared = await sharedFolder();
+      const { old, next, settings } = await stoppedMidChange(shared);
+      const live = recordingSharing({});
+      const ending = recordingSharing(setup);
+      let clock = 7;
+      const restarted = await device('laptop', {
+        sharing: live.sharing,
+        endingSharing: () => ending.sharing,
+        now: () => clock,
+      });
+
+      await restarted.controller.refresh();
+
+      assert.deepEqual(
+        live.loads,
+        unloaded
+          ? [relayToken(next), null, relayToken(next)]
+          : [relayToken(next)],
+      );
+      assert.deepEqual(
+        new Uint8Array((await settings.load())?.handingOver?.key ?? []),
+        old,
+      );
+      const waiting = restarted.controller.state();
+      assert.equal(waiting.status === 'ready' && waiting.error, note);
+      // Anything else the user does still shows the hand-over waiting.
+      await restarted.controller.confirmRecoveryPhrase();
+      const later = restarted.controller.state();
+      assert.equal(
+        later.status === 'ready' && later.error,
+        'Sharing is still moving to the new phrase.',
+      );
+      ending.steps.length = 0;
+      clock += 60_000;
+      await restarted.controller.refresh();
+      assert.deepEqual(ending.steps, []);
+      clock += 5 * 60_000;
+      await restarted.controller.refresh();
+      assert.equal(ending.steps[0], 'load');
+    });
+  }
+
+  it('never ends the old identity in the session the app shows', async () => {
+    const shared = await sharedFolder();
+    const { old, settings } = await stoppedMidChange(shared);
+    const live = recordingSharing({});
+    const restarted = await device('laptop', { sharing: live.sharing });
+    live.steps.length = 0;
+    await restarted.controller.refresh();
+    assert.equal(live.loads.includes(relayToken(old)), false);
+    assert.deepEqual(
+      new Uint8Array((await settings.load())?.handingOver?.key ?? []),
+      old,
+    );
+  });
+
+  it('asks before a new phrase change leaves the teams still being handed over', async () => {
+    const shared = await sharedFolder();
+    const { next, settings } = await stoppedMidChange(shared);
+    const ending = recordingSharing({ unreachable: async () => ['Roadmap'] });
+    const restarted = await device('laptop', {
+      sharing: recordingSharing({}).sharing,
+      endingSharing: () => ending.sharing,
+    });
+    await assert.rejects(
+      restarted.controller.changePhrase(false),
+      (failure) =>
+        failure instanceof UnreachableTeamsError && failure.teams.length === 0,
+    );
+    assert.equal(restarted.controller.recoveryPhrase(), recoveryPhrase(next));
+
+    await restarted.controller.changePhrase(false, true);
+    const latest = keyFromRecoveryPhrase(restarted.controller.recoveryPhrase());
+    assert.notDeepEqual(latest, next);
+    assert.equal((await settings.load())?.handingOver, undefined);
+  });
+
+  it('keeps the old key after a phrase change that couldn’t hand every team over', async () => {
+    const shared = await sharedFolder();
+    const { sharing } = recordingSharing({ unfinished: () => ['Roadmap'] });
+    const laptop = await device('laptop', { sharing });
+    await laptop.controller.create();
+    await laptop.controller.useFolder(shared);
+    const old = keyFromRecoveryPhrase(laptop.controller.recoveryPhrase());
+    const before = await createSyncSettings({
+      directory: join(dir(), 'laptop'),
+      keychain: reversing,
+    }).load();
+    await laptop.controller.changePhrase(false);
+    const settings = createSyncSettings({
+      directory: join(dir(), 'laptop'),
+      keychain: reversing,
+    });
+    const saved = await settings.load();
+    assert.deepEqual(new Uint8Array(saved?.handingOver?.key ?? []), old);
+    assert.equal(saved?.handingOver?.deviceId, before?.deviceId);
+    assert.notEqual(saved?.deviceId, before?.deviceId);
+  });
+
+  it('shows what sharing couldn’t finish when the phrase changes or this device moves', async () => {
+    const { sharing } = recordingSharing({
+      trouble: 'Roadmap wasn’t handed to the new phrase: offline',
+    });
+    const laptop = await device('laptop', { sharing });
+    await laptop.controller.create();
+    await laptop.controller.changePhrase(false);
+    const changed = laptop.controller.state();
+    assert.equal(
+      changed.status === 'ready' && changed.error,
+      'Sharing didn’t fully move to the new phrase: Roadmap wasn’t handed to the new phrase: offline',
+    );
+
+    await laptop.controller.enterPhrase(recoveryPhrase(randomKey()), {
+      leaveCopies: false,
+      replaceUnreadable: false,
+    });
+    const moved = laptop.controller.state();
+    assert.equal(
+      moved.status === 'ready' && moved.error,
+      'This device’s shared copies weren’t all removed: Roadmap wasn’t handed to the new phrase: offline',
+    );
   });
 });

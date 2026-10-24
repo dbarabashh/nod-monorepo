@@ -13,6 +13,8 @@
     "./meetings/testing": "./src/meetings/testing/index.ts",
     "./models": "./src/models/index.ts",
     "./sharing": "./src/sharing/index.ts",
+    "./sharing/relay": "./src/sharing/relay/index.ts",
+    "./sharing/testing": "./src/sharing/testing/index.ts",
     "./sync": "./src/sync/index.ts",
     "./sync/testing": "./src/sync/testing/index.ts",
     "./transcription": "./src/transcription/index.ts"

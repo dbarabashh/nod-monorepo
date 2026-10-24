@@ -68,6 +68,15 @@ export type MeetingDetail = {
   summaryEdited: boolean;
   summaryStatus: SummaryStatus;
   problem: string | null;
+  sharedAs: SharedCopyInfo[];
+};
+
+// Where the meeting's notes went: a note in a one-to-one vault or a team.
+export type SharedCopyInfo = {
+  noteId: string;
+  target: string;
+  kind: ShareTargetKind;
+  sharedAt: number;
 };
 
 export type SummaryStatus = 'idle' | 'writing' | 'failed';
@@ -113,12 +122,17 @@ export type SharingPeer = {
   stoppedAt: number | null;
 };
 
+export type ShareTargetKind = 'person' | 'team';
+
 export type SharedNoteInfo = {
   id: string;
   title: string;
   sharedAt: number;
-  peer: string;
-  peerCode: string;
+  // The person it is shared with (their identity as hex) or the team it is
+  // shared in (the team vault's id), and what to call that home.
+  target: string;
+  kind: ShareTargetKind;
+  label: string;
 };
 
 export type SharedNoteDetail = {
@@ -126,8 +140,67 @@ export type SharedNoteDetail = {
   title: string;
   summary: string;
   sharedAt: number;
-  peer: string;
+  target: string;
+  kind: ShareTargetKind;
 };
+
+export type TeamRole = 'owner' | 'admin' | 'writer' | 'reader';
+
+export type TeamGrantedRole = Exclude<TeamRole, 'owner'>;
+
+// Lowest first: a role's position is its rank.
+export const teamGrantedRoles: TeamGrantedRole[] = [
+  'reader',
+  'writer',
+  'admin',
+];
+
+export const teamRoles: TeamRole[] = [...teamGrantedRoles, 'owner'];
+
+export function rankOf(role: TeamRole): number {
+  return teamRoles.indexOf(role);
+}
+
+export function isTeamGrantedRole(value: unknown): value is TeamGrantedRole {
+  return teamGrantedRoles.some((role) => role === value);
+}
+
+export type TeamMemberInfo = {
+  identity: string;
+  code: string;
+  name: string | null;
+  role: TeamRole;
+  leaving: boolean;
+};
+
+export type TeamInviteInfo = {
+  id: string;
+  role: TeamGrantedRole;
+  approval: boolean;
+};
+
+export type TeamRequestInfo = {
+  id: string;
+  identity: string;
+  code: string;
+  name: string | null;
+  role: TeamGrantedRole;
+};
+
+export type TeamInfo = {
+  vaultId: string;
+  name: string;
+  // The relay the team lives on.
+  host: string;
+  role: TeamRole | null;
+  pending: boolean;
+  members: TeamMemberInfo[];
+  invites: TeamInviteInfo[];
+  requests: TeamRequestInfo[];
+  error: string | null;
+};
+
+export type JoinOutcome = { vaultId: string; pending: boolean };
 
 export type SharingState =
   | { status: 'none' }
@@ -135,6 +208,7 @@ export type SharingState =
       status: 'ready';
       code: string;
       peers: SharingPeer[];
+      teams: TeamInfo[];
       notes: SharedNoteInfo[];
       error: string | null;
     };
@@ -272,6 +346,21 @@ export const IpcChannel = {
   getSharedNote: 'sharing:get-note',
   editSharedNote: 'sharing:edit-note',
   deleteSharedNote: 'sharing:delete-note',
+  createTeam: 'sharing:create-team',
+  joinTeam: 'sharing:join-team',
+  showTeamInvite: 'sharing:show-team-invite',
+  revokeTeamInvite: 'sharing:revoke-team-invite',
+  answerTeamRequest: 'sharing:answer-team-request',
+  addTeamMember: 'sharing:add-team-member',
+  setTeamMemberRole: 'sharing:set-team-member-role',
+  removeTeamMember: 'sharing:remove-team-member',
+  leaveTeam: 'sharing:leave-team',
+  transferTeam: 'sharing:transfer-team',
+  rotateTeamKey: 'sharing:rotate-team-key',
+  showTeamLink: 'sharing:show-team-link',
+  addKnownTeam: 'sharing:add-known-team',
+  renameTeam: 'sharing:rename-team',
+  nameTeamMember: 'sharing:name-team-member',
 } satisfies Record<
   Exclude<keyof AppApi, 'platform' | keyof typeof IpcEvent>,
   string
@@ -346,10 +435,59 @@ export type AppApi = {
   showIdentityCard: () => Promise<void>;
   addSharingPeer: (card: string) => Promise<boolean>;
   stopSharingPeer: (identity: string) => Promise<void>;
-  shareMeeting: (meetingId: string, peer: string) => Promise<SharedNoteInfo>;
-  getSharedNote: (peer: string, id: string) => Promise<SharedNoteDetail>;
-  editSharedNote: (peer: string, id: string, summary: string) => Promise<void>;
-  deleteSharedNote: (peer: string, id: string) => Promise<void>;
+  shareMeeting: (meetingId: string, target: string) => Promise<SharedNoteInfo>;
+  getSharedNote: (target: string, id: string) => Promise<SharedNoteDetail>;
+  editSharedNote: (
+    target: string,
+    id: string,
+    summary: string,
+  ) => Promise<void>;
+  deleteSharedNote: (target: string, id: string) => Promise<void>;
+  createTeam: (
+    name: string,
+    myName: string,
+    relay: string | null,
+  ) => Promise<string | null>;
+  joinTeam: (link: string, myName: string) => Promise<JoinOutcome | null>;
+  showTeamInvite: (
+    vaultId: string,
+    role: TeamGrantedRole,
+    approval: boolean,
+  ) => Promise<void>;
+  revokeTeamInvite: (vaultId: string, inviteId: string) => Promise<boolean>;
+  answerTeamRequest: (
+    vaultId: string,
+    requestId: string,
+    accept: boolean,
+    role: TeamGrantedRole,
+  ) => Promise<boolean>;
+  addTeamMember: (
+    vaultId: string,
+    card: string,
+    role: TeamGrantedRole,
+    name: string,
+  ) => Promise<boolean>;
+  setTeamMemberRole: (
+    vaultId: string,
+    identity: string,
+    role: TeamGrantedRole,
+  ) => Promise<boolean>;
+  removeTeamMember: (vaultId: string, identity: string) => Promise<boolean>;
+  leaveTeam: (vaultId: string) => Promise<boolean>;
+  transferTeam: (
+    vaultId: string,
+    identity: string,
+    role: 'admin' | 'writer',
+  ) => Promise<boolean>;
+  rotateTeamKey: (vaultId: string) => Promise<boolean>;
+  showTeamLink: (vaultId: string) => Promise<void>;
+  addKnownTeam: (link: string) => Promise<string | null>;
+  renameTeam: (vaultId: string, name: string) => Promise<void>;
+  nameTeamMember: (
+    vaultId: string,
+    identity: string,
+    name: string,
+  ) => Promise<void>;
   onSharingChanged: (callback: (state: SharingState) => void) => () => void;
   onDialogChanged: (callback: (open: boolean) => void) => () => void;
   getMcpState: () => Promise<McpState>;

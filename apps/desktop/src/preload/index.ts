@@ -114,14 +114,70 @@ const api: AppApi = {
     clicked(() => ipcRenderer.invoke(IpcChannel.addSharingPeer, card)),
   stopSharingPeer: (identity) =>
     clicked(() => ipcRenderer.invoke(IpcChannel.stopSharingPeer, identity)),
-  shareMeeting: (meetingId, peer) =>
-    clicked(() => ipcRenderer.invoke(IpcChannel.shareMeeting, meetingId, peer)),
-  getSharedNote: (peer, id) =>
-    ipcRenderer.invoke(IpcChannel.getSharedNote, peer, id),
-  editSharedNote: (peer, id, summary) =>
-    ipcRenderer.invoke(IpcChannel.editSharedNote, peer, id, summary),
-  deleteSharedNote: (peer, id) =>
-    ipcRenderer.invoke(IpcChannel.deleteSharedNote, peer, id),
+  shareMeeting: (meetingId, target) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.shareMeeting, meetingId, target),
+    ),
+  getSharedNote: (target, id) =>
+    ipcRenderer.invoke(IpcChannel.getSharedNote, target, id),
+  editSharedNote: (target, id, summary) =>
+    ipcRenderer.invoke(IpcChannel.editSharedNote, target, id, summary),
+  deleteSharedNote: (target, id) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.deleteSharedNote, target, id)),
+  createTeam: (name, myName, relay) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.createTeam, name, myName, relay),
+    ),
+  joinTeam: (link, myName) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.joinTeam, link, myName)),
+  showTeamInvite: (vaultId, role, approval) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.showTeamInvite, vaultId, role, approval),
+    ),
+  revokeTeamInvite: (vaultId, inviteId) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.revokeTeamInvite, vaultId, inviteId),
+    ),
+  answerTeamRequest: (vaultId, requestId, accept, role) =>
+    clicked(() =>
+      ipcRenderer.invoke(
+        IpcChannel.answerTeamRequest,
+        vaultId,
+        requestId,
+        accept,
+        role,
+      ),
+    ),
+  addTeamMember: (vaultId, card, role, name) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.addTeamMember, vaultId, card, role, name),
+    ),
+  setTeamMemberRole: (vaultId, identity, role) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.setTeamMemberRole, vaultId, identity, role),
+    ),
+  removeTeamMember: (vaultId, identity) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.removeTeamMember, vaultId, identity),
+    ),
+  leaveTeam: (vaultId) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.leaveTeam, vaultId)),
+  transferTeam: (vaultId, identity, role) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.transferTeam, vaultId, identity, role),
+    ),
+  rotateTeamKey: (vaultId) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.rotateTeamKey, vaultId)),
+  showTeamLink: (vaultId) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.showTeamLink, vaultId)),
+  addKnownTeam: (link) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.addKnownTeam, link)),
+  renameTeam: (vaultId, name) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.renameTeam, vaultId, name)),
+  nameTeamMember: (vaultId, identity, name) =>
+    clicked(() =>
+      ipcRenderer.invoke(IpcChannel.nameTeamMember, vaultId, identity, name),
+    ),
   onSharingChanged: (callback) =>
     subscribe(IpcEvent.onSharingChanged, callback),
   onDialogChanged: (callback) => subscribe(IpcEvent.onDialogChanged, callback),

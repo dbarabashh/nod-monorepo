@@ -12,6 +12,7 @@
   "categories": {
     "correctness": "warn"
   },
+  "ignorePatterns": ["relay/dist/**"],
   "rules": {
     "import/extensions": [
       "error",

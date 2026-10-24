@@ -8,7 +8,8 @@ type PageId =
   | 'summaries'
   | 'assistants'
   | 'sync'
-  | 'sharing'
+  | 'people'
+  | 'teams'
   | 'recovery'
   | 'import';
 
@@ -64,6 +65,25 @@ const groups: Array<{ label: string; pages: Page[] }> = [
     ],
   },
   {
+    label: 'Sharing',
+    pages: [
+      {
+        id: 'people',
+        label: 'People',
+        icon: 'person',
+        description:
+          'Share a meeting’s title and summary with one person. You add each other’s identity card, and only the two of you can read what you share.',
+      },
+      {
+        id: 'teams',
+        label: 'Teams',
+        icon: 'people',
+        description:
+          'A shared notebook for a group on a relay. Each member has a role, owners and admins decide who is in, and only members can read its notes.',
+      },
+    ],
+  },
+  {
     label: 'Data',
     pages: [
       {
@@ -72,13 +92,6 @@ const groups: Array<{ label: string; pages: Page[] }> = [
         icon: 'sync',
         description:
           'Keep meetings the same on all your devices. They travel encrypted, and the folder or relay they pass through can’t read them.',
-      },
-      {
-        id: 'sharing',
-        label: 'Sharing',
-        icon: 'document',
-        description:
-          'Share a meeting’s title and summary with another person. Notes travel encrypted, and only the two of you can read them.',
       },
       {
         id: 'recovery',

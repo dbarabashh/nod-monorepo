@@ -19,6 +19,7 @@ import {
   readPublishedEntries,
   readReceivedEntries,
   requestPairingOffer,
+  type Fetch,
   type PairingCode,
   type PairingOffer,
   type PublishedLog,
@@ -38,8 +39,18 @@ import {
   publishedDirectory,
   sharedVaultDirectory,
   sharesDirectory,
+  teamDirectory,
+  teamNotesDirectory,
 } from '../storage.ts';
-import type { SharedPlace, SharesFile } from '@nod/core/sharing';
+import {
+  createTeamRelay,
+  fetchInviteFile,
+  singleFileOf,
+  type SharedPlace,
+  type SharesFile,
+  type TeamFiles,
+  type TeamRelays,
+} from '@nod/core/sharing';
 import type { Directory } from 'expo-file-system';
 import type { StoredVault, VaultStorage } from './session.ts';
 
@@ -54,6 +65,16 @@ function abortAfter(ms: number): AbortSignal {
   setTimeout(() => controller.abort(), ms);
   return controller.signal;
 }
+
+// A request that never ends would hold every later round behind it.
+// Relays, including ones named by a link, get no cookies from the app and
+// can't store any, so none can track this phone across requests or hosts.
+const relayFetch: Fetch = (url, init) =>
+  fetch(url, {
+    ...init,
+    credentials: 'omit',
+    signal: abortAfter(relayTimeoutMs),
+  });
 
 // Keys stay on this device: they are left out of backups and transfers to a
 // new phone, which pairs again instead (see KeyLostError).
@@ -198,19 +219,33 @@ export function secureVaults(): VaultStorage {
   };
 }
 
-const sharesName = 'shares';
-
-// The shares list is one file in the vault's folder, written the way a
-// meeting is.
 export function sharesFileFor(vaultId: string): SharesFile {
-  const files = filesIn(sharesDirectory(vaultId));
+  return singleFileOf(filesIn(sharesDirectory(vaultId)), 'shares');
+}
+
+export function teamFilesFor(vaultId: string): TeamFiles {
+  const team = filesIn(teamDirectory(vaultId));
   return {
-    read: async () =>
-      (await files.ids()).includes(sharesName) ? files.read(sharesName) : null,
-    write: (data) => files.write(sharesName, data),
-    setAside: () => files.setAside(sharesName),
+    notes: filesIn(teamNotesDirectory(vaultId)),
+    members: singleFileOf(team, 'members'),
+    list: singleFileOf(team, 'list'),
   };
 }
+
+// A team vault has no token: every request is signed by the person's
+// identity, so a team is reached on the relay its list lives on, which need
+// not be the person's own.
+export const teamRelays: TeamRelays = {
+  open: async (host, vaultId, identity) =>
+    createTeamRelay({
+      url: host,
+      vaultId,
+      identity,
+      fetch: relayFetch,
+      now: () => Date.now(),
+    }),
+  fetchInvite: (link) => fetchInviteFile(link, relayFetch, () => Date.now()),
+};
 
 function relayTransport(
   url: string,
@@ -220,9 +255,7 @@ function relayTransport(
     url,
     vaultId: vault.id,
     token: vault.token,
-    // A request that never ends would hold every later round behind it.
-    fetch: (url, init) =>
-      fetch(url, { ...init, signal: abortAfter(relayTimeoutMs) }),
+    fetch: relayFetch,
     now: () => Date.now(),
   });
 }

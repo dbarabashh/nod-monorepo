@@ -7,6 +7,7 @@ import {
   identityOf,
   oneToOneRootKey,
   parseIdentityCard,
+  type Identity,
 } from './identity.ts';
 import { fileKeyOf } from './vault-keys.ts';
 
@@ -35,9 +36,9 @@ describe('identity', () => {
     assert.equal(new Set(keys).size, keys.length);
   });
 
-  it('shows a code of four groups that two people can compare aloud', () => {
+  it('shows a code of five groups that two people can compare aloud', () => {
     const code = identityCodeOf(alice.publicKey);
-    assert.match(code, /^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$/);
+    assert.match(code, /^[0-9A-F]{4}(-[0-9A-F]{4}){4}$/);
     assert.notEqual(code, identityCodeOf(bob.publicKey));
   });
 });
@@ -85,6 +86,24 @@ describe('identity card', () => {
       null,
     );
     assert.equal(parseIdentityCard('nod-id:v1:not base64!'), null);
+  });
+});
+
+describe('identity card, the edges', () => {
+  it('refuses another spelling of a card', () => {
+    const card = identityCard(alice);
+    const alphabet =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const index = alphabet.indexOf(card.at(-1) ?? 'A');
+    const other = alphabet[(index & ~15) | ((index + 1) & 15)] ?? 'A';
+    assert.ok(parseIdentityCard(card));
+    assert.equal(parseIdentityCard(`${card.slice(0, -1)}${other}`), null);
+  });
+
+  it('refuses a card whose wrapping key is of small order', () => {
+    const smallOrder = new Uint8Array(32);
+    const forged: Identity = { ...alice, wrappingPublicKey: smallOrder };
+    assert.equal(parseIdentityCard(identityCard(forged)), null);
   });
 });
 

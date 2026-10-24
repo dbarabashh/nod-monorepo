@@ -143,6 +143,7 @@ function meeting(raw: unknown): Meeting | null {
       titleEdited: false,
       generatedTitle: null,
       folder: folderName(field(raw, 'folder')),
+      sharedAs: [],
     },
     lines,
   );

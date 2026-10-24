@@ -29,10 +29,16 @@ export function vaultIdOf(vaultKey: Uint8Array): string {
   return toHex(sha256(bytesOf(relayToken(vaultKey))).subarray(0, 16));
 }
 
-// 64 bits in four groups, short enough to compare by eye or aloud and far
-// too many to find another key that gives the same code.
-export function groupedCode(hex: string): string {
-  return hex.slice(0, 16).toUpperCase().match(/.{4}/g)?.join('-') ?? '';
+// Four groups of 16 bits by default, short enough to compare by eye or aloud
+// and far too many to find another key that gives the same code.
+export function groupedCode(hex: string, groups = 4): string {
+  return (
+    hex
+      .slice(0, groups * 4)
+      .toUpperCase()
+      .match(/.{4}/g)
+      ?.join('-') ?? ''
+  );
 }
 
 export function vaultCodeOf(vaultId: string): string {

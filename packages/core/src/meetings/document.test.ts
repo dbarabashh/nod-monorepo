@@ -20,6 +20,7 @@ import {
   finishMeeting,
   meetingName,
   moveToFolder,
+  recordShare,
   renameMeeting,
   setSummary,
   startMeeting,
@@ -304,6 +305,72 @@ describe('meeting documents', () => {
     assert.equal(meeting.title, 'Typed as text');
     assert.equal(meeting.titleEdited, false);
     assert.equal(meeting.generatedTitle, null);
+  });
+
+  it('keeps where a meeting was shared, merges shares made on two devices, and reads none from an older document', () => {
+    const peer = 'ab'.repeat(32);
+    const team = 'cd'.repeat(16);
+    const shared = recordShare(base, {
+      noteId: 'n1',
+      target: peer,
+      kind: 'person',
+      sharedAt: 5,
+    });
+    const loaded = loadDocument(saveDocument(createDocument(shared)));
+    assert.ok(loaded);
+    assert.deepEqual(meetingOf(loaded).sharedAs, [
+      { noteId: 'n1', target: peer, kind: 'person', sharedAt: 5 },
+    ]);
+    const laptop = updateDocument(
+      Automerge.clone(loaded),
+      shared,
+      recordShare(shared, {
+        noteId: 'n2',
+        target: team,
+        kind: 'team',
+        sharedAt: 7,
+      }),
+    );
+    const phone = updateDocument(
+      Automerge.clone(loaded),
+      shared,
+      recordShare(shared, {
+        noteId: 'n3',
+        target: team,
+        kind: 'team',
+        sharedAt: 6,
+      }),
+    );
+    assert.deepEqual(
+      meetingOf(mergeDocuments(laptop, phone)).sharedAs.map(
+        (copy) => copy.noteId,
+      ),
+      ['n1', 'n3', 'n2'],
+    );
+    const older = Automerge.from({
+      schema: 1,
+      id: 'm1',
+      title: new Automerge.ImmutableString('Before sharing'),
+      segments: [{ startedAt: 1, endedAt: 2 }],
+      finishedAt: null,
+      lines: {},
+      summary: '',
+      summaryEdited: false,
+      titleEdited: false,
+      generatedTitle: null,
+      deletedAt: null,
+    });
+    const before = loadDocument(Automerge.save(older));
+    assert.ok(before);
+    assert.deepEqual(meetingOf(before).sharedAs, []);
+    const planted = Automerge.change(Automerge.clone(before), (fields) => {
+      fields.sharedAs = {
+        'bad id!': { target: peer, kind: 'person', sharedAt: 1 },
+        ok: { target: 'not a target', kind: 'person', sharedAt: 1 },
+        other: { target: peer, kind: 'team', sharedAt: Number.NaN },
+      };
+    });
+    assert.deepEqual(meetingOf(planted).sharedAs, []);
   });
 
   it('keeps a folder through saving, and reads none from a document written before folders', () => {

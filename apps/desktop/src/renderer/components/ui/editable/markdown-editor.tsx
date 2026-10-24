@@ -65,11 +65,18 @@ function applyShortcut(root: HTMLElement) {
   shortcut.apply();
 }
 
-export function SummaryEditor({
+// Markdown shown as rich text and edited in place, saved a moment after
+// typing stops and when focus leaves. Read-only shows the same text, for
+// someone who may read but not change it.
+export function MarkdownEditor({
   markdown,
+  label,
+  readOnly = false,
   onSave,
 }: {
   markdown: string;
+  label: string;
+  readOnly?: boolean;
   onSave: (markdown: string) => Promise<void>;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -134,6 +141,12 @@ export function SummaryEditor({
     );
   }
 
+  if (readOnly) {
+    return (
+      <div ref={root} className="ui-prose" aria-label={label} data-selectable />
+    );
+  }
+
   return (
     <>
       <div
@@ -144,7 +157,7 @@ export function SummaryEditor({
         role="textbox"
         tabIndex={0}
         aria-multiline="true"
-        aria-label="Summary"
+        aria-label={label}
         contentEditable
         suppressContentEditableWarning
         data-selectable
@@ -167,7 +180,7 @@ export function SummaryEditor({
         onPaste={paste}
       />
       {failed && (
-        <p className="meeting-detail__note" role="alert">
+        <p className="ui-editable__error" role="alert">
           Your changes couldn’t be saved. Keep editing to try again.
         </p>
       )}

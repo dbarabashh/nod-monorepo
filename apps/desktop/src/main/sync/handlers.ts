@@ -1,5 +1,7 @@
+import { shownName } from '../sharing/shown-name.ts';
 import {
   UnreachableError,
+  UnreachableTeamsError,
   type PhrasePreview,
   type SyncController,
 } from './controller.ts';
@@ -114,6 +116,11 @@ function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
       'This device stops syncing with the devices that use its current phrase. Its meetings stay here and move to the vault of these words.',
     );
   }
+  if (preview.handingOver) {
+    details.push(
+      'Some teams your previous phrase managed are still being handed to this one. Switching now leaves them with that phrase, and no device can hand them over later.',
+    );
+  }
   if (preview.devices === 0) {
     details.push(
       'No device syncs with these words yet. If you expected one, check each word.',
@@ -132,6 +139,21 @@ function phraseQuestion(phrase: string, preview: PhrasePreview): Question {
     code: { label: 'Vault code', value: preview.vaultCode },
     words: phraseWords(phrase),
     confirmLabel: preview.switching ? 'Switch' : 'Use phrase',
+    cancelLabel: 'Cancel',
+  };
+}
+
+function teamsQuestion(teams: string[]): Question {
+  const names = teams.map((name) => `“${shownName(name) || 'Unnamed team'}”`);
+  return {
+    message: 'Change the phrase without these teams?',
+    detail: [
+      names.length === 0
+        ? 'Nod couldn’t check the teams you own or manage, so it can’t tell whether they all move to the new phrase.'
+        : `The relay of ${names.join(', ')} can’t be reached right now, so ${names.length === 1 ? 'that team doesn’t' : 'those teams don’t'} move to the new phrase.`,
+      'If you go on, your old identity stays in them and the new one isn’t added; someone in the team has to invite you again. Choose Cancel to try again once the relay can be reached.',
+    ].join('\n\n'),
+    confirmLabel: 'Change phrase',
     cancelLabel: 'Cancel',
   };
 }
@@ -366,30 +388,46 @@ export function createSyncHandlers(options: {
       if (
         !(await ask({
           message: 'Change your recovery phrase?',
-          detail:
-            'Nod makes a new recovery phrase and stops syncing through the old one. Enter the new phrase on each device you keep; a lost or removed device never gets it, but it keeps what it already has. Do it soon: devices still on the old phrase stop syncing once they see the change. Write the new phrase down right after.\n\nYour identity changes with the phrase, so every note you share with someone stops being shared; exchange identity cards again to share with them under the new phrase.',
+          detail: [
+            'Nod makes a new recovery phrase and stops syncing through the old one. Enter the new phrase on each device you keep; a lost or removed device never gets it, but it keeps what it already has. Do it soon: devices still on the old phrase stop syncing once they see the change. Write the new phrase down right after.',
+            'Your sharing identity changes with the phrase. Notes you share with a person stop being shared; exchange identity cards again to share with them under the new phrase.',
+            'Teams you own move to the new phrase, and your old identity is removed from them. In a team where you are an admin, the new phrase joins as a writer; ask the owner to remove your old identity. Every other team has to invite you again.',
+          ].join('\n\n'),
           confirmLabel: 'Change phrase',
           cancelLabel: 'Cancel',
         }))
       ) {
         return;
       }
-      try {
-        await controller.changePhrase(false);
-      } catch (failure) {
-        if (
-          !(failure instanceof UnreachableError) ||
-          !(await ask({
-            message: 'Change the phrase anyway?',
-            detail:
-              'The folder or relay can’t be reached, so your other devices won’t be told and this device’s copies stay there. Enter the new phrase on the devices you keep yourself.',
-            confirmLabel: 'Change phrase',
-            cancelLabel: 'Cancel',
-          }))
-        ) {
-          throw failure;
+      let leaveCopies = false;
+      let leaveTeams = false;
+      for (;;) {
+        try {
+          await controller.changePhrase(leaveCopies, leaveTeams);
+          break;
+        } catch (failure) {
+          if (failure instanceof UnreachableTeamsError && !leaveTeams) {
+            if (!(await ask(teamsQuestion(failure.teams)))) {
+              throw failure;
+            }
+            leaveTeams = true;
+          } else if (failure instanceof UnreachableError && !leaveCopies) {
+            if (
+              !(await ask({
+                message: 'Change the phrase anyway?',
+                detail:
+                  'The folder or relay can’t be reached, so your other devices won’t be told and this device’s copies stay there. Enter the new phrase on the devices you keep yourself.',
+                confirmLabel: 'Change phrase',
+                cancelLabel: 'Cancel',
+              }))
+            ) {
+              throw failure;
+            }
+            leaveCopies = true;
+          } else {
+            throw failure;
+          }
         }
-        await controller.changePhrase(true);
       }
       syncSoon();
     },

@@ -68,7 +68,10 @@ export function createSyncSession(options: {
   now: () => number;
   // Sharing rides on the vault: its list syncs beside the meetings, and the
   // shared vaults go through the same relay.
-  sharing?: Pick<SharingSession, 'load' | 'sharesEngine' | 'round' | 'endAll'>;
+  sharing?: Pick<
+    SharingSession,
+    'load' | 'sharesEngine' | 'round' | 'leaveDevice'
+  >;
   sharedPlaceFor?: (vault: StoredVault) => SharedPlace;
 }) {
   const {
@@ -295,11 +298,11 @@ export function createSyncSession(options: {
           closed: false,
         };
         const ids = published();
-        // Another phrase is another identity: every share ends, best
-        // effort, before this phone becomes someone else to its peers.
+        // Only this phone leaves: the identity and its shares stay for the
+        // person's other devices, which may still use the old phrase.
         if (current && !same) {
           await sharing
-            ?.endAll(options.sharedPlaceFor?.(current) ?? null)
+            ?.leaveDevice(options.sharedPlaceFor?.(current) ?? null)
             .catch(() => undefined);
         }
         await vaults.save(next);
@@ -327,11 +330,11 @@ export function createSyncSession(options: {
     unpair: async () => {
       const current = vault;
       const ids = published();
-      // Shares end with the vault: this phone's note copies come off the
-      // relay where it can be reached, and every peer is marked stopped.
+      // This phone's note copies come off the relay where it can be
+      // reached; the identity's shares stay for the person's other devices.
       if (current && !current.closed) {
         await sharing
-          ?.endAll(options.sharedPlaceFor?.(current) ?? null)
+          ?.leaveDevice(options.sharedPlaceFor?.(current) ?? null)
           .catch(() => undefined);
       }
       await vaults.clear();
