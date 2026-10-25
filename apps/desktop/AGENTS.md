@@ -17,7 +17,7 @@ Run from this folder, or from the root with `pnpm --filter nod-desktop <script>`
 ```sh
 pnpm start       # dev mode with Vite HMR and DevTools open
 pnpm typecheck   # tsc --noEmit, strict
-pnpm test        # node:test over src/**/*.test.ts and relay/**/*.test.ts
+pnpm test        # node:test over src/**/*.test.ts
 pnpm lint        # oxlint + oxfmt --check + type-assertion check
 pnpm make        # installers for the host OS into out/make
                  # NOD_RELAY_URL=<https address> offers that relay in the build
@@ -35,9 +35,6 @@ src/
 build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Windows)
                and icon.png (Linux, 1024 px), plus entitlements.mac.plist for
                the signed macOS build, all wired in forge.config.mts
-relay/         the optional self-hostable sync relay (no dependencies); its
-               tests run with this app's, against the relay transport in
-               @nod/core/sync
 native/macos/  the microphone monitor (C, CoreAudio) that notices a meeting
                starting; Forge builds it into build/native on macOS
 scripts/       start, the mic monitor build, and package lookup in the workspace
@@ -60,3 +57,8 @@ layout and rules. Read it before editing that layer.
   three: no hardcoded paths or separators, use `app.getPath()` and `node:path`,
   and gate OS-specific behavior on `process.platform`.
 - Open DevTools only when `!app.isPackaged`.
+
+The sync relay lives in `apps/relay` (`@nod/relay`, AGPL-3.0-only). Code in
+`src/` never imports it; the sync tests (`src/main/sync/relay.test.ts`,
+`controller.test.ts`) start one through `@nod/relay/server`, a dev
+dependency, to test the relay transport against a real server.

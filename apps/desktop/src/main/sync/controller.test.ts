@@ -4,7 +4,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
-import { createRelay } from '../../../relay/server.ts';
+import { createRelay } from '@nod/relay/server';
 import {
   identityCard,
   identityOf,

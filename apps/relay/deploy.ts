@@ -1,8 +1,11 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 
-// Deploys the folder relay/build.ts writes to whichever Vercel project it is
+// Deploys the folder build.ts writes to whichever Vercel project it is
 // linked to on this machine. The link lives in the git-ignored build output,
 // so the repository names no project and every fork deploys its own.
 const folder = path.join(import.meta.dirname, 'dist', 'vercel');
@@ -11,7 +14,7 @@ try {
   await access(path.join(folder, '.vercel', 'project.json'));
 } catch {
   console.error(
-    `No Vercel project is linked in ${path.relative(process.cwd(), folder)}. Run \`vercel link\` there once and set it up as relay/README.md describes, then deploy again.`,
+    `No Vercel project is linked in ${path.relative(process.cwd(), folder)}. Run \`vercel link\` there once and set it up as apps/relay/README.md describes, then deploy again.`,
   );
   process.exit(1);
 }

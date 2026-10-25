@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { strict as assert } from 'node:assert';
 import { createHash, randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
@@ -146,6 +149,29 @@ describe('vercel relay', () => {
       },
     };
   }
+
+  it('tells anyone where its source is, when the operator names it', async () => {
+    const { storage } = memoryStorage();
+    const withSource = createRelayHandler({
+      storage,
+      now: () => start,
+      addressKey: 'test-key',
+      sourceUrl: 'https://code.example.org/nod-relay',
+    });
+    const response = await withSource(
+      new Request('https://relay.example/source'),
+    );
+    assert.equal(response.status, 200);
+    assert.equal(
+      await response.text(),
+      'This server runs the Nod sync relay, licensed under the GNU Affero General Public License v3.0 only.\nIts source code: https://code.example.org/nod-relay\n',
+    );
+    const { handle } = setUp();
+    assert.equal(
+      (await handle(new Request('https://relay.example/source'))).status,
+      404,
+    );
+  });
 
   it('lets in only a token that hashes to the vault id', async () => {
     const { send, handle } = setUp();

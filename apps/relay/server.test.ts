@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { strict as assert } from 'node:assert';
 import { randomBytes } from 'node:crypto';
 import {
@@ -75,7 +78,11 @@ describe('relay server team vaults', () => {
   });
 
   async function startRelay(
-    extra: { host?: string; limits?: Partial<ServerLimits> } = {},
+    extra: {
+      host?: string;
+      limits?: Partial<ServerLimits>;
+      sourceUrl?: string;
+    } = {},
   ) {
     clock = start;
     directory = await mkdtemp(join(tmpdir(), 'nod-relay-'));
@@ -84,7 +91,11 @@ describe('relay server team vaults', () => {
 
   // A relay over the current data directory, as a restart would bring up.
   async function listen(
-    extra: { host?: string; limits?: Partial<ServerLimits> } = {},
+    extra: {
+      host?: string;
+      limits?: Partial<ServerLimits>;
+      sourceUrl?: string;
+    } = {},
   ) {
     const server = createRelay(join(directory, 'data'), {
       now: () => clock,
@@ -174,6 +185,19 @@ describe('relay server team vaults', () => {
     const state = async () => stateOf(vaultId, await at.list.read());
     return { vaultId, root, at, key, state };
   }
+
+  it('tells anyone where its source is, when the operator names it', async () => {
+    await startRelay({ sourceUrl: 'https://code.example.org/nod-relay' });
+    const response = await fetch(`${url}source`);
+    assert.equal(response.status, 200);
+    assert.equal(
+      await response.text(),
+      'This server runs the Nod sync relay, licensed under the GNU Affero General Public License v3.0 only.\nIts source code: https://code.example.org/nod-relay\n',
+    );
+    await close();
+    await listen();
+    assert.equal((await fetch(`${url}source`)).status, 404);
+  });
 
   it('registers a team by its root record and keeps its list on disk', async () => {
     const { vaultId, root, at, key, state } = await startTeam();

@@ -45,7 +45,7 @@ updates:
           - '@automerge/*'
 
   - package-ecosystem: npm
-    directory: /apps/desktop/relay/vercel
+    directory: /apps/relay/vercel
     schedule:
       interval: weekly
       day: monday

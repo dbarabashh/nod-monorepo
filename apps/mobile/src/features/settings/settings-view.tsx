@@ -104,6 +104,15 @@ export function SettingsView() {
           </Button>
         </Section>
       )}
+      <Section title="About">
+        <List>
+          <ListRow
+            title="Open-source licenses"
+            trailing={chevron}
+            onPress={() => router.push('/licenses')}
+          />
+        </List>
+      </Section>
       {__DEV__ && (
         <Section title="Developer">
           <List>

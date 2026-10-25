@@ -52,7 +52,15 @@ notification comes from the `audio-capture` foreground service. Two local module
 `modules/` do what no Expo module does: `audio-capture` hands the microphone to
 JavaScript as 16 kHz PCM in memory (an iOS audio session for the background,
 an Android foreground service of type `microphone`), and `file-digest` hashes
-model files off the JavaScript thread. Nothing the app keeps goes into a
+model files off the JavaScript thread. The pairing QR code is read on iOS by
+`expo-camera`, whose QR reading is the system's AVFoundation, and on Android by
+the local `qr-scanner` module: CameraX frames decoded with ZXing in memory.
+`expo-camera`'s own Android scanners are Google ML Kit and Play services, which
+send Google usage metrics, so they stay out of the build: `barcodeScannerEnabled:
+false` in `app.json` and `plugins/with-no-google-scanners.js` for the document
+scanner. Never turn either back on; check `./gradlew :app:dependencies` for
+`com.google.android.gms`, `com.google.mlkit` and `datatransport` after a camera
+upgrade. Nothing the app keeps goes into a
 backup: `src/lib/storage.ts` names every file and folder and marks them with
 the iOS-only `backup-exclusion` module at each launch, and
 `plugins/with-no-backup.js` gives Android backup rules that exclude

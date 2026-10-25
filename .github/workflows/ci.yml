@@ -28,7 +28,7 @@ jobs:
           cache: true
       - run: rustup toolchain install 1.90 --profile minimal --target wasm32-unknown-unknown
       - run: pnpm typecheck
-      - run: pnpm install --dir apps/desktop/relay/vercel --ignore-workspace --frozen-lockfile
-      - run: pnpm --dir apps/desktop exec tsc --noEmit -p relay/vercel
+      - run: pnpm install --dir apps/relay/vercel --ignore-workspace --frozen-lockfile
+      - run: pnpm --dir apps/relay exec tsc --noEmit -p vercel
       - run: pnpm lint
       - run: pnpm test

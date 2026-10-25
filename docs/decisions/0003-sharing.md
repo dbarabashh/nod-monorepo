@@ -1,7 +1,7 @@
 # 0003: Sharing notes with other people
 
 - Status: proposed
-- Scope: `packages/core/src/crypto`, `packages/core/src/sync`, `packages/core/src/sharing`, `apps/desktop/relay`, `apps/desktop/src/main/sync`, `apps/mobile/src/lib/sync`
+- Scope: `packages/core/src/crypto`, `packages/core/src/sync`, `packages/core/src/sharing`, `apps/relay`, `apps/desktop/src/main/sync`, `apps/mobile/src/lib/sync`
 
 ## Context
 

@@ -37,7 +37,8 @@
         {
           "cameraPermission": "Nod uses the camera to scan the pairing code your computer shows, so this phone can sync your meetings.",
           "microphonePermission": "Nod listens while you record a meeting, to transcribe it on this phone. Audio is never stored.",
-          "recordAudioAndroid": false
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
         }
       ],
       [
@@ -59,6 +60,7 @@
       ],
       "./plugins/with-local-pairing.js",
       "./plugins/with-no-backup.js",
+      "./plugins/with-no-google-scanners.js",
       "expo-widgets"
     ],
     "experiments": {

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import {
   createHash,
   createHmac,
@@ -53,6 +56,7 @@ import {
   type SignedAccessRecord,
   type VerifiedRelayRequest,
 } from '@nod/core/sharing/relay';
+import { sourceNotice, sourcePath } from '../source.ts';
 
 // `write` with `ifMatch` replaces the object only if it is still at that
 // version, and with `ifMatch: null` only if it doesn't exist yet; otherwise it
@@ -443,6 +447,7 @@ export function createRelayHandler(options: {
   now: () => number;
   addressKey: string;
   limits?: Limits;
+  sourceUrl?: string;
 }) {
   const { storage, now } = options;
   const limits = options.limits ?? defaultLimits;
@@ -1438,6 +1443,15 @@ export function createRelayHandler(options: {
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
+    if (
+      url.pathname === sourcePath &&
+      (request.method === 'GET' || request.method === 'HEAD')
+    ) {
+      const notice = sourceNotice(options.sourceUrl);
+      return notice === null
+        ? reply(404)
+        : reply(200, notice, 'text/plain; charset=utf-8');
+    }
     const route = relayRoute(url.pathname);
     if (!route || !vaultPattern.test(route.vault)) {
       return reply(404);

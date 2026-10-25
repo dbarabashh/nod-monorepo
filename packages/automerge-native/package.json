@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "description": "Automerge on a native backend for runtimes without WebAssembly (Hermes)",
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "author": "Dima Barabash",
   "exports": {
     ".": "./src/index.ts",
     "./react-native": "./src/react-native/index.ts",

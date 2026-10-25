@@ -49,7 +49,9 @@ export const modelCatalog: ModelDefinition[] = [
     name: 'Parakeet TDT 0.6B v3',
     description: 'Fast and accurate for European languages.',
     languages: '25 European languages',
-    license: 'CC BY 4.0, NVIDIA (GGUF conversion)',
+    // CC BY asks for the changes to be named: these are NVIDIA's weights,
+    // converted and quantized by ggml-org.
+    license: 'CC BY 4.0, NVIDIA; converted to GGUF and quantized by ggml-org',
     recommended: true,
     files: [
       {

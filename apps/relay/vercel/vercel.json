@@ -11,6 +11,10 @@
     {
       "source": "/v1/:path*",
       "destination": "/api/relay"
+    },
+    {
+      "source": "/source",
+      "destination": "/api/relay"
     }
   ],
   "headers": [

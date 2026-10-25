@@ -1,0 +1,11 @@
+name: An idea
+description: Something Nod could do, or do differently.
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What would you like Nod to do, and what would it help you with?
+    validations:
+      required: true

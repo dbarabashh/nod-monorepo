@@ -6,13 +6,15 @@ read them; see `docs/decisions/0001-sync.md` for the design and
 `docs/decisions/0003-sharing.md` for team vaults.
 
 ```sh
-pnpm --filter nod-desktop relay:build
-PORT=8787 RELAY_DATA=/var/lib/nod-relay node relay/dist/server.js
+pnpm --filter @nod/relay build
+PORT=8787 RELAY_DATA=/var/lib/nod-relay \
+  RELAY_SOURCE_URL=<address of this relay's source> \
+  node apps/relay/dist/server.js
 ```
 
-`relay/dist/server.js` is one self-contained file that runs with plain `node`
+`apps/relay/dist/server.js` is one self-contained file that runs with plain `node`
 (24 or later) and nothing installed, so it can be copied to the server on its
-own. From the workspace, `node relay/server.ts` runs the same source
+own. From the workspace, `node apps/relay/server.ts` runs the same source
 directly.
 
 Put it behind HTTPS (a reverse proxy such as Caddy or nginx). The app only
@@ -154,10 +156,10 @@ Both relays use `@nod/core/sharing/relay`, the same validator the apps run,
 and import it from the workspace. Neither runs inside the workspace, so
 
 ```sh
-pnpm --filter nod-desktop relay:build
+pnpm --filter @nod/relay build
 ```
 
-bundles them into `relay/dist` (ignored by git): `server.js` for self-hosting,
+bundles them into `apps/relay/dist` (ignored by git): `server.js` for self-hosting,
 and `vercel/`, the folder the hosted relay deploys from. It refuses to finish
 if a bundle pulls in Automerge or wasm, or imports anything at run time
 beyond what node ships (and `@vercel/blob` for the hosted one). The tests run
@@ -174,7 +176,7 @@ Without it, each user picks a folder or a relay in Settings → Sync.
 
 ## On Vercel
 
-`relay/vercel` is the relay as a Vercel Function over a private Vercel Blob
+`apps/relay/vercel` is the relay as a Vercel Function over a private Vercel Blob
 store. It serves the same API, for token and team vaults. It keeps no
 secrets: a token vault id is a hash of the token derived from the vault key,
 so the function only checks that the token hashes to the id, and a team vault
@@ -210,14 +212,15 @@ registered meanwhile on another instance may answer 404 there for that long
 meanwhile through another instance.
 
 ```sh
-pnpm --filter nod-desktop relay:build   # writes relay/dist/vercel
-cd relay/dist/vercel
+pnpm --filter @nod/relay build   # writes apps/relay/dist/vercel
+cd apps/relay/dist/vercel
 vercel link
 vercel blob create-store <name> --access private --region <region>
 vercel env rm BLOB_READ_WRITE_TOKEN   # use OIDC instead of a stored token
 vercel env add BLOB_STORE_ID production
 vercel env add VERCEL_BLOB_RETRIES production   # 2
 vercel env add RELAY_ADDRESS_KEY production     # 32 random bytes, hex
+vercel env add RELAY_SOURCE_URL production      # where this relay's source is; see License
 vercel deploy --prod
 vercel domains add <sync domain>
 ```
@@ -227,7 +230,7 @@ the repository root. It builds both relays and deploys this folder to the
 linked project with the CLI's telemetry off:
 
 ```sh
-pnpm --filter nod-desktop relay:deploy
+pnpm --filter @nod/relay deploy:vercel
 ```
 
 On the first deploy, check a signed request against the custom domain before
@@ -244,3 +247,28 @@ and rate-limit per IP: all requests other than `GET` (300 a minute), `GET`
 (600 a minute), and file downloads, `GET` on paths with `/files/devices/`
 (60 a minute). Set a spend limit that pauses the project, and rotate the
 store's read-write token, which the app never needs.
+
+## License
+
+The relay is licensed under the GNU Affero General Public License v3.0 only
+(`LICENSE` in this folder), and every file here says so in an SPDX header. If
+you run a modified relay as a service, offer its source to the people who use
+it.
+
+A build combines the relay with code from `@nod/core`, which is Apache-2.0, and
+with third-party packages. `build.ts` marks each bundle with a license
+banner and writes, beside `dist/server.js` and in `dist/vercel`: `LICENSE`
+(AGPL), `LICENSE-Apache-2.0`, `NOTICE`, and `THIRD_PARTY_NOTICES` for the
+packages the bundle contains. Copy them along with the bundle. A new file in
+this folder starts with the same two SPDX lines.
+
+Both relays answer `GET /source` with a short notice naming the license and
+the address in `RELAY_SOURCE_URL`, which is how a relay you run for other
+people offers them its source, as section 13 of the AGPL asks of a modified
+copy. Point it at the exact source you run, including your changes. Without
+the variable `/source` answers 404. The self-hosted relay refuses to start on
+a value that isn't an http(s) address; the hosted function logs the mistake
+and keeps serving sync without the notice, so a typo can't take sync down.
+The Nod apps don't yet show this address to the people using a relay, so tell
+them where it is too, for example on the page that gives out the relay's
+address.

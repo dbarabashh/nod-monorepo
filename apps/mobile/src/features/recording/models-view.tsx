@@ -44,6 +44,9 @@ function ModelRow({ entry, inUse }: { entry: ModelEntry; inUse: boolean }) {
       <Text variant="sm" tone="muted">
         {`${model.description} ${model.languages} · ${megabytes(modelSize(model))}`}
       </Text>
+      <Text variant="sm" tone="muted">
+        {`License: ${model.license}`}
+      </Text>
       {state.status === 'downloading' && (
         <>
           <Progress

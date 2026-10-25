@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import {
@@ -61,6 +64,7 @@ import {
   type VerifiedRelayRequest,
   type WriteBudget,
 } from '@nod/core/sharing/relay';
+import { sourceNotice, sourcePath, sourceUrlFrom } from './source.ts';
 
 // Vault ids are lowercase hex (a hash's prefix), so no two spellings name one
 // folder on a filesystem that ignores case.
@@ -207,6 +211,7 @@ export function createRelay(
     now?: () => number;
     host?: string;
     limits?: Partial<ServerLimits>;
+    sourceUrl?: string;
   } = {},
 ): Server {
   const now = options.now ?? (() => Date.now());
@@ -961,6 +966,15 @@ export function createRelay(
 
   async function handle(request: IncomingMessage): Promise<Reply> {
     const url = new URL(request.url ?? '/', 'http://relay');
+    if (
+      url.pathname === sourcePath &&
+      (request.method === 'GET' || request.method === 'HEAD')
+    ) {
+      const notice = sourceNotice(options.sourceUrl);
+      return notice === null
+        ? { status: 404 }
+        : { status: 200, body: notice, type: 'text/plain; charset=utf-8' };
+    }
     const route = relayRoute(url.pathname);
     if (!route || !vaultPattern.test(route.vault)) {
       return { status: 404 };
@@ -1004,7 +1018,11 @@ if (import.meta.main) {
   const directory =
     process.env.RELAY_DATA ?? path.join(process.cwd(), 'relay-data');
   const host = process.env.RELAY_HOST;
-  createRelay(directory, host ? { host } : {}).listen(port, () => {
+  const sourceUrl = sourceUrlFrom(process.env.RELAY_SOURCE_URL);
+  createRelay(directory, {
+    ...(host ? { host } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
+  }).listen(port, () => {
     console.log(`Relay listening on ${port}, storing in ${directory}`);
   });
 }

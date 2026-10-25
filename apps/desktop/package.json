@@ -6,7 +6,7 @@
   "type": "module",
   "description": "Nod desktop app for macOS, Windows and Linux",
   "keywords": [],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Dima Barabash",
   "main": ".vite/build/main.cjs",
   "scripts": {
@@ -14,12 +14,10 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "release": "electron-forge release",
-    "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts relay forge.config.mts vite.main.config.mts vite.preload.config.mts vite.renderer.config.mts",
+    "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts forge.config.mts vite.main.config.mts vite.preload.config.mts vite.renderer.config.mts",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
-    "relay:build": "node relay/build.ts",
-    "relay:deploy": "node relay/build.ts && node relay/deploy.ts",
-    "test": "node --test \"src/**/*.test.ts\" \"relay/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "@automerge/automerge": "3.5.0",
@@ -33,6 +31,7 @@
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron-forge/shared-types": "^8.0.1",
     "@electron/fuses": "^2.1.3",
+    "@nod/relay": "workspace:*",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

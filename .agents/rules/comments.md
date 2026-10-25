@@ -9,3 +9,4 @@ alwaysApply: true
 - Never leave commented-out code or template boilerplate comments. Delete them; git remembers.
 - The only exception is a non-obvious WHY the code cannot express: a platform quirk (an Electron or React Native behavior specific to one OS), an upstream-bug workaround, or a security reason a setting must stay as it is.
 - Tool directives the toolchain needs (`oxlint-disable-next-line`, `@ts-expect-error`) are allowed and must be as narrow as possible.
+- SPDX license headers (`SPDX-FileCopyrightText: 2026 Dima Barabash`, `SPDX-License-Identifier`) are allowed, and required on every file in `apps/relay`, which is AGPL-3.0-only unlike the rest of the repository.

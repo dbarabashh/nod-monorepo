@@ -1,0 +1,27 @@
+Nod
+Copyright 2026 Dima Barabash
+
+This product is licensed under the Apache License, Version 2.0
+(LICENSES/Apache-2.0.txt, also in LICENSE), with these exceptions. REUSE.toml
+states the license of every file in machine-readable form.
+
+- The sync relay in apps/relay is licensed under the GNU Affero General
+  Public License, version 3 only (LICENSES/AGPL-3.0-only.txt, also in
+  apps/relay/LICENSE). Each of its files carries an SPDX license
+  header naming AGPL-3.0-only.
+
+- A built relay (dist/server.js, and the function in dist/vercel) combines the
+  relay with code from packages/core, which is Apache-2.0, and with
+  third-party code listed in THIRD_PARTY_NOTICES beside it. The built file as a
+  whole is licensed under AGPL-3.0-only; the code from packages/core remains
+  available under Apache-2.0 on its own.
+
+- The Inter typeface in apps/desktop/src/renderer/assets/fonts/inter is
+  licensed under the SIL Open Font License 1.1 by its authors.
+
+- Third-party software bundled into the apps is listed, with its licenses, in
+  THIRD_PARTY_NOTICES.txt beside the desktop app and under Settings, Open-source
+  licenses in the phone app.
+
+The name "Nod" and the Nod logo are not licensed under any of these licenses.
+Forks must not use them in a way that suggests they are the official Nod.

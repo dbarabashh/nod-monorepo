@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  ScrollView,
+  View,
+} from 'react-native';
 import {
   CameraView,
   useCameraPermissions,
@@ -12,6 +18,7 @@ import {
   type PairingCode,
   type PairingOffer,
 } from '@nod/core/sync';
+import { QrScannerView } from '../../../modules/qr-scanner/index.ts';
 import { Button, Icon, Text } from '../../components/ui/index.ts';
 import { messageOf } from '../../lib/message-of.ts';
 import { fetchPairingOffer } from '../../lib/sync/device.ts';
@@ -149,7 +156,7 @@ export function PairingView() {
   // vault comes from the computer itself, which also proves the phone is on
   // its network. A phone that already holds meetings would send them to that
   // vault, so it shows the vault first, to compare with the computer.
-  const scanned = ({ data }: BarcodeScanningResult) => {
+  const scanned = ({ data }: Pick<BarcodeScanningResult, 'data'>) => {
     if (handling.current || data === rejected.current) {
       return;
     }
@@ -265,13 +272,25 @@ export function PairingView() {
       </View>
       {phase.kind === 'scanning' ? (
         <View style={styles.camera}>
-          <CameraView
-            style={styles.cameraFeed}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={scanned}
-            accessibilityLabel="Camera view for scanning the pairing code"
-          />
+          {Platform.OS === 'android' && QrScannerView !== null ? (
+            <QrScannerView
+              style={styles.cameraFeed}
+              onScan={({ nativeEvent }) => scanned(nativeEvent)}
+              onError={({ nativeEvent }) => {
+                setError(nativeEvent.message);
+                setPhase({ kind: 'intro' });
+              }}
+              accessibilityLabel="Camera view for scanning the pairing code"
+            />
+          ) : (
+            <CameraView
+              style={styles.cameraFeed}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+              onBarcodeScanned={scanned}
+              accessibilityLabel="Camera view for scanning the pairing code"
+            />
+          )}
         </View>
       ) : (
         <View style={styles.steps}>

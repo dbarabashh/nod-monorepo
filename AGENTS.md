@@ -11,7 +11,9 @@ This repository holds every client and the code they share:
 
 ```
 apps/desktop/    Electron app for macOS, Windows and Linux (Forge, Vite, React,
-                 plain CSS), plus the optional sync relay in apps/desktop/relay
+                 plain CSS)
+apps/relay/      @nod/relay: the optional, self-hostable sync relay, the one
+                 part under AGPL-3.0-only; stores encrypted files it can't read
 apps/mobile/     Expo app for iOS and Android (Expo Router, React Native)
 packages/core/   @nod/core: the platform-neutral data model, migrations, sync
                  and crypto both apps run unchanged
@@ -31,7 +33,34 @@ it. Its `.oxlintrc.json` enforces that. Core's documents use
 
 The project is meant to be open source and forkable. Keep code, docs and agent
 context free of personal or company identity: no names, emails, private URLs,
-internal service IDs or paths that exist only on one machine.
+internal service IDs or paths that exist only on one machine. The one
+exception is the copyright holder, Dima Barabash, who is named where copyright
+and authorship are stated: `NOTICE`, `REUSE.toml`, SPDX headers, the notices a
+build writes, and the `author` field of a package manifest. Nowhere else.
+
+Contributions aren't accepted: the code is written by its copyright holder
+alone, which keeps the licensing his to change. Issues are welcome
+(`CONTRIBUTING.md`).
+
+Everything is licensed under Apache-2.0 (`LICENSE`), except the sync relay in
+`apps/relay`, which is AGPL-3.0-only (its own `LICENSE`, and an SPDX
+header in every file). `REUSE.toml` states the license of every path; add an
+entry there for any third-party file copied into the repository. Code the apps
+ship never imports `@nod/relay`, so the AGPL stays with the relay; only the
+desktop tests run it, as a dev dependency. A new package states `"license": "Apache-2.0"`.
+
+Third-party licenses ship with each app. `scripts/third-party-notices.ts`
+writes them: the desktop build runs it while packaging and puts
+`THIRD_PARTY_NOTICES.txt` next to the app, and the phone app shows a committed
+`apps/mobile/src/features/settings/third-party-notices.json` under Settings →
+Open-source licenses. Run `pnpm --filter nod-mobile notices` after changing a
+mobile or `@nod/core` dependency, the Rust crates in
+`packages/automerge-native`, or a native module, and commit the result. It
+needs `apps/mobile/ios/Pods` (run `pnpm ios` once), whose CocoaPods
+acknowledgements list the iOS libraries; Android libraries come from Gradle,
+so the ones an app module adds are listed by hand in the script. Speech and summary models
+are downloaded from their publishers, not shipped, and each model's license is
+shown in the app from `packages/core/src/models`.
 
 ## Agent context layout
 
@@ -98,7 +127,7 @@ pnpm android     # the mobile app as a dev build on an Android emulator
 Run `pnpm typecheck && pnpm lint && pnpm test` before calling a change done.
 The tests build the native Automerge library, so they need Rust (`rustup`).
 One package only: `pnpm --filter <name> <script>` (`nod-desktop`,
-`nod-mobile`, `@nod/core`). CI (`.github/workflows/ci.yml`) runs the same three
+`nod-mobile`, `@nod/core`, `@nod/relay`). CI (`.github/workflows/ci.yml`) runs the same three
 on every push to `main` and every pull request. Dependabot
 (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly; see
 `dependencies.md`.

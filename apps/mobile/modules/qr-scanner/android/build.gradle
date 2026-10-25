@@ -1,0 +1,26 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.qrscanner'
+version = '0.0.0'
+
+android {
+  namespace "expo.modules.qrscanner"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.0"
+  }
+}
+
+dependencies {
+  // The CameraX version expo-camera already brings, so the app has one.
+  def camerax = "1.6.0"
+  implementation "androidx.camera:camera-camera2:${camerax}"
+  implementation "androidx.camera:camera-lifecycle:${camerax}"
+  implementation "androidx.camera:camera-view:${camerax}"
+  // ZXing's decoder: open source (Apache-2.0), plain Java, no network and no
+  // Google Play services, unlike the ML Kit scanner expo-camera would use.
+  implementation "com.google.zxing:core:3.5.3"
+}

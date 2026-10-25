@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "description": "Platform-neutral data model, sync and crypto shared by the Nod apps",
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "author": "Dima Barabash",
   "exports": {
     "./crypto": "./src/crypto/index.ts",
     "./mcp": "./src/mcp/index.ts",

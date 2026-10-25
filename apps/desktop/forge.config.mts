@@ -106,6 +106,16 @@ async function copyNativeModules(
   }
 }
 
+// Packaging runs on the target platform (copyNativeModules insists), so the
+// dependencies pnpm reports here are the ones this build ships.
+async function writeThirdPartyNotices(buildPath: string) {
+  await run(process.execPath, [
+    path.resolve(import.meta.dirname, '../../scripts/third-party-notices.ts'),
+    'desktop',
+    path.join(path.dirname(buildPath), 'THIRD_PARTY_NOTICES.txt'),
+  ]);
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     // Native addons can't be loaded from inside an archive.
@@ -200,7 +210,10 @@ const config: ForgeConfig = {
       _electronVersion,
       platform,
       arch,
-    ) => copyNativeModules(buildPath, platform, arch),
+    ) => {
+      await copyNativeModules(buildPath, platform, arch);
+      await writeThirdPartyNotices(buildPath);
+    },
     // osxNotarize covers the app inside the ZIP; the DMG is a separate
     // download that Gatekeeper checks on its own, so it is signed (and,
     // with a notary profile, notarized and stapled) too.

@@ -4,7 +4,8 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 rust-version = "1.90"
-license = "MIT"
+license = "Apache-2.0"
+authors = ["Dima Barabash"]
 
 [lib]
 crate-type = ["staticlib", "cdylib", "rlib"]

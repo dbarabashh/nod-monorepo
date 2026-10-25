@@ -1,0 +1,46 @@
+name: Something is broken
+description: Nod does something it shouldn't, or doesn't do what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for taking the time. Please don't paste meeting content,
+        transcripts, recovery phrases, pairing codes, identity cards or relay
+        tokens here: describe them instead.
+  - type: dropdown
+    id: app
+    attributes:
+      label: Where
+      options:
+        - Desktop, macOS
+        - Desktop, Windows
+        - Desktop, Linux
+        - iPhone
+        - Android
+        - Sync relay
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: Settings shows it, for example 0.4.0
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+    validations:
+      required: true

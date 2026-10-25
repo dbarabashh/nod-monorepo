@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { afterEach, describe, it } from 'node:test';
-import { createRelay } from '../../../relay/server.ts';
+import { createRelay } from '@nod/relay/server';
 import {
   editSummary,
   readDocument,

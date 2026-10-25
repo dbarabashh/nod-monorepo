@@ -1,5 +1,7 @@
 {
   "name": "nod-mobile",
+  "license": "Apache-2.0",
+  "author": "Dima Barabash",
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
@@ -39,6 +41,7 @@
     "typescript": "~7.0.2"
   },
   "scripts": {
+    "notices": "node ../../scripts/third-party-notices.ts mobile src/features/settings/third-party-notices.json",
     "start": "node scripts/expo.mts start",
     "ios": "node scripts/expo.mts run:ios",
     "android": "node scripts/expo.mts run:android",

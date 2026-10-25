@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Dima Barabash
+// SPDX-License-Identifier: AGPL-3.0-only
+
 import {
   BlobError,
   BlobNotFoundError,
@@ -13,6 +16,7 @@ import {
   versionOf,
   type Storage,
 } from '../relay.ts';
+import { sourceUrlFrom } from '../../source.ts';
 
 async function bytesOf(stream: ReadableStream<Uint8Array>) {
   const chunks: Uint8Array[] = [];
@@ -96,8 +100,24 @@ const storage: Storage = {
 // Keys the hourly hashes of client networks, so the stored hashes can't be
 // reversed by trying every address.
 const addressKey = process.env.RELAY_ADDRESS_KEY ?? '';
+// A mistyped address must not take sync down for everyone, so it is logged
+// and the notice left out, where the self-hosted relay refuses to start.
+function configuredSourceUrl(): string | undefined {
+  try {
+    return sourceUrlFrom(process.env.RELAY_SOURCE_URL);
+  } catch (failure) {
+    console.error(failure instanceof Error ? failure.message : String(failure));
+    return undefined;
+  }
+}
+const sourceUrl = configuredSourceUrl();
 const handle = addressKey
-  ? createRelayHandler({ storage, now: Date.now, addressKey })
+  ? createRelayHandler({
+      storage,
+      now: Date.now,
+      addressKey,
+      ...(sourceUrl ? { sourceUrl } : {}),
+    })
   : null;
 
 export default {
