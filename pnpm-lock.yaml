@@ -208,8 +208,8 @@ importers:
   .:
     devDependencies:
       '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
+        specifier: ^25.9.9
+        version: 25.9.9
       oxfmt:
         specifier: ^0.73.0
         version: 0.73.0
@@ -393,8 +393,8 @@ importers:
         version: 0.7.4(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
     devDependencies:
       '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
+        specifier: ^25.9.9
+        version: 25.9.9
       '@types/react':
         specifier: ~19.3.0
         version: 19.3.0
@@ -415,8 +415,8 @@ importers:
         version: link:../../packages/core
     devDependencies:
       '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
+        specifier: ^25.9.9
+        version: 25.9.9
       oxfmt:
         specifier: ^0.73.0
         version: 0.73.0
@@ -428,7 +428,7 @@ importers:
         version: 7.0.2
       vite:
         specifier: ^8.3.4
-        version: 8.3.4(@types/node@24.19.2)(jiti@2.7.0)(terser@5.51.2)
+        version: 8.3.4(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2)
 
   packages/automerge-native:
     dependencies:
@@ -440,8 +440,8 @@ importers:
         specifier: 3.5.0
         version: 3.5.0
       '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
+        specifier: ^25.9.9
+        version: 25.9.9
       oxfmt:
         specifier: ^0.73.0
         version: 0.73.0
@@ -471,8 +471,8 @@ importers:
         version: 2.4.0
     devDependencies:
       '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
+        specifier: ^25.9.9
+        version: 25.9.9
       oxfmt:
         specifier: ^0.73.0
         version: 0.73.0
@@ -2096,6 +2096,9 @@ packages:
 
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
+
+  '@types/node@25.9.9':
+    resolution: {integrity: sha512-b4e2xxj/yMeT2hNlD6x7zNFiQK2Dlmkb9CQ6v3/1G2RezKN4YS2lcEv8lzGm1mhs4f2lM4yNAMI/zUDBZBBt7w==}
 
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
@@ -6435,6 +6438,10 @@ snapshots:
     dependencies:
       undici-types: 7.24.6
 
+  '@types/node@25.9.9':
+    dependencies:
+      undici-types: 7.24.6
+
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
       '@types/react': 19.3.0
@@ -8916,6 +8923,19 @@ snapshots:
       tinyglobby: 0.2.17
     optionalDependencies:
       '@types/node': 24.19.2
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      terser: 5.51.2
+
+  vite@8.3.4(@types/node@25.9.9)(jiti@2.7.0)(terser@5.51.2):
+    dependencies:
+      lightningcss: 1.33.0
+      picomatch: 4.0.7
+      postcss: 8.5.30
+      rolldown: 1.2.14
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 25.9.9
       fsevents: 2.3.3
       jiti: 2.7.0
       terser: 5.51.2
