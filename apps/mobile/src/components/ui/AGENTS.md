@@ -55,5 +55,4 @@ working.
 - Changing a primitive's props, variants or sizes changes every screen. Search
   for usages before renaming anything.
 - Never encode feature knowledge here: no feature names, no data loading.
-- Add every primitive to the showcase (`src/features/showcase`), and add a new
-  one with the `add-mobile-ui-component` skill.
+- Add a new primitive with the `add-mobile-ui-component` skill.

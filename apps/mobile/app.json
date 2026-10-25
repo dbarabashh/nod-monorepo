@@ -58,7 +58,8 @@
         }
       ],
       "./plugins/with-local-pairing.js",
-      "./plugins/with-no-backup.js"
+      "./plugins/with-no-backup.js",
+      "expo-widgets"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -7,6 +7,7 @@ import {
   type MeetingFiles,
 } from '@nod/core/meetings';
 import { open, randomKey, seal } from '@nod/core/crypto';
+import type { ChunkOptions } from '@nod/core/transcription';
 import {
   createPhoneRecorder,
   type Interruption,
@@ -79,7 +80,10 @@ function deferred() {
   return { promise, resolve };
 }
 
-function fakeEngine(gate: Promise<void> = Promise.resolve()) {
+function fakeEngine(
+  gate: Promise<void> = Promise.resolve(),
+  chunks?: ChunkOptions,
+) {
   let released = false;
   let releases = 0;
   let spoken = 0;
@@ -95,6 +99,7 @@ function fakeEngine(gate: Promise<void> = Promise.resolve()) {
       released = true;
       releases += 1;
     },
+    chunks,
   };
   return { engine, released: () => released, releases: () => releases };
 }
@@ -104,6 +109,7 @@ async function setUp(
     transcribing?: Promise<void>;
     loaded?: Promise<void>;
     loadFails?: boolean;
+    chunks?: ChunkOptions;
   } = {},
 ) {
   const store = createMeetingStore({
@@ -112,7 +118,7 @@ async function setUp(
   });
   await store.load();
   const mic = fakeMicrophone();
-  const speech = fakeEngine(options.transcribing);
+  const speech = fakeEngine(options.transcribing, options.chunks);
   const timers = new Map<number, () => void>();
   const laters = new Set<() => void>();
   let clock = 1_000;
@@ -207,6 +213,22 @@ describe('recording on the phone', () => {
     runLater();
     await settle();
     assert.equal(speech.released(), true);
+  });
+
+  it('cuts speech into the phone’s short chunks unless the engine asks for longer ones', async () => {
+    const lines = async (chunks?: ChunkOptions) => {
+      const { store, mic, recorder } = await setUp({ chunks });
+      const id = await recorder.start();
+      mic.speak(25);
+      await recorder.finish();
+      await recorder.settled();
+      return store.meeting(id)?.transcript.map((line) => line.startMs);
+    };
+    assert.deepEqual(await lines(), [0, 10_000, 20_000]);
+    assert.deepEqual(
+      await lines({ tailMs: 800, maxBufferMs: 30_000, maxChunkMs: 28_000 }),
+      [0],
+    );
   });
 
   it('keeps a change made elsewhere while it records', async () => {

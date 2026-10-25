@@ -85,9 +85,8 @@ For an interactive component, check each of these:
 
 ## 5. See it
 
-There is no Storybook. Add the component to the showcase
-(`src/features/showcase`, route `/components`) and look at it on an iOS simulator and an Android
-emulator in both themes (`pnpm ios`, `pnpm android`; switch appearance in the
+There is no Storybook or showcase screen. Look at the component on the
+screens that use it, on an iOS simulator and an Android emulator in both themes (`pnpm ios`, `pnpm android`; switch appearance in the
 simulator's settings). Screenshots: `xcrun simctl io booted screenshot <file>`
 and `adb exec-out screencap -p > <file>`. Keep screenshots out of the repo.
 

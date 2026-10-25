@@ -74,13 +74,16 @@ describe('modelSize', () => {
 });
 
 describe('phone speech models', () => {
-  it('offers the small whisper models first-recommended, each with its voice activity model', () => {
+  it('offers Parakeet first, then the small whisper models, each with its voice activity model', () => {
     assert.deepEqual(
-      phoneSpeechModels.map((model) => model.id),
-      ['whisper-small', 'whisper-base'],
+      phoneSpeechModels.map((model) => [model.id, model.engine]),
+      [
+        ['parakeet-tdt-0.6b-v3', 'parakeet'],
+        ['whisper-small', 'whisper'],
+        ['whisper-base', 'whisper'],
+      ],
     );
     for (const model of phoneSpeechModels) {
-      assert.equal(model.engine, 'whisper');
       assert.ok(
         model.files.some((file) => file.name.startsWith('ggml-silero')),
       );

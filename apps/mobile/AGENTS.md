@@ -38,11 +38,17 @@ and sharing a meeting happen on the computer. `src/lib/random.ts` backs
 `crypto.getRandomValues` with `expo-crypto` and is imported first.
 
 Recording transcribes on the phone with whisper.cpp (`whisper.rn`), the
-engine family the desktop app uses, through the same chunking in
+engine family the desktop app uses, running Parakeet (recommended, as on the
+computer) or a small Whisper model, through the same chunking in
 `@nod/core/transcription`. `src/lib/recording` holds it: `recorder.ts` is plain
 logic tested on Node; `recording.ts` wires it to the microphone and the
 engine; `models.ts` downloads the phone models listed in `@nod/core/models` and
-moves a file in only after its size and sha256 match. Two local modules in
+moves a file in only after its size and sha256 match. While a meeting records,
+iOS shows a Live Activity on the Lock Screen (`expo-widgets`; `activity.ts`,
+`live-activity.tsx`): only that the phone records and for how long, never the
+meeting's name or words. `expo-widgets` and `@expo/ui` are left out of Android
+autolinking, so their code is loaded only on iOS; Android's recording
+notification comes from the `audio-capture` foreground service. Two local modules in
 `modules/` do what no Expo module does: `audio-capture` hands the microphone to
 JavaScript as 16 kHz PCM in memory (an iOS audio session for the background,
 an Android foreground service of type `microphone`), and `file-digest` hashes
@@ -50,7 +56,7 @@ model files off the JavaScript thread. Nothing the app keeps goes into a
 backup: `src/lib/storage.ts` names every file and folder and marks them with
 the iOS-only `backup-exclusion` module at each launch, and
 `plugins/with-no-backup.js` gives Android backup rules that exclude
-everything, from the cloud and from a transfer to a new phone. Whisper runs on the CPU: iOS refuses GPU
+everything, from the cloud and from a transfer to a new phone. Speech models run on the CPU: iOS refuses GPU
 work from an app in the background. `buffer` is there only because whisper.rn
 imports it.
 

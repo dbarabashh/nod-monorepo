@@ -30,7 +30,7 @@ function megabytes(bytes: number): string {
   return `${Math.round(bytes / 1_000_000)} MB`;
 }
 
-function ModelRow({ entry }: { entry: ModelEntry }) {
+function ModelRow({ entry, inUse }: { entry: ModelEntry; inUse: boolean }) {
   const styles = sheets[useScheme()];
   const { model, state } = entry;
   return (
@@ -83,10 +83,15 @@ function ModelRow({ entry }: { entry: ModelEntry }) {
           </Button>
         </View>
       )}
+      {state.status === 'ready' && !inUse && (
+        <Text variant="sm" tone="muted">
+          On this phone. Recording uses the model above while it is here.
+        </Text>
+      )}
       {state.status === 'ready' && (
         <View style={styles.actions}>
-          <Badge variant="success" dot>
-            On this phone
+          <Badge variant={inUse ? 'success' : 'default'} dot={inUse}>
+            {inUse ? 'Records with this' : 'Not in use'}
           </Badge>
           <Button
             variant="ghost"
@@ -104,7 +109,9 @@ function ModelRow({ entry }: { entry: ModelEntry }) {
 export function ModelsView() {
   const styles = sheets[useScheme()];
   const models = useSyncExternalStore(subscribeModels, modelEntries);
-  const ready = models.some((entry) => entry.state.status === 'ready');
+  const inUse = models.find((entry) => entry.state.status === 'ready')?.model
+    .id;
+  const ready = inUse !== undefined;
 
   return (
     <ScrollView
@@ -125,7 +132,11 @@ export function ModelsView() {
         )}
       </View>
       {models.map((entry) => (
-        <ModelRow key={entry.model.id} entry={entry} />
+        <ModelRow
+          key={entry.model.id}
+          entry={entry}
+          inUse={entry.model.id === inUse}
+        />
       ))}
     </ScrollView>
   );

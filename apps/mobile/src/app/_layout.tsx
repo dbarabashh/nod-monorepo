@@ -33,7 +33,7 @@ export default function RootLayout() {
         <Stack.Screen name="shared" options={{ title: 'Shared notes' }} />
         <Stack.Screen name="shared-note" options={{ title: '' }} />
         <Stack.Screen name="models" options={{ title: 'Speech model' }} />
-        <Stack.Screen name="components" options={{ title: 'Design system' }} />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="diagnostics" options={{ title: 'Diagnostics' }} />
       </Stack>
     </>

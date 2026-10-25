@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from 'react';
-import { Alert, FlatList, RefreshControl, View } from 'react-native';
-import { Link, Redirect, useRouter } from 'expo-router';
+import { useMemo, useState, type ReactNode } from 'react';
+import { FlatList, RefreshControl, View } from 'react-native';
+import { Link, Redirect, Stack, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   meetingName,
   meetingStartedAt,
@@ -15,13 +16,19 @@ import {
 } from '../../components/ui/index.ts';
 import {
   resetSync,
-  stopSyncing,
   syncNow,
   useSync,
   type SyncState,
 } from '../../lib/sync/sync.ts';
 import { messageOf } from '../../lib/message-of.ts';
-import { space, themed, useColors, useScheme } from '../../theme/index.ts';
+import {
+  dock,
+  space,
+  themed,
+  useColors,
+  useScheme,
+} from '../../theme/index.ts';
+import { filterMeetings } from './lib/filter-meetings.ts';
 import { formatDuration } from './lib/format-duration.ts';
 import { clockFormat, dateTimeFormat } from '../../lib/formats.ts';
 
@@ -34,7 +41,7 @@ const sheets = themed((colors) => ({
   centered: { flex: 1, justifyContent: 'center', backgroundColor: colors.bg },
   content: { flexGrow: 1, gap: space[1], padding: space[4] },
   header: { gap: space[2], paddingBottom: space[3] },
-  footer: { gap: space[2], alignItems: 'center', paddingTop: space[6] },
+  headerActions: { flexDirection: 'row', gap: space[1] },
 }));
 
 function statusLine(sync: Paired): string {
@@ -77,54 +84,25 @@ function Header({ sync }: { sync: Paired }) {
   );
 }
 
-function confirmStop() {
-  Alert.alert(
-    'Stop syncing on this phone?',
-    'Its meetings stay here. The copies it put on the relay are removed, and it stops getting meetings from your other devices. You can pair it again later.',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Stop syncing',
-        style: 'destructive',
-        onPress: () => {
-          stopSyncing().catch((failure: unknown) =>
-            Alert.alert('Couldn’t stop syncing', messageOf(failure)),
-          );
-        },
-      },
-    ],
-  );
-}
-
-function Footer({ sync }: { sync: Paired }) {
+function HeaderActions() {
   const styles = sheets[useScheme()];
+  const router = useRouter();
   return (
-    <View style={styles.footer}>
-      <Text variant="sm" tone="muted">
-        {`Vault code ${sync.vaultCode} · ${sync.relayHost}`}
-      </Text>
-      <Link href="/shared" asChild>
-        <Button variant="outline" size="sm">
-          Shared notes
-        </Button>
-      </Link>
-      <Button variant="ghost" size="sm" onPress={confirmStop}>
-        Stop syncing on this phone
-      </Button>
-      {__DEV__ && (
-        <>
-          <Link href="/components" asChild>
-            <Button variant="outline" size="sm">
-              Design system
-            </Button>
-          </Link>
-          <Link href="/diagnostics" asChild>
-            <Button variant="outline" size="sm">
-              Diagnostics
-            </Button>
-          </Link>
-        </>
-      )}
+    <View style={styles.headerActions}>
+      <Button
+        variant="ghost"
+        size="sm"
+        icon="document"
+        accessibilityLabel="Shared notes"
+        onPress={() => router.push('/shared')}
+      />
+      <Button
+        variant="ghost"
+        size="sm"
+        icon="settings"
+        accessibilityLabel="Settings"
+        onPress={() => router.push('/settings')}
+      />
     </View>
   );
 }
@@ -180,17 +158,49 @@ function UnavailableState({ sync }: { sync: Unavailable }) {
   );
 }
 
-// The dock under the list (recording) comes from the route, so this feature
-// doesn't import another.
+// The dock floating over the list (recording) comes from the route, so this
+// feature doesn't import another.
 export function MeetingsView({ bottomBar }: { bottomBar?: ReactNode }) {
   const styles = sheets[useScheme()];
   const colors = useColors();
   const router = useRouter();
   const sync = useSync();
   const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
+  const insets = useSafeAreaInsets();
+  const meetings = sync.status === 'ready' ? sync.meetings : null;
+  const shown = useMemo(
+    () => (meetings === null ? [] : filterMeetings(meetings, query)),
+    [meetings, query],
+  );
 
+  const ready = sync.status === 'ready' && sync.sync.status === 'paired';
+  if (!ready && query !== '') {
+    setQuery('');
+  }
+  // expo-router keeps a screen's last options, so every state sets all of
+  // them, clearing what it doesn't show.
+  const header = (
+    <Stack.Screen
+      options={
+        ready
+          ? {
+              headerRight: () => <HeaderActions />,
+              headerSearchBarOptions: {
+                placeholder: 'Search meetings',
+                hideWhenScrolling: false,
+                autoCapitalize: 'none',
+                onChangeText: (event) => setQuery(event.nativeEvent.text),
+                onCancelButtonPress: () => setQuery(''),
+                onClose: () => setQuery(''),
+              },
+            }
+          : { headerRight: undefined, headerSearchBarOptions: undefined }
+      }
+    />
+  );
   if (sync.status === 'loading') {
-    return <View style={styles.centered} />;
+    return <View style={styles.centered}>{header}</View>;
   }
   if (sync.sync.status === 'unpaired') {
     return <Redirect href="/pair" />;
@@ -198,6 +208,7 @@ export function MeetingsView({ bottomBar }: { bottomBar?: ReactNode }) {
   if (sync.sync.status === 'unavailable') {
     return (
       <View style={styles.centered}>
+        {header}
         <UnavailableState sync={sync.sync} />
       </View>
     );
@@ -214,11 +225,18 @@ export function MeetingsView({ bottomBar }: { bottomBar?: ReactNode }) {
 
   return (
     <View style={styles.screen}>
+      {header}
       <FlatList
         style={styles.list}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          bottomBar !== undefined && {
+            paddingBottom: dock.room + insets.bottom,
+          },
+        ]}
         contentInsetAdjustmentBehavior="automatic"
-        data={sync.meetings}
+        data={shown}
+        keyboardDismissMode="on-drag"
         keyExtractor={(meeting) => meeting.id}
         refreshControl={
           <RefreshControl
@@ -229,15 +247,22 @@ export function MeetingsView({ bottomBar }: { bottomBar?: ReactNode }) {
           />
         }
         ListHeaderComponent={<Header sync={paired} />}
-        ListFooterComponent={<Footer sync={paired} />}
         ListEmptyComponent={
-          <EmptyState
-            icon={paired.syncing ? 'sync' : 'mic'}
-            title={
-              paired.syncing ? 'Getting your meetings…' : 'No meetings yet'
-            }
-            description="Meetings you record here or on your computer show up here."
-          />
+          query.trim() !== '' && sync.meetings.length > 0 ? (
+            <EmptyState
+              icon="search"
+              title="No matches"
+              description={`Nothing matches “${query.trim()}”.`}
+            />
+          ) : (
+            <EmptyState
+              icon={paired.syncing ? 'sync' : 'mic'}
+              title={
+                paired.syncing ? 'Getting your meetings…' : 'No meetings yet'
+              }
+              description="Meetings you record here or on your computer show up here."
+            />
+          )
         }
         renderItem={({ item }) => (
           <ListRow

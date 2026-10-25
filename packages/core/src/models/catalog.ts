@@ -147,11 +147,17 @@ export function modelSize(model: Pick<ModelDefinition, 'files'>): number {
   return model.files.reduce((total, file) => total + file.sizeBytes, 0);
 }
 
-const phoneModelIds: readonly string[] = ['whisper-small', 'whisper-base'];
+const phoneModelIds: readonly string[] = [
+  'parakeet-tdt-0.6b-v3',
+  'whisper-small',
+  'whisper-base',
+];
 
-// A phone runs whisper on its CPU (the GPU is off limits in the background),
-// so it offers only the models small enough to keep up there, the one it
-// recommends first.
+// A phone transcribes on its CPU (the GPU is off limits in the background),
+// so it offers only the models that keep up there, the one it recommends
+// first: Parakeet doesn't decode word by word as Whisper does, which makes the
+// computer's accurate model fast enough; the small Whisper models cover the
+// languages it lacks and phones short of memory.
 export const phoneSpeechModels: SpeechModel[] = phoneModelIds.flatMap((id) =>
   modelCatalog.flatMap((model) =>
     model.kind === 'speech' && model.id === id ? [model] : [],

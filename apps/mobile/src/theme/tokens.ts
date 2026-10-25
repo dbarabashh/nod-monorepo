@@ -170,6 +170,11 @@ export const control = {
   minHit: 44,
 };
 
+export const dock = {
+  offset: space[4],
+  room: control.heightLg + space[8],
+};
+
 export const icon = {
   sm: 14,
   md: 20,

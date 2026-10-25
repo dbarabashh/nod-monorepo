@@ -1,13 +1,17 @@
 import { useSyncExternalStore } from 'react';
 import { randomUUID } from 'expo-crypto';
 import { finishMeeting } from '@nod/core/meetings';
-import { initWhisper, initWhisperVad } from 'whisper.rn/index';
+import { initParakeet, initWhisper, initWhisperVad } from 'whisper.rn/index';
+import type { SpeechModel } from '@nod/core/models';
+import { defaultChunkOptions } from '@nod/core/transcription';
 import { fromBase64 } from '@nod/core/crypto';
 import { AudioCapture } from '../../../modules/audio-capture/index.ts';
 import { dateTimeFormat } from '../formats.ts';
 import { keepOutOfBackup, recordingFile } from '../storage.ts';
 import { meetingStore, setRecording, whenLoaded } from '../sync/sync.ts';
 import { installedModel, modelPath } from './models.ts';
+import { levelFromPcm } from './audio-level.ts';
+import { clearRecordingActivities, showRecordingActivity } from './activity.ts';
 import {
   createPhoneRecorder,
   type LoadedEngine,
@@ -23,9 +27,13 @@ const microphone: Microphone = {
     parts = [
       AudioCapture.addListener('onAudio', ({ pcm }) => {
         const bytes = fromBase64(pcm);
-        onAudio(
-          new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2),
+        const samples = new Int16Array(
+          bytes.buffer,
+          bytes.byteOffset,
+          bytes.length / 2,
         );
+        setLevel(levelFromPcm(samples));
+        onAudio(samples);
       }),
       AudioCapture.addListener('onInterruption', ({ state }) =>
         onInterruption(state),
@@ -39,17 +47,84 @@ const microphone: Microphone = {
       part.remove();
     }
     parts = [];
+    setLevel(0);
   },
   release: () => AudioCapture.release(),
 };
 
 let parts: Array<{ remove: () => void }> = [];
 
+// Coarser than the 16 pt bars can show, so silence and steady speech don't
+// re-render them on every chunk.
+const levelSteps = 16;
+
+let level = 0;
+const levelListeners = new Set<() => void>();
+
+function setLevel(raw: number) {
+  const next = Math.round(raw * levelSteps) / levelSteps;
+  if (next === level) {
+    return;
+  }
+  level = next;
+  for (const listener of levelListeners) {
+    listener();
+  }
+}
+
+function subscribeLevel(listener: () => void) {
+  levelListeners.add(listener);
+  return () => {
+    levelListeners.delete(listener);
+  };
+}
+
+function subscribeNothing() {
+  return () => {};
+}
+
+export function useRecordingLevel(live: boolean): number {
+  return useSyncExternalStore(live ? subscribeLevel : subscribeNothing, () =>
+    live ? level : 0,
+  );
+}
+
 // Phones have four or more cores; leave the rest to the app and the system.
 const maxThreads = 4;
 
 // On the CPU: iOS refuses GPU work from an app in the background, and a
 // meeting goes on with the screen locked.
+type Speech = Pick<LoadedEngine, 'transcribe' | 'release' | 'chunks'>;
+
+async function loadSpeech(model: SpeechModel): Promise<Speech> {
+  const filePath = modelPath(model, 'speech');
+  if (model.engine === 'parakeet') {
+    const parakeet = await initParakeet({ filePath, useGpu: false });
+    return {
+      transcribe: async (pcm) =>
+        (await parakeet.transcribeData(pcm.buffer, { maxThreads }).promise)
+          .result,
+      release: () => parakeet.release(),
+      chunks: defaultChunkOptions,
+    };
+  }
+  const whisper = await initWhisper({
+    filePath,
+    useGpu: false,
+    useCoreMLIos: false,
+  });
+  return {
+    transcribe: async (pcm) =>
+      (
+        await whisper.transcribeData(pcm.buffer, {
+          language: 'auto',
+          maxThreads,
+        }).promise
+      ).result,
+    release: () => whisper.release(),
+  };
+}
+
 async function loadEngine(): Promise<LoadedEngine> {
   const model = installedModel();
   if (!model) {
@@ -61,26 +136,16 @@ async function loadEngine(): Promise<LoadedEngine> {
     nThreads: 2,
   });
   try {
-    const whisper = await initWhisper({
-      filePath: modelPath(model, 'speech'),
-      useGpu: false,
-      useCoreMLIos: false,
-    });
+    const speech = await loadSpeech(model);
     return {
+      ...speech,
       detectSpeech: async (audio) =>
         (await vad.detectSpeechData(audio.buffer)).map((segment) => ({
           startMs: segment.t0 * 10,
           endMs: segment.t1 * 10,
         })),
-      transcribe: async (pcm) =>
-        (
-          await whisper.transcribeData(pcm.buffer, {
-            language: 'auto',
-            maxThreads,
-          }).promise
-        ).result,
       release: async () => {
-        await whisper.release();
+        await speech.release();
         await vad.release();
       },
     };
@@ -112,7 +177,11 @@ async function markRecording(meetingId: string | null) {
 
 export async function finishInterrupted(): Promise<void> {
   await whenLoaded();
-  if (recorder.state().status !== 'idle' || !marker().exists) {
+  if (recorder.state().status !== 'idle') {
+    return;
+  }
+  clearRecordingActivities();
+  if (!marker().exists) {
     return;
   }
   let meetingId: unknown = null;
@@ -152,6 +221,7 @@ const recorder = createPhoneRecorder({
     return () => clearTimeout(timer);
   },
   onChange: () => {
+    showRecordingActivity(recorder.state());
     for (const listener of listeners) {
       listener();
     }

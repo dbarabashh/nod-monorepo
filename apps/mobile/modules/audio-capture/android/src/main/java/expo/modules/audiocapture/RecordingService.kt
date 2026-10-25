@@ -31,6 +31,9 @@ class RecordingService : Service() {
       .setContentTitle("Nod is recording")
       .setContentText("Transcribing on this phone. Audio is never stored.")
       .setOngoing(true)
+      // Says only that the phone records, never what, so the Lock Screen may
+      // show it in full even when it hides other apps' notifications.
+      .setVisibility(Notification.VISIBILITY_PUBLIC)
       .setContentIntent(open)
       .build()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

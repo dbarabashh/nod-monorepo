@@ -32,7 +32,12 @@ export type Microphone = {
   release: () => Promise<void>;
 };
 
-export type LoadedEngine = SpeechEngine & { release: () => Promise<void> };
+export type LoadedEngine = SpeechEngine & {
+  release: () => Promise<void>;
+  // An engine fast enough for the computer's longer chunks gets their context;
+  // without it, the phone's short ones.
+  chunks?: ChunkOptions;
+};
 
 export type RecorderState =
   | { status: 'idle'; problem: string | null }
@@ -164,6 +169,7 @@ export function createPhoneRecorder(options: {
       detectSpeech: (audio) => one(() => loaded.detectSpeech(audio)),
       transcribe: (pcm) => one(() => loaded.transcribe(pcm)),
       release: () => one(() => loaded.release()),
+      chunks: loaded.chunks,
     };
   }
 
@@ -243,7 +249,7 @@ export function createPhoneRecorder(options: {
         engine: ready,
         final,
         newId,
-        chunks: phoneChunks,
+        chunks: ready.chunks ?? phoneChunks,
         onLine: (line) =>
           change(id, (meeting) => appendTranscript(meeting, [line])),
       });

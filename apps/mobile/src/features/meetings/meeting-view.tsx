@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   meetingName,
   meetingStartedAt,
@@ -13,7 +14,7 @@ import { longDateTimeFormat } from '../../lib/formats.ts';
 import { messageOf } from '../../lib/message-of.ts';
 import { useRecorder, useTranscribing } from '../../lib/recording/recording.ts';
 import { deleteMeeting, useMeeting } from '../../lib/sync/sync.ts';
-import { space, themed, useScheme } from '../../theme/index.ts';
+import { dock, space, themed, useScheme } from '../../theme/index.ts';
 import { formatDuration } from './lib/format-duration.ts';
 
 type Tab = 'summary' | 'transcript';
@@ -124,6 +125,7 @@ export function MeetingView({
   const meeting = useMeeting(id);
   const router = useRouter();
   const recorder = useRecorder();
+  const insets = useSafeAreaInsets();
   const recordingThis =
     recorder.status === 'recording' && recorder.meetingId === id;
   const [chosen, setChosen] = useState<Tab | null>(null);
@@ -131,6 +133,7 @@ export function MeetingView({
   if (!meeting) {
     return (
       <View style={styles.screen}>
+        <Stack.Screen options={{ headerRight: undefined }} />
         <EmptyState
           icon="document"
           title="Meeting not found"
@@ -163,9 +166,34 @@ export function MeetingView({
 
   return (
     <View style={styles.screen}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="trash"
+              accessibilityLabel="Delete meeting"
+              accessibilityHint={
+                recordingThis
+                  ? 'Pause and finish the recording first'
+                  : undefined
+              }
+              disabled={recordingThis}
+              onPress={confirmDelete}
+            />
+          ),
+        }}
+      />
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[
+          styles.content,
+          actions !== undefined &&
+            meeting.finishedAt === null && {
+              paddingBottom: dock.room + insets.bottom,
+            },
+        ]}
         contentInsetAdjustmentBehavior="automatic"
       >
         <View style={styles.section}>
@@ -182,21 +210,6 @@ export function MeetingView({
         ) : (
           <Transcript meeting={meeting} recording={recordingThis} />
         )}
-        <View style={styles.section}>
-          <Button
-            variant="ghost"
-            icon="trash"
-            disabled={recordingThis}
-            onPress={confirmDelete}
-          >
-            Delete meeting
-          </Button>
-          {recordingThis && (
-            <Text variant="sm" tone="muted">
-              Finish recording to delete this meeting.
-            </Text>
-          )}
-        </View>
       </ScrollView>
       {actions}
     </View>
