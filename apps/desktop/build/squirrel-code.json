@@ -1,0 +1,24 @@
+{
+  "code": {
+    "Squirrel.exe": {
+      ".text": "bbf7ba6d22b31d2501d9dd010a918716e17fbf0e089c591e0d6a20d76587b928",
+      ".reloc": "e511b53214834d7cb84cb54dab21d2a415bd9b933e7d59598d5c793d4d256232"
+    },
+    "StubExecutable.exe": {
+      ".text": "10490ddeb5225dea65fe045ef661cb5e98e4852c294ce59a5a51706fc880dcde",
+      ".rdata": "edcb9567dc3b9ad453c9279217fb0f3124a998944b77e0560e9e7d2cbc23efbe",
+      ".data": "3b1aa952634c522d35d6337c88b53cabe8032e68fc48430bde65de31eb84c3a1",
+      ".reloc": "3375141c6a5c11907443c2b4aab5a1b5df0dff08460a240d03467ae6986e13cf"
+    },
+    "Setup.exe": {
+      ".text": "fd81763368347d1eb6150f2168c2a74db931da410e4463356393a449e63fcf0c",
+      ".rdata": "6bfb7062d9ff4040c8df23c186c46a1493c88c4012ad7d1b62c0d64887cff083",
+      ".data": "4c5620e1ead6f60579b93795eb732c7a56231c77d526e18e2cbd96d5c97c7761",
+      ".reloc": "c972b83532cc8a1ca34c592c650e63ff2062060a512fa36c9d4fc4afb5bb3781"
+    }
+  },
+  "files": {
+    "Squirrel.exe": "76359cd4b0349a83337b941332ad042c90351c2bb0a4628307740324c97984cc",
+    "install-spinner.gif": "ce636d201ef86ffbf4ee8c8762b4d9dc255be9d5f490d0a22e36fe0c938f7244"
+  }
+}

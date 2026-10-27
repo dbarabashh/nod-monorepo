@@ -5,6 +5,10 @@ import { requirePackageDir } from './scripts/package-dir.ts';
 export default defineConfig({
   define: {
     __DEFAULT_RELAY_URL__: JSON.stringify(process.env.NOD_RELAY_URL ?? ''),
+    __UPDATE_URL__: JSON.stringify(process.env.NOD_UPDATE_URL ?? ''),
+    __UPDATE_PUBLIC_KEY__: JSON.stringify(
+      process.env.NOD_UPDATE_PUBLIC_KEY ?? '',
+    ),
   },
   resolve: {
     alias: [

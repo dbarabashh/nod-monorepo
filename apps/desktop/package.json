@@ -13,11 +13,12 @@
     "start": "node scripts/start.ts",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "release": "electron-forge release",
+    "release": "node scripts/release/prepare.ts",
+    "release:key": "node scripts/release/keygen.ts",
     "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts forge.config.mts vite.main.config.mts vite.preload.config.mts vite.renderer.config.mts",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.ts\""
   },
   "devDependencies": {
     "@automerge/automerge": "3.5.0",

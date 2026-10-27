@@ -8,7 +8,8 @@ system (`src/renderer/components/ui`). The data model, sync and crypto come from
 
 Rules for this app: `electron.md` and `styling-desktop.md` in `.agents/rules`,
 plus the repository-wide ones listed in the root `AGENTS.md`. Skills:
-`add-desktop-feature`, `add-desktop-ui-component`, `add-ipc`, `build-macos`.
+`add-desktop-feature`, `add-desktop-ui-component`, `add-ipc`, `build-macos`,
+`release-desktop`.
 
 ## Commands
 
@@ -21,6 +22,10 @@ pnpm test        # node:test over src/**/*.test.ts
 pnpm lint        # oxlint + oxfmt --check + type-assertion check
 pnpm make        # installers for the host OS into out/make
                  # NOD_RELAY_URL=<https address> offers that relay in the build
+                 # NOD_UPDATE_URL=<releases page> and NOD_UPDATE_PUBLIC_KEY=<key>
+                 # let the build update itself
+pnpm release <version>  # bump, changelog, signed tag (skill release-desktop)
+pnpm release:key <dir>  # the current and next release keys
 ```
 
 ## Structure
@@ -33,11 +38,16 @@ src/
   shared/      contracts imported by several processes (IPC channels and types)
   declarations.d.ts  ambient types (Forge Vite globals, window.api)
 build/         packaging assets: app icon as icon.icns (macOS), icon.ico (Windows)
-               and icon.png (Linux, 1024 px), plus entitlements.mac.plist for
-               the signed macOS build, all wired in forge.config.mts
+               and icon.png (Linux, 1024 px), the entitlements.*.plist the
+               signed macOS build's app and helpers get, signpath/, the
+               artifact configurations SignPath signs Windows builds with, and
+               squirrel-code.json, the code of Squirrel's pinned binaries
 native/macos/  the microphone monitor (C, CoreAudio) that notices a meeting
                starting; Forge builds it into build/native on macOS
-scripts/       start, the mic monitor build, and package lookup in the workspace
+scripts/       start, the mic monitor build, package lookup in the workspace,
+               macos-signing.ts (entitlements and signing order for macOS),
+               and release/ (version bump, release key, manifests, signing)
+CHANGELOG.md   what each release changed; its sections become release notes
 ```
 
 Dependencies point one way: `renderer → shared ← preload ← main → @nod/core`.

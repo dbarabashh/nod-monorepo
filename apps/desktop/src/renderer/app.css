@@ -60,6 +60,11 @@
     }
   }
 
+  .app-shell__footer {
+    display: grid;
+    gap: var(--space-3);
+  }
+
   .app-shell__main {
     min-inline-size: 0;
     min-block-size: 0;

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { cp, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -13,12 +13,56 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { packageDir, requirePackageDir } from './scripts/package-dir.ts';
+import { entitlementsFor } from './scripts/macos-signing.ts';
+import { updateBase } from './src/main/updates/feed.ts';
+import { releaseKeys } from './src/main/updates/manifest.ts';
 
 const run = promisify(execFile);
 
 const signingIdentity = process.env.APPLE_SIGNING_IDENTITY;
 const notaryProfile = process.env.APPLE_NOTARY_PROFILE;
+const notaryApiKey = process.env.APPLE_API_KEY;
+const notaryApiKeyId = process.env.APPLE_API_KEY_ID;
+const notaryApiIssuer = process.env.APPLE_API_ISSUER;
 const relayUrl = process.env.NOD_RELAY_URL;
+const updateUrl = process.env.NOD_UPDATE_URL;
+const updatePublicKey = process.env.NOD_UPDATE_PUBLIC_KEY;
+const releasesPage = updateUrl ? updateBase(updateUrl) : null;
+
+type Notary =
+  | { keychainProfile: string }
+  | { appleApiKey: string; appleApiKeyId: string; appleApiIssuer: string };
+
+// A keychain profile on a developer's Mac; an App Store Connect API key in CI,
+// where there is no keychain to keep a profile in.
+function notaryCredentials(): Notary | undefined {
+  if (notaryProfile) {
+    return { keychainProfile: notaryProfile };
+  }
+  if (notaryApiKey && notaryApiKeyId && notaryApiIssuer) {
+    return {
+      appleApiKey: notaryApiKey,
+      appleApiKeyId: notaryApiKeyId,
+      appleApiIssuer: notaryApiIssuer,
+    };
+  }
+  return undefined;
+}
+
+const notary = notaryCredentials();
+
+function notarytoolCredentials(credentials: Notary): string[] {
+  return 'keychainProfile' in credentials
+    ? ['--keychain-profile', credentials.keychainProfile]
+    : [
+        '--key',
+        credentials.appleApiKey,
+        '--key-id',
+        credentials.appleApiKeyId,
+        '--issuer',
+        credentials.appleApiIssuer,
+      ];
+}
 
 // The relay a build offers is baked in by Vite from NOD_RELAY_URL, so a
 // release must choose it on purpose: an address, or empty for no relay. An
@@ -52,15 +96,58 @@ function checkRelayUrl() {
   }
 }
 
-async function signDmg(dmg: string, identity: string, profile?: string) {
+// Installed copies update from the feed at this address, so a release names
+// it on purpose, or leaves it empty for a build that never updates itself.
+function checkUpdateUrl() {
+  if (updateUrl === undefined) {
+    if (signingIdentity) {
+      throw new Error(
+        'Set NOD_UPDATE_URL for a release: the releases page installed copies update from, or empty for a build that doesn’t update itself.',
+      );
+    }
+    return;
+  }
+  if (updateUrl !== '' && releasesPage === null) {
+    throw new Error(
+      'NOD_UPDATE_URL must be an https:// address without a login, query or #part',
+    );
+  }
+  if (updateUrl !== '' && releaseKeys(updatePublicKey ?? '') === null) {
+    throw new Error(
+      'Set NOD_UPDATE_PUBLIC_KEY to the release key (pnpm release:key): installed copies install only releases it signed.',
+    );
+  }
+}
+
+function manifestField(key: string): string {
+  const manifest: unknown = JSON.parse(
+    readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf8'),
+  );
+  const value: unknown =
+    typeof manifest === 'object' && manifest !== null
+      ? Reflect.get(manifest, key)
+      : undefined;
+  if (typeof value !== 'string') {
+    throw new Error(`package.json has no ${key}`);
+  }
+  return value;
+}
+
+// Squirrel.Windows downloads the icon it shows in Programs and Features when
+// it installs; without one of ours it fetches Electron's from GitHub. Every
+// release carries the same one, so the latest serves test installs too.
+const windowsIconUrl = releasesPage
+  ? `${releasesPage}/latest/download/${manifestField('productName')}.ico`
+  : '';
+
+async function signDmg(dmg: string, identity: string, credentials?: Notary) {
   await run('codesign', ['--sign', identity, '--timestamp', dmg]);
-  if (profile) {
+  if (credentials) {
     await run('xcrun', [
       'notarytool',
       'submit',
       dmg,
-      '--keychain-profile',
-      profile,
+      ...notarytoolCredentials(credentials),
       '--wait',
     ]);
     await run('xcrun', ['stapler', 'staple', dmg]);
@@ -130,25 +217,14 @@ const config: ForgeConfig = {
     osxSign: signingIdentity
       ? {
           identity: signingIdentity,
-          // osx-sign's default entitlements also grant camera, location,
-          // photos, Bluetooth and USB. Helpers keep their own defaults.
-          optionsForFile: (filePath) =>
-            /\((GPU|Renderer|Plugin)\)\.app$/.test(filePath)
-              ? {}
-              : // The microphone monitor only reads which apps use audio, so it
-                // gets none of the app's entitlements.
-                filePath.endsWith('nod-mic-monitor')
-                ? { hardenedRuntime: true }
-                : {
-                    hardenedRuntime: true,
-                    entitlements: 'build/entitlements.mac.plist',
-                  },
+          // The same entitlements the release workflow's signing job uses.
+          optionsForFile: (filePath) => ({
+            hardenedRuntime: true,
+            entitlements: entitlementsFor(filePath),
+          }),
         }
       : undefined,
-    osxNotarize:
-      signingIdentity && notaryProfile
-        ? { keychainProfile: notaryProfile }
-        : undefined,
+    osxNotarize: signingIdentity && notary ? notary : undefined,
     extendInfo: {
       NSMicrophoneUsageDescription:
         'Your voice is captured so the conversation can be transcribed on this device.',
@@ -160,12 +236,17 @@ const config: ForgeConfig = {
   makers: [
     new MakerDMG({}),
     new MakerZIP({}, ['darwin']),
-    new MakerSquirrel({ setupIcon: 'build/icon.ico' }),
-    new MakerDeb({ options: { icon: 'build/icon.png' } }),
-    new MakerRpm({ options: { icon: 'build/icon.png' } }),
+    new MakerSquirrel({ setupIcon: 'build/icon.ico', iconUrl: windowsIconUrl }),
+    // The packager names the Linux binary after productName; the installers
+    // would look for one named after the package.
+    new MakerDeb({ options: { icon: 'build/icon.png', bin: 'Nod' } }),
+    new MakerRpm({ options: { icon: 'build/icon.png', bin: 'Nod' } }),
   ],
   hooks: {
-    prePackage: async () => checkRelayUrl(),
+    prePackage: async () => {
+      checkRelayUrl();
+      checkUpdateUrl();
+    },
     generateAssets: async (_config, platform) => {
       if (platform === 'darwin') {
         await run('node', ['scripts/build-mic-monitor.ts']);
@@ -216,14 +297,14 @@ const config: ForgeConfig = {
     },
     // osxNotarize covers the app inside the ZIP; the DMG is a separate
     // download that Gatekeeper checks on its own, so it is signed (and,
-    // with a notary profile, notarized and stapled) too.
+    // with notary credentials, notarized and stapled) too.
     postMake: async (_config, results) => {
       if (signingIdentity) {
         const dmgs = results
           .flatMap((result) => result.artifacts)
           .filter((artifact) => artifact.endsWith('.dmg'));
         for (const dmg of dmgs) {
-          await signDmg(dmg, signingIdentity, notaryProfile);
+          await signDmg(dmg, signingIdentity, notary);
         }
       }
       return results;

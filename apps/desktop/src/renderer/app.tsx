@@ -16,6 +16,7 @@ import {
   SuggestMeetingsSetting,
 } from './features/recording/index.ts';
 import { SettingsView } from './features/settings/index.ts';
+import { UpdateNotice, UpdatesPanel } from './features/updates/index.ts';
 import {
   SharedNotesView,
   PeoplePanel,
@@ -120,25 +121,28 @@ function Shell() {
               onRenamed={followRename}
             />
           </Nav>
-          <Nav aria-label="App">
-            <NavItem
-              icon="document"
-              current={page === 'shared'}
-              onClick={() => {
-                setOpenNote(null);
-                setPage('shared');
-              }}
-            >
-              Shared notes
-            </NavItem>
-            <NavItem
-              icon="settings"
-              current={page === 'settings'}
-              onClick={() => setPage('settings')}
-            >
-              Settings
-            </NavItem>
-          </Nav>
+          <div className="app-shell__footer">
+            <UpdateNotice />
+            <Nav aria-label="App">
+              <NavItem
+                icon="document"
+                current={page === 'shared'}
+                onClick={() => {
+                  setOpenNote(null);
+                  setPage('shared');
+                }}
+              >
+                Shared notes
+              </NavItem>
+              <NavItem
+                icon="settings"
+                current={page === 'settings'}
+                onClick={() => setPage('settings')}
+              >
+                Settings
+              </NavItem>
+            </Nav>
+          </div>
         </div>
       </aside>
       <main ref={main} tabIndex={-1} className="app-shell__main">
@@ -178,6 +182,7 @@ function Shell() {
             teams={<TeamsPanel />}
             recovery={<RecoveryPanel />}
             import={<ImportPanel />}
+            updates={<UpdatesPanel />}
           />
         )}
       </main>

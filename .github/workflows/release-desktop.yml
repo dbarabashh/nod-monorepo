@@ -1,0 +1,572 @@
+name: Release desktop
+
+on:
+  push:
+    tags: ['desktop-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+# Jobs that install dependencies never see a secret, and jobs that hold one
+# (the `signing` environment) install nothing: a compromised dependency can
+# change what gets built, but can't take the keys that sign it.
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - name: Tag matches the version and has release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node apps/desktop/scripts/release/assemble.ts check "$TAG"
+      # A ruleset can keep others from pushing desktop-v* tags, but not require
+      # them to be signed or to point at main, so the workflow checks both.
+      - name: The tag is signed and on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
+          if [ "$(jq -r .object.type <<<"$ref")" != tag ]; then
+            echo "::error::$TAG is a lightweight tag; release with a signed tag"
+            exit 1
+          fi
+          tag="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$(jq -r .object.sha <<<"$ref")")"
+          if [ "$(jq -r .verification.verified <<<"$tag")" != true ]; then
+            echo "::error::GitHub could not verify the signature of $TAG"
+            exit 1
+          fi
+          if [ "$(jq -r .object.sha <<<"$tag")" != "$GITHUB_SHA" ]; then
+            echo "::error::$TAG does not point at the commit being built"
+            exit 1
+          fi
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
+          if [ "$status" != identical ] && [ "$status" != behind ]; then
+            echo "::error::$TAG points at a commit that is not on main"
+            exit 1
+          fi
+      # This token can't see drafts; a leftover draft makes publish fail instead.
+      - name: No published release exists for the tag yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          for tag in "$TAG" "desktop-test-v${TAG#desktop-v}"; do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "::error::A release for $tag already exists"
+              exit 1
+            fi
+          done
+      - name: The relay and the release key are set
+        env:
+          NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+        run: |
+          if [ -z "$NOD_RELAY_URL" ] || [ -z "$NOD_UPDATE_PUBLIC_KEY" ]; then
+            echo "::error::Set the NOD_RELAY_URL and NOD_UPDATE_PUBLIC_KEY repository variables"
+            exit 1
+          fi
+
+  package-macos:
+    needs: [checks, verify]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # No store cache another run could have written to. pnpm/setup still
+      # keeps its lockfile-verification cache; packages are checked against
+      # the lockfile's integrity hashes either way.
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      - name: Package
+        env:
+          NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
+          NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          ARCH: ${{ matrix.arch }}
+        run: pnpm --filter nod-desktop package --arch="$ARCH"
+      # A zip from ditto keeps the symlinks and permissions a macOS bundle's
+      # signature depends on; upload-artifact's own archive doesn't.
+      - name: Archive the app
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: ditto -c -k --keepParent "apps/desktop/out/Nod-darwin-$ARCH/Nod.app" unsigned.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-darwin-${{ matrix.arch }}
+          path: unsigned.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  package-windows:
+    needs: [checks, verify]
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      - name: Package
+        env:
+          NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
+          NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+        run: pnpm --filter nod-desktop package --arch=x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: unsigned
+        with:
+          name: unsigned-win32-x64
+          path: apps/desktop/out/Nod-win32-x64/
+          if-no-files-found: error
+          retention-days: 3
+    outputs:
+      artifact: ${{ steps.unsigned.outputs.artifact-id }}
+
+  sign-macos-app:
+    needs: package-macos
+    environment: signing
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [arm64, x64]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            apps/desktop/scripts
+            apps/desktop/build
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-darwin-${{ matrix.arch }}
+      - name: Unpack
+        run: ditto -x -k unsigned.zip app
+      - name: Signing keychain
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: apps/desktop/scripts/release/macos.sh keychain
+      - name: Sign
+        env:
+          APPLE_SIGNING_IDENTITY: Developer ID Application
+          APPLE_KEYCHAIN: ${{ runner.temp }}/signing.keychain-db
+        run: node apps/desktop/scripts/release/sign-macos.ts app/Nod.app
+      - name: Notarize
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          apps/desktop/scripts/release/macos.sh notarize app/Nod.app
+          spctl --assess --type execute --verbose=2 app/Nod.app
+          ditto -c -k --keepParent app/Nod.app signed.zip
+      - name: Remove signing keychain
+        if: always()
+        run: apps/desktop/scripts/release/macos.sh cleanup
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-darwin-${{ matrix.arch }}
+          path: signed.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  make-macos:
+    needs: sign-macos-app
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-darwin-${{ matrix.arch }}
+      - name: Make the DMG and ZIP from the signed app
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "apps/desktop/out/Nod-darwin-$ARCH"
+          ditto -x -k signed.zip "apps/desktop/out/Nod-darwin-$ARCH"
+          pnpm --filter nod-desktop exec electron-forge make --from-package --arch="$ARCH"
+          codesign --verify --deep --strict "apps/desktop/out/Nod-darwin-$ARCH/Nod.app"
+          mkdir made
+          cp apps/desktop/out/make/dmg/"$ARCH"/*.dmg apps/desktop/out/make/zip/darwin/"$ARCH"/*.zip made/
+          ls -l made
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: made-darwin-${{ matrix.arch }}
+          path: made/
+          if-no-files-found: error
+          retention-days: 3
+
+  sign-macos-dmg:
+    needs: make-macos
+    environment: signing
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [arm64, x64]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/desktop/scripts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: made-darwin-${{ matrix.arch }}
+          path: release
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-darwin-${{ matrix.arch }}
+      # The DMG and ZIP were made where dependencies are installed; they must
+      # hold exactly the app this pipeline signed and notarized.
+      - name: The DMG and ZIP hold the signed app
+        run: |
+          ditto -x -k signed.zip signed
+          for file in release/*.zip release/*.dmg; do
+            apps/desktop/scripts/release/macos.sh same-app signed/Nod.app "$file"
+          done
+      - name: Signing keychain
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: apps/desktop/scripts/release/macos.sh keychain
+      - name: Sign and notarize the DMG
+        env:
+          APPLE_SIGNING_IDENTITY: Developer ID Application
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          for dmg in release/*.dmg; do
+            apps/desktop/scripts/release/macos.sh sign-dmg "$dmg"
+            apps/desktop/scripts/release/macos.sh notarize "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          done
+      - name: Remove signing keychain
+        if: always()
+        run: apps/desktop/scripts/release/macos.sh cleanup
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-darwin-${{ matrix.arch }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-windows-app:
+    permissions:
+      contents: read
+      actions: read
+    needs: package-windows
+    environment: signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ needs.package-windows.outputs.artifact }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-win32-x64
+          path: signed/
+          if-no-files-found: error
+          retention-days: 3
+
+  make-windows:
+    needs: sign-windows-app
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-win32-x64
+          path: apps/desktop/out/Nod-win32-x64
+      - name: Make the installer from the signed app
+        env:
+          NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+        run: pnpm --filter nod-desktop exec electron-forge make --from-package --arch=x64
+      # GitHub turns spaces in asset names into dots, which would no longer
+      # match SHA256SUMS.
+      - name: Collect the installer
+        run: |
+          mkdir made
+          for file in apps/desktop/out/make/squirrel.windows/x64/*; do
+            cp "$file" "made/$(basename "$file" | tr ' ' '-')"
+          done
+          ls -l made
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: made
+        with:
+          name: made-win32-x64
+          path: made/
+          if-no-files-found: error
+          retention-days: 3
+    outputs:
+      artifact: ${{ steps.made.outputs.artifact-id }}
+
+  check-windows-installer:
+    needs: make-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            apps/desktop/scripts
+            apps/desktop/build
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-win32-x64
+          path: signed
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: made-win32-x64
+          path: made
+      # The installer was made where dependencies are installed; before it is
+      # signed, it must hold exactly the signed app plus Squirrel's own code.
+      - name: The installer holds the signed app
+        run: node apps/desktop/scripts/release/check-windows.ts check signed made
+
+  sign-windows-installer:
+    permissions:
+      contents: read
+      actions: read
+    needs: [make-windows, check-windows-installer]
+    environment: signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ needs.make-windows.outputs.artifact }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-win32-x64
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    needs: [checks, verify]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      - name: Linux packaging tools
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends fakeroot rpm
+      - name: Make
+        env:
+          NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
+          NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          pnpm --filter nod-desktop make --arch="$ARCH"
+          mkdir release
+          find apps/desktop/out/make -type f \( -name '*.deb' -o -name '*.rpm' \) -exec cp {} release/ \;
+          ls -l release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-linux-${{ matrix.arch }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    needs: [sign-macos-dmg, sign-windows-installer, linux]
+    environment: signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-*
+          path: builds
+      # Each platform's files keep their names; a name two builds share would
+      # otherwise be silently replaced by one of them.
+      - name: Gather installers
+        run: |
+          duplicates="$(find builds -type f -exec basename {} \; | sort | uniq -d)"
+          if [ -n "$duplicates" ]; then
+            echo "::error::Several builds produced: $duplicates"
+            exit 1
+          fi
+          mkdir installers
+          find builds -type f -exec mv {} installers/ \;
+          cp apps/desktop/build/icon.ico installers/Nod.ico
+      - name: Signed manifests, feeds and checksums
+        env:
+          TAG: ${{ github.ref_name }}
+          RELEASES_URL: https://github.com/${{ github.repository }}/releases
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          mkdir assembled
+          cp -R installers assembled/release
+          cp -R installers assembled/test-release
+          node apps/desktop/scripts/release/assemble.ts assets \
+            "$TAG" assembled/release "$RELEASES_URL" assembled/notes.md
+          node apps/desktop/scripts/release/assemble.ts assets \
+            "desktop-test-v${TAG#desktop-v}" assembled/test-release "$RELEASES_URL" assembled/notes.md
+          cat assembled/release/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: assembled
+          path: assembled/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Publishing holds no secret, and the job that held the release key could
+  # not write releases or mint attestations.
+  publish:
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: assembled
+          path: assembled
+      # Attestations need a public repository on GitHub's free plans.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: |
+            assembled/release/*
+            assembled/test-release/*
+      # The test release is published at once as a prerelease, so test
+      # versions can be installed and updated to before anyone else gets them;
+      # the release itself stays a draft until a person publishes it.
+      - name: Test release and draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#desktop-v}"
+          gh release create "desktop-test-v$version" assembled/test-release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --latest=false \
+            --title "Nod $version (test)" \
+            --notes-file assembled/notes.md
+          gh release create "$TAG" assembled/release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --verify-tag \
+            --title "Nod $version" \
+            --notes-file assembled/notes.md

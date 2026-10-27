@@ -269,6 +269,21 @@ export type AppState = {
   onboardingCompleted: boolean;
   suggestMeetings: boolean;
   quietMeetingApps: string[];
+  checkForUpdates: boolean;
+  testUpdates: boolean;
+};
+
+export type UpdateStatus =
+  | { status: 'unavailable'; reason: string }
+  | { status: 'idle'; error: string | null }
+  | { status: 'checking' }
+  | { status: 'downloading'; version: string }
+  | { status: 'ready'; version: string }
+  | { status: 'available'; version: string };
+
+export type UpdateState = UpdateStatus & {
+  current: string;
+  checkedAt: number | null;
 };
 
 export const IpcEvent = {
@@ -281,6 +296,7 @@ export const IpcEvent = {
   onMeetingSuggestion: 'meeting-suggestion:changed',
   onSharingChanged: 'sharing:changed',
   onDialogChanged: 'dialog:changed',
+  onUpdateChanged: 'updates:changed',
 } satisfies Partial<Record<keyof AppApi, string>>;
 
 export const IpcChannel = {
@@ -293,6 +309,12 @@ export const IpcChannel = {
   completeOnboarding: 'app-state:complete-onboarding',
   setSuggestMeetings: 'app-state:set-suggest-meetings',
   clearQuietMeetingApps: 'app-state:clear-quiet-meeting-apps',
+  setCheckForUpdates: 'app-state:set-check-for-updates',
+  setTestUpdates: 'app-state:set-test-updates',
+  getUpdateState: 'updates:get',
+  checkForUpdatesNow: 'updates:check',
+  installUpdate: 'updates:install',
+  openUpdatePage: 'updates:open-page',
   getMeetingSuggestion: 'meeting-suggestion:get',
   dismissMeetingSuggestion: 'meeting-suggestion:dismiss',
   getAudioAccess: 'audio-access:get',
@@ -372,6 +394,13 @@ export type AppApi = {
   completeOnboarding: () => Promise<AppState>;
   setSuggestMeetings: (enabled: boolean) => Promise<AppState>;
   clearQuietMeetingApps: () => Promise<AppState>;
+  setCheckForUpdates: (enabled: boolean) => Promise<AppState>;
+  setTestUpdates: (enabled: boolean) => Promise<AppState>;
+  getUpdateState: () => Promise<UpdateState>;
+  checkForUpdatesNow: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  openUpdatePage: () => Promise<void>;
+  onUpdateChanged: (callback: (state: UpdateState) => void) => () => void;
   getMeetingSuggestion: () => Promise<MeetingSuggestion | null>;
   dismissMeetingSuggestion: (quietApp: boolean) => Promise<void>;
   onMeetingSuggestion: (

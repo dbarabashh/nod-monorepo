@@ -4,6 +4,8 @@ export const defaultAppState: AppState = {
   onboardingCompleted: false,
   suggestMeetings: true,
   quietMeetingApps: [],
+  checkForUpdates: true,
+  testUpdates: false,
 };
 
 const maxQuietApps = 100;
@@ -20,6 +22,8 @@ export function parseAppState(raw: unknown): AppState {
   return {
     onboardingCompleted: field(raw, 'onboardingCompleted') === true,
     suggestMeetings: field(raw, 'suggestMeetings') !== false,
+    checkForUpdates: field(raw, 'checkForUpdates') !== false,
+    testUpdates: field(raw, 'testUpdates') === true,
     quietMeetingApps: Array.isArray(quiet)
       ? [
           ...new Set(

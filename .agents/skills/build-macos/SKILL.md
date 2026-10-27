@@ -17,19 +17,30 @@ stay out of the repo:
 
 - `APPLE_SIGNING_IDENTITY`: a "Developer ID Application" identity in the
   keychain (`security find-identity -v -p codesigning`). Forge signs the app
-  with the hardened runtime and `build/entitlements.mac.plist`.
+  and its helpers with the hardened runtime and the entitlements
+  `scripts/macos-signing.ts` picks, the same ones the release workflow uses.
 - `APPLE_NOTARY_PROFILE`: a notarytool keychain profile, created once with
   `xcrun notarytool store-credentials <profile> --apple-id <id> --team-id <team> --password <app-specific-password>`.
   With both set, Forge notarizes and staples the app (so the ZIP is covered),
   and the `postMake` hook signs, notarizes and staples the DMG. With only the
   identity set, the app and DMG are signed but not notarized.
+- Instead of a profile, CI notarizes with an App Store Connect API key:
+  `APPLE_API_KEY` (the path to the `.p8` file), `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER`. A profile wins when both are set.
 
 The relay a build offers in onboarding and Settings → Sync comes from
 `NOD_RELAY_URL` at build time; nothing in the repo names one. Set it to the
 relay's `https://` address, or to an empty value for a build without a relay.
 A signed build refuses to start without it, so a release never ships without a
-relay by accident, and an address the app would refuse fails the build. When
-releases move to CI, keep the address in a repository variable, not in code.
+relay by accident, and an address the app would refuse fails the build. The
+release workflow takes it from the `NOD_RELAY_URL` repository variable.
+
+`NOD_UPDATE_URL` works the same way for updates: the releases page installed
+copies update from (`https://github.com/<owner>/<repo>/releases`), or empty
+for a build that never checks. A signed build requires it too, and an address
+requires `NOD_UPDATE_PUBLIC_KEY`, the release key's public half (skill
+`release-desktop`). Releases for
+users come from CI (skill `release-desktop`), not from a local build.
 
 Without them the build is unsigned and for local testing only. Never hand an
 unsigned or unnotarized build to users, because macOS shows "developer cannot

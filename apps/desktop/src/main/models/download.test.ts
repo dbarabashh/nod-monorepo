@@ -86,6 +86,17 @@ describe('downloadFile', () => {
     assert.deepEqual(await readdir(dir()), []);
   });
 
+  it('stops a download that runs past its size, and starts over next time', async () => {
+    const { fetch: oversized } = server({
+      body: Buffer.concat([content, Buffer.alloc(4 << 20)]),
+      ignoreRange: true,
+    });
+    await assert.rejects(run(oversized), /larger than expected/);
+    const { fetch } = server();
+    await run(fetch);
+    assert.deepEqual(await readFile(destination), content);
+  });
+
   it('skips the network when the verified file is already there', async () => {
     await writeFile(destination, content);
     const { fetch, calls } = server();
