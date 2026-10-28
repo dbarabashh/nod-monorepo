@@ -1,1 +1,6 @@
 minimumReleaseAge: 10080
+
+# @vercel/cli-config pins zod 4.1.11, which can exhaust memory validating
+# oversized collections (GHSA-mrhx-c7xc-m3w5, fixed in 4.6.6).
+overrides:
+  zod: 4.6.7
