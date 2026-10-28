@@ -24,6 +24,7 @@ pnpm make        # installers for the host OS into out/make
                  # NOD_RELAY_URL=<https address> offers that relay in the build
                  # NOD_UPDATE_URL=<releases page> and NOD_UPDATE_PUBLIC_KEY=<key>
                  # let the build update itself
+                 # NOD_BUNDLE_ID=<reverse-DNS id> sets the macOS bundle ID
 pnpm release <version>  # bump, changelog, signed tag (skill release-desktop)
 pnpm release:key <dir>  # the current and next release keys
 ```

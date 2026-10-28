@@ -133,7 +133,8 @@ Linux packages each rewrite them differently. Test releases take their place.
    you can create, move or delete them. Turn on immutable releases (Settings
    → General → Releases). Keep every other workflow at `contents: read`.
 4. **Repository variables:** `NOD_RELAY_URL` (as in the `build-macos` skill),
-   `NOD_UPDATE_PUBLIC_KEY`, and the SignPath `SIGNPATH_ORGANIZATION_ID`,
+   `NOD_UPDATE_PUBLIC_KEY`, `NOD_BUNDLE_ID` (the macOS bundle ID; never
+   change it after a release, or Squirrel.Mac refuses the update), and the SignPath `SIGNPATH_ORGANIZATION_ID`,
    `SIGNPATH_PROJECT_SLUG` and `SIGNPATH_SIGNING_POLICY_SLUG`.
 5. **Secrets of `signing`:**
    - `UPDATE_SIGNING_KEY`: the release key from step 1.

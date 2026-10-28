@@ -27,6 +27,7 @@ const notaryApiIssuer = process.env.APPLE_API_ISSUER;
 const relayUrl = process.env.NOD_RELAY_URL;
 const updateUrl = process.env.NOD_UPDATE_URL;
 const updatePublicKey = process.env.NOD_UPDATE_PUBLIC_KEY;
+const bundleId = process.env.NOD_BUNDLE_ID;
 const releasesPage = updateUrl ? updateBase(updateUrl) : null;
 
 type Notary =
@@ -119,6 +120,24 @@ function checkUpdateUrl() {
   }
 }
 
+// macOS ties keychain items, permissions and Squirrel.Mac updates to the
+// bundle ID, so a release names its own and keeps it for good.
+function checkBundleId() {
+  if (!bundleId) {
+    if (signingIdentity) {
+      throw new Error(
+        'Set NOD_BUNDLE_ID for a release: the macOS bundle ID, such as org.example.nod.',
+      );
+    }
+    return;
+  }
+  if (!/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(bundleId)) {
+    throw new Error(
+      'NOD_BUNDLE_ID must be a reverse-DNS name such as org.example.nod',
+    );
+  }
+}
+
 function manifestField(key: string): string {
   const manifest: unknown = JSON.parse(
     readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf8'),
@@ -207,6 +226,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     // Native addons can't be loaded from inside an archive.
     asar: { unpack: '**/*.node' },
+    appBundleId: bundleId || undefined,
     icon: 'build/icon',
     extraResource:
       process.platform === 'linux'
@@ -246,6 +266,7 @@ const config: ForgeConfig = {
     prePackage: async () => {
       checkRelayUrl();
       checkUpdateUrl();
+      checkBundleId();
     },
     generateAssets: async (_config, platform) => {
       if (platform === 'darwin') {

@@ -6,6 +6,12 @@ publishes that section as the release notes.
 
 ## Unreleased
 
+- Nod keeps its data in a folder of its own, apart from the earlier Nod app
+  for Mac, and moves what it already saved there on its first start.
+- On a Mac, test copies of 0.1.1 don't update to this version: install it
+  again from the release, and allow Nod to use the microphone and its
+  keychain item when macOS asks.
+
 ## 0.1.1 — 2026-10-28
 
 - Builds for Intel Macs are made the same way as for Apple silicon.

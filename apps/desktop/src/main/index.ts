@@ -17,6 +17,7 @@ import started from 'electron-squirrel-startup';
 import { modelCatalog } from '@nod/core/models';
 import { createAppStateStore } from './app-state/store.ts';
 import { ignoreClosedOutput } from './closed-output.ts';
+import { dataFolderName, moveDataFolder } from './storage/data-folder.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
 import { broadcastUpdate, registerUpdatesIpc } from './ipc/updates.ts';
 import { updateBase, updateFeed } from './updates/feed.ts';
@@ -96,6 +97,18 @@ if (
 // Started by a desktop AI assistant as its MCP server: this process only
 // relays to the running app and never opens the meetings itself.
 const mcpBridge = process.argv.includes('--mcp-stdio');
+
+// Before anything reads it, and before the single-instance lock, which lives
+// there too; an explicit --user-data-dir (a second copy in development) wins.
+// Only macOS had the Swift app; elsewhere the folder stays, and on Windows it
+// also holds the key safeStorage encrypts with.
+const legacyDataFolder =
+  process.platform !== 'darwin' || app.commandLine.hasSwitch('user-data-dir')
+    ? null
+    : path.join(app.getPath('appData'), app.getName());
+if (legacyDataFolder) {
+  app.setPath('userData', path.join(app.getPath('appData'), dataFolderName));
+}
 // The bridge learns the port from the assistant's settings; the app takes an
 // override only in development, where a second copy may run beside it.
 const mcpPort =
@@ -134,6 +147,23 @@ if (mcpBridge) {
   // A second process would load and rewrite the same meetings file, so every
   // launch after the first hands over to the running app.
   app.quit();
+} else if (legacyDataFolder) {
+  // Synchronous because the stores below open the folder as this module
+  // loads; each move is a rename within one folder.
+  const move = moveDataFolder(
+    legacyDataFolder,
+    app.getPath('userData'),
+    modelCatalog.map((model) => model.id),
+  );
+  if (move === 'kept') {
+    app.setPath('userData', legacyDataFolder);
+  } else if (move === 'stuck') {
+    dialog.showErrorBox(
+      'Nod could not move its data',
+      `Nod was moving its data to ${app.getPath('userData')} and could not finish. Nothing was lost; open Nod again to finish the move.`,
+    );
+    app.exit(1);
+  }
 }
 
 const appUrl =

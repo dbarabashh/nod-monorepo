@@ -35,6 +35,11 @@ A signed build refuses to start without it, so a release never ships without a
 relay by accident, and an address the app would refuse fails the build. The
 release workflow takes it from the `NOD_RELAY_URL` repository variable.
 
+`NOD_BUNDLE_ID` is the macOS bundle ID (`org.example.nod`). A signed build
+requires it; keychain items, permissions and updates are tied to it, so a
+release keeps the same one for good. The release workflow takes it from the
+`NOD_BUNDLE_ID` repository variable.
+
 `NOD_UPDATE_URL` works the same way for updates: the releases page installed
 copies update from (`https://github.com/<owner>/<repo>/releases`), or empty
 for a build that never checks. A signed build requires it too, and an address

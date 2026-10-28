@@ -72,13 +72,14 @@ jobs:
               exit 1
             fi
           done
-      - name: The relay and the release key are set
+      - name: The relay, the release key and the bundle ID are set
         env:
           NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
           NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          NOD_BUNDLE_ID: ${{ vars.NOD_BUNDLE_ID }}
         run: |
-          if [ -z "$NOD_RELAY_URL" ] || [ -z "$NOD_UPDATE_PUBLIC_KEY" ]; then
-            echo "::error::Set the NOD_RELAY_URL and NOD_UPDATE_PUBLIC_KEY repository variables"
+          if [ -z "$NOD_RELAY_URL" ] || [ -z "$NOD_UPDATE_PUBLIC_KEY" ] || [ -z "$NOD_BUNDLE_ID" ]; then
+            echo "::error::Set the NOD_RELAY_URL, NOD_UPDATE_PUBLIC_KEY and NOD_BUNDLE_ID repository variables"
             exit 1
           fi
 
@@ -122,6 +123,7 @@ jobs:
           NOD_RELAY_URL: ${{ vars.NOD_RELAY_URL }}
           NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
           NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          NOD_BUNDLE_ID: ${{ vars.NOD_BUNDLE_ID }}
           ARCH: ${{ matrix.arch }}
         run: pnpm --filter nod-desktop package --arch="$ARCH"
       # A zip from ditto keeps the symlinks and permissions a macOS bundle's
