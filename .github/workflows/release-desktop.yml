@@ -310,7 +310,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # Until SignPath is set up (it signs only public projects), Windows builds
+  # are released unsigned: Nod still checks updates against the signed
+  # manifest, but SmartScreen warns on install.
   sign-windows-app:
+    if: ${{ vars.SIGNPATH_PROJECT_SLUG != '' }}
     permissions:
       contents: read
       actions: read
@@ -337,7 +341,8 @@ jobs:
           retention-days: 3
 
   make-windows:
-    needs: sign-windows-app
+    needs: [package-windows, sign-windows-app]
+    if: ${{ !cancelled() && needs.package-windows.result == 'success' && (needs.sign-windows-app.result == 'success' || vars.SIGNPATH_PROJECT_SLUG == '') }}
     runs-on: windows-2025
     timeout-minutes: 60
     defaults:
@@ -354,7 +359,7 @@ jobs:
           require-lockfile: true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: signed-win32-x64
+          name: ${{ vars.SIGNPATH_PROJECT_SLUG != '' && 'signed-win32-x64' || 'unsigned-win32-x64' }}
           path: apps/desktop/out/Nod-win32-x64
       - name: Make the installer from the signed app
         env:
@@ -382,6 +387,7 @@ jobs:
 
   check-windows-installer:
     needs: make-windows
+    if: ${{ !cancelled() && needs.make-windows.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -397,7 +403,7 @@ jobs:
           install: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: signed-win32-x64
+          name: ${{ vars.SIGNPATH_PROJECT_SLUG != '' && 'signed-win32-x64' || 'unsigned-win32-x64' }}
           path: signed
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -413,6 +419,7 @@ jobs:
       contents: read
       actions: read
     needs: [make-windows, check-windows-installer]
+    if: ${{ !cancelled() && needs.make-windows.result == 'success' && needs.check-windows-installer.result == 'success' && vars.SIGNPATH_PROJECT_SLUG != '' }}
     environment: signing
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -427,6 +434,25 @@ jobs:
           github-artifact-id: ${{ needs.make-windows.outputs.artifact }}
           wait-for-completion-timeout-in-seconds: 3600
           output-artifact-directory: release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-win32-x64
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  unsigned-windows-installer:
+    needs: check-windows-installer
+    if: ${{ !cancelled() && needs.check-windows-installer.result == 'success' && vars.SIGNPATH_PROJECT_SLUG == '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: made-win32-x64
+          path: release
+      - name: Warn
+        run: echo "::warning::SignPath is not set up; the Windows installer and app are unsigned"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-win32-x64
@@ -475,8 +501,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # A skipped Windows signing job would otherwise skip every job after it.
   assemble:
-    needs: [sign-macos-dmg, sign-windows-installer, linux]
+    needs:
+      [
+        sign-macos-dmg,
+        sign-windows-installer,
+        unsigned-windows-installer,
+        linux,
+      ]
+    if: ${{ !cancelled() && needs.sign-macos-dmg.result == 'success' && needs.linux.result == 'success' && (needs.sign-windows-installer.result == 'success' || needs.unsigned-windows-installer.result == 'success') }}
     environment: signing
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -530,6 +564,7 @@ jobs:
   # not write releases or mint attestations.
   publish:
     needs: assemble
+    if: ${{ !cancelled() && needs.assemble.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
