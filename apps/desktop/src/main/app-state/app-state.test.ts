@@ -6,6 +6,8 @@ const fresh = {
   onboardingCompleted: false,
   suggestMeetings: true,
   quietMeetingApps: [],
+  checkForUpdates: true,
+  testUpdates: false,
 };
 
 describe('parseAppState', () => {
@@ -45,6 +47,24 @@ describe('parseAppState', () => {
       parseAppState({ suggestMeetings: false }).suggestMeetings,
       false,
     );
+  });
+
+  it('checks for updates unless that was turned off', () => {
+    assert.equal(parseAppState({}).checkForUpdates, true);
+    assert.equal(
+      parseAppState({ checkForUpdates: 'no' }).checkForUpdates,
+      true,
+    );
+    assert.equal(
+      parseAppState({ checkForUpdates: false }).checkForUpdates,
+      false,
+    );
+  });
+
+  it('offers test releases only when that was turned on', () => {
+    assert.equal(parseAppState({}).testUpdates, false);
+    assert.equal(parseAppState({ testUpdates: 'yes' }).testUpdates, false);
+    assert.equal(parseAppState({ testUpdates: true }).testUpdates, true);
   });
 
   it('keeps only well-formed quiet apps, once each', () => {

@@ -27,6 +27,17 @@ const api: AppApi = {
     ipcRenderer.invoke(IpcChannel.setSuggestMeetings, enabled),
   clearQuietMeetingApps: () =>
     ipcRenderer.invoke(IpcChannel.clearQuietMeetingApps),
+  setCheckForUpdates: (enabled) =>
+    ipcRenderer.invoke(IpcChannel.setCheckForUpdates, enabled),
+  setTestUpdates: (enabled) =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.setTestUpdates, enabled)),
+  getUpdateState: () => ipcRenderer.invoke(IpcChannel.getUpdateState),
+  checkForUpdatesNow: () => ipcRenderer.invoke(IpcChannel.checkForUpdatesNow),
+  installUpdate: () =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.installUpdate)),
+  openUpdatePage: () =>
+    clicked(() => ipcRenderer.invoke(IpcChannel.openUpdatePage)),
+  onUpdateChanged: (callback) => subscribe(IpcEvent.onUpdateChanged, callback),
   getMeetingSuggestion: () =>
     ipcRenderer.invoke(IpcChannel.getMeetingSuggestion),
   dismissMeetingSuggestion: (quietApp) =>

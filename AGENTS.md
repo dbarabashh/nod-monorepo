@@ -20,8 +20,9 @@ packages/core/   @nod/core: the platform-neutral data model, migrations, sync
 packages/automerge-native/  Automerge on a Rust backend for mobile, where
                  Hermes has no WebAssembly (an Expo module plus a JS shim)
 docs/decisions/  numbered decision records; read 0001-sync.md before touching
-                 meetings storage or sync, and 0003-sharing.md before touching
-                 identity, shared vaults or shared notes
+                 meetings storage or sync, 0003-sharing.md before touching
+                 identity, shared vaults or shared notes, and
+                 0004-desktop-updates.md before touching desktop releases
 scripts/         repository tooling shared by every package
 ```
 
@@ -96,6 +97,7 @@ editing it.
   - `add-ipc`: add a typed main ↔ renderer channel through the desktop preload bridge
   - `write-tests`: write or update node:test unit tests without false positives
   - `build-macos`: build the desktop DMG and ZIP locally and verify them
+  - `release-desktop`: release a desktop version through the signed-tag workflow
 
   New skills go in `.agents/skills/<name>/` with a matching symlink.
 
@@ -128,7 +130,9 @@ Run `pnpm typecheck && pnpm lint && pnpm test` before calling a change done.
 The tests build the native Automerge library, so they need Rust (`rustup`).
 One package only: `pnpm --filter <name> <script>` (`nod-desktop`,
 `nod-mobile`, `@nod/core`, `@nod/relay`). CI (`.github/workflows/ci.yml`) runs the same three
-on every push to `main` and every pull request. Dependabot
+on every push to `main` and every pull request. Desktop releases run from a
+signed `desktop-v*` tag (`.github/workflows/release-desktop.yml`, skill
+`release-desktop`). Dependabot
 (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly; see
 `dependencies.md`.
 

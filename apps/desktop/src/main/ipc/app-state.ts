@@ -16,6 +16,18 @@ export function registerAppStateIpc(
     }
     return store.update({ suggestMeetings: enabled });
   });
+  handleFromApp(appUrl, IpcChannel.setCheckForUpdates, (enabled) => {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Expected on or off');
+    }
+    return store.update({ checkForUpdates: enabled });
+  });
+  handleFromApp(appUrl, IpcChannel.setTestUpdates, (enabled) => {
+    if (typeof enabled !== 'boolean') {
+      throw new Error('Expected on or off');
+    }
+    return store.update({ testUpdates: enabled });
+  });
   handleFromApp(appUrl, IpcChannel.clearQuietMeetingApps, () =>
     store.update({ quietMeetingApps: [] }),
   );

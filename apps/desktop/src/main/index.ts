@@ -18,6 +18,16 @@ import { modelCatalog } from '@nod/core/models';
 import { createAppStateStore } from './app-state/store.ts';
 import { ignoreClosedOutput } from './closed-output.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
+import { broadcastUpdate, registerUpdatesIpc } from './ipc/updates.ts';
+import { updateBase, updateFeed } from './updates/feed.ts';
+import {
+  electronSquirrel,
+  fetchFeedBytes,
+  fetchFeedJson,
+  platformStage,
+} from './updates/electron.ts';
+import { releaseKeys } from './updates/manifest.ts';
+import { createUpdater } from './updates/updater.ts';
 import { registerMeetingSuggestionIpc } from './ipc/meeting-suggestion.ts';
 import { registerAudioAccessIpc } from './ipc/audio-access.ts';
 import { broadcastMcp, registerMcpIpc } from './ipc/mcp.ts';
@@ -186,6 +196,14 @@ const publishedLogs = createPublishedLogs(
 // Set when the app is built, so a fork can offer its own relay without
 // anything in the source naming one. It is offered, never used unasked.
 const defaultRelay = offeredRelay(__DEFAULT_RELAY_URL__);
+
+// Set when the app is built, like the relay: a fork publishes its own releases
+// and signs them with its own key.
+const updateSource =
+  app.isPackaged && releaseKeys(__UPDATE_PUBLIC_KEY__) !== null
+    ? updateBase(__UPDATE_URL__)
+    : null;
+const updateFeedOf = updateSource ? updateFeed(updateSource) : null;
 
 function offeredRelay(url: string): string | null {
   try {
@@ -438,6 +456,42 @@ app.whenReady().then(async () => {
     applySuggestionSettings,
   );
   registerAppStateIpc(appUrl, appState);
+  const updater = createUpdater({
+    current: app.getVersion(),
+    feed: updateFeedOf,
+    releaseKeys: __UPDATE_PUBLIC_KEY__,
+    unavailable:
+      process.platform === 'darwin' && !app.isInApplicationsFolder()
+        ? 'Move Nod to the Applications folder to get updates.'
+        : null,
+    squirrel: electronSquirrel(process.platform),
+    stage: updateFeedOf
+      ? platformStage({
+          platform: process.platform,
+          productName: app.getName(),
+          arch: process.arch,
+          feed: updateFeedOf,
+          directory: path.join(app.getPath('userData'), 'updates'),
+        })
+      : null,
+    fetchBytes: fetchFeedBytes,
+    fetchJson: fetchFeedJson,
+    channel: async () =>
+      (await appState.read()).testUpdates ? 'test' : 'stable',
+    automatic: async () => (await appState.read()).checkForUpdates,
+    recording,
+    now: Date.now,
+    every: (ms, run) => {
+      const timer = setInterval(run, ms);
+      return () => clearInterval(timer);
+    },
+    later: (ms, run) => {
+      const timer = setTimeout(run, ms);
+      return () => clearTimeout(timer);
+    },
+    onChange: broadcastUpdate,
+  });
+  registerUpdatesIpc(appUrl, updater);
   registerMeetingSuggestionIpc(appUrl, {
     owns: suggestionWindow.owns,
     current: suggestionWindow.current,
@@ -596,6 +650,7 @@ app.whenReady().then(async () => {
   await mcpService.load();
   app.on('second-instance', showMainWindow);
   showMainWindow();
+  updater.start();
 
   app.on('activate', showMainWindow);
 });

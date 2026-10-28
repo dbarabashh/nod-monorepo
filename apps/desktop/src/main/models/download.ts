@@ -42,6 +42,7 @@ async function writeBody(
   body: ReadableStream<Uint8Array>,
   partial: string,
   offset: number,
+  sizeBytes: number,
   hash: Hash,
   onProgress: (bytes: number) => void,
 ): Promise<void> {
@@ -60,6 +61,9 @@ async function writeBody(
       batch.push(chunk);
       batchBytes += chunk.byteLength;
       received += chunk.byteLength;
+      if (received > sizeBytes) {
+        throw new ChecksumError('The download is larger than expected');
+      }
       if (batchBytes >= writeBatchBytes) {
         await flush();
       }
@@ -103,7 +107,14 @@ export async function downloadFile(download: FileDownload): Promise<void> {
     }
     onProgress(offset);
     if (response.body) {
-      await writeBody(response.body, partial, offset, hash, onProgress);
+      await writeBody(
+        response.body,
+        partial,
+        offset,
+        sizeBytes,
+        hash,
+        onProgress,
+      );
     }
   }
 

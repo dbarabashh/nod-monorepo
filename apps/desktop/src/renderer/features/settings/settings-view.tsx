@@ -11,7 +11,8 @@ type PageId =
   | 'people'
   | 'teams'
   | 'recovery'
-  | 'import';
+  | 'import'
+  | 'updates';
 
 type Page = {
   id: PageId;
@@ -106,6 +107,18 @@ const groups: Array<{ label: string; pages: Page[] }> = [
         icon: 'download',
         description:
           'Move your meetings from the previous Nod app to this one: titles, summaries and transcripts.',
+      },
+    ],
+  },
+  {
+    label: 'App',
+    pages: [
+      {
+        id: 'updates',
+        label: 'Updates',
+        icon: 'download',
+        description:
+          'New versions of Nod, and whether it looks for them on its own.',
       },
     ],
   },

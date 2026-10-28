@@ -20,6 +20,8 @@ src/main/
                     script; sync/pairing-page.ts draws the pairing code the same way
   sharing/          notes shared with other people and teams: the core sharing
                     session over this computer's files and relays, and its dialogs
+  updates/          checks the release feed and installs updates through
+                    Electron's autoUpdater (docs/decisions/0004-desktop-updates.md)
   <domain>/         OS-facing code for one domain (audio/, storage/, keychain/)
 ```
 

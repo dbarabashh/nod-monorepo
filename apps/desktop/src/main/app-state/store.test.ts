@@ -18,6 +18,8 @@ describe('createAppStateStore', () => {
       onboardingCompleted: false,
       suggestMeetings: true,
       quietMeetingApps: [],
+      checkForUpdates: true,
+      testUpdates: false,
     });
   });
 
@@ -27,10 +29,12 @@ describe('createAppStateStore', () => {
       onboardingCompleted: true,
       suggestMeetings: true,
       quietMeetingApps: [],
+      checkForUpdates: true,
+      testUpdates: false,
     });
     assert.equal(
       await readFile(file, 'utf8'),
-      '{"onboardingCompleted":true,"suggestMeetings":true,"quietMeetingApps":[]}',
+      '{"onboardingCompleted":true,"suggestMeetings":true,"quietMeetingApps":[],"checkForUpdates":true,"testUpdates":false}',
     );
   });
 
@@ -46,11 +50,15 @@ describe('createAppStateStore', () => {
           onboardingCompleted: true,
           suggestMeetings: true,
           quietMeetingApps: [],
+          checkForUpdates: true,
+          testUpdates: false,
         },
         {
           onboardingCompleted: true,
           suggestMeetings: true,
           quietMeetingApps: [],
+          checkForUpdates: true,
+          testUpdates: false,
         },
       ],
     );
@@ -63,6 +71,8 @@ describe('createAppStateStore', () => {
       onboardingCompleted: false,
       suggestMeetings: true,
       quietMeetingApps: [],
+      checkForUpdates: true,
+      testUpdates: false,
     });
   });
 
