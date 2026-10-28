@@ -6,6 +6,8 @@ publishes that section as the release notes.
 
 ## Unreleased
 
+## 0.1.0 — 2026-10-28
+
 - Nod updates itself on macOS and Windows: a new version downloads in the
   background and installs when Nod restarts, never while you record. On Linux,
   Nod tells you when a new version is out.
