@@ -90,7 +90,7 @@ jobs:
         include:
           - os: macos-15
             arch: arm64
-          - os: macos-15-intel
+          - os: macos-15
             arch: x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -98,6 +98,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # pnpm 11 has no working Intel macOS binary, so x64 is packaged on Apple
+      # silicon, with the x64 builds of the native addons installed as well.
+      - name: Install x64 native addons
+        if: ${{ matrix.arch == 'x64' }}
+        run: |
+          cat >>pnpm-workspace.yaml <<'EOF'
+
+          supportedArchitectures:
+            os: [current]
+            cpu: [current, x64]
+          EOF
       # No store cache another run could have written to. pnpm/setup still
       # keeps its lockfile-verification cache; packages are checked against
       # the lockfile's integrity hashes either way.
@@ -220,7 +231,7 @@ jobs:
         include:
           - os: macos-15
             arch: arm64
-          - os: macos-15-intel
+          - os: macos-15
             arch: x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60

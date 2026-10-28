@@ -6,6 +6,8 @@ publishes that section as the release notes.
 
 ## Unreleased
 
+- Builds for Intel Macs are made the same way as for Apple silicon.
+
 ## 0.1.0 — 2026-10-28
 
 - Nod updates itself on macOS and Windows: a new version downloads in the
