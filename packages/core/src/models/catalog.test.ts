@@ -59,6 +59,17 @@ describe('speech models', () => {
   });
 });
 
+describe('summary models', () => {
+  it('ask for more memory than their files take, and room for a long meeting', () => {
+    for (const model of modelCatalog) {
+      if (model.kind === 'summary') {
+        assert.ok(model.minMemoryBytes > modelSize(model), model.id);
+        assert.ok(model.contextTokens >= 16_384, model.id);
+      }
+    }
+  });
+});
+
 describe('modelSize', () => {
   it('adds up the sizes of all files of a model', () => {
     assert.equal(

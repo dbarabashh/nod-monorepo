@@ -11,6 +11,10 @@ publishes that section as the release notes.
 - On a Mac, test copies of 0.1.1 don't update to this version: install it
   again from the release, and allow Nod to use the microphone and its
   keychain item when macOS asks.
+- Summaries are written in the language of the meeting more reliably.
+- More summary models to choose from, from Qwen3.5 2B for older computers
+  to Gemma 4 26B for those with 24 GB of memory. With several downloaded, pick
+  the one Nod uses with Use.
 
 ## 0.1.1 — 2026-10-28
 

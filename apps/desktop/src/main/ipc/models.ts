@@ -20,6 +20,7 @@ export function registerModelsIpc(appUrl: string, models: ModelManager): void {
   handleFromApp(appUrl, IpcChannel.deleteModel, (id) =>
     models.remove(modelId(id)),
   );
+  handleFromApp(appUrl, IpcChannel.useModel, (id) => models.use(modelId(id)));
 }
 
 export function broadcastModels(): (models: ModelInfo[]) => void {

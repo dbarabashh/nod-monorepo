@@ -7,6 +7,7 @@ import {
   downloadModel,
   listModels,
   onModelsChanged,
+  chooseModel,
 } from './api.ts';
 import { useAsync } from '../../lib/use-async.ts';
 import { ModelRow } from './components/model-row.tsx';
@@ -31,9 +32,11 @@ let autoDownloaded = false;
 export function ModelsPanel({
   kind,
   autoDownload = false,
+  recommendedOnly = false,
 }: {
   kind: ModelInfo['kind'];
   autoDownload?: boolean;
+  recommendedOnly?: boolean;
 }) {
   const { state, retry } = useAsync(listModels, onModelsChanged);
   const models = state.status === 'ready' ? state.value : null;
@@ -70,7 +73,10 @@ export function ModelsPanel({
     <div className="models">
       {note && <p className="models__note">{note}</p>}
       {state.value
-        .filter((model) => model.kind === kind)
+        .filter(
+          (model) =>
+            model.kind === kind && (!recommendedOnly || model.recommended),
+        )
         .map((model) => (
           <ModelRow
             key={model.id}
@@ -78,8 +84,12 @@ export function ModelsPanel({
             onDownload={() => void downloadModel(model.id)}
             onCancel={() => void cancelModelDownload(model.id)}
             onDelete={() => void deleteModel(model.id)}
+            onUse={() => void chooseModel(model.id)}
           />
         ))}
+      {recommendedOnly && (
+        <p className="models__note">More models are in Settings.</p>
+      )}
     </div>
   );
 }

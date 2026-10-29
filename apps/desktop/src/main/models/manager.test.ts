@@ -4,7 +4,8 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { useTempDir } from '../testing/temp-dir.ts';
-import type { ModelDefinition } from '@nod/core/models';
+import type { ModelDefinition, SummaryModel } from '@nod/core/models';
+import type { ChosenModels } from '../../shared/ipc.ts';
 import { ChecksumError, type Fetch } from './download.ts';
 import { stallingFetch } from '../testing/fake-fetch.ts';
 import { createModelManager, downloadError } from './manager.ts';
@@ -38,6 +39,37 @@ const model: ModelDefinition = {
   ],
 };
 
+const gigabyte = 1024 ** 3;
+
+function summaryModel(id: string, recommended: boolean): SummaryModel {
+  return {
+    id,
+    name: id,
+    description: '',
+    languages: '',
+    license: '',
+    kind: 'summary',
+    engine: 'llama',
+    recommended,
+    contextTokens: 1_024,
+    minMemoryBytes: 16 * gigabyte,
+    files: [
+      {
+        name: 'w.gguf',
+        url: 'https://example.test/a',
+        sizeBytes: a.length,
+        sha256: sha(a),
+      },
+    ],
+  };
+}
+
+const nothingChosen: ChosenModels = { speech: null, summary: null };
+
+const small = summaryModel('small', false);
+const usual = summaryModel('usual', true);
+const large = summaryModel('large', false);
+
 const serve: Fetch = async (url) =>
   new Response(new Uint8Array(url.endsWith('/a') ? a : b), { status: 200 });
 
@@ -52,8 +84,45 @@ describe('createModelManager', () => {
       catalog: [model],
       directory: dir(),
       fetch,
+      memoryBytes: 64 * gigabyte,
+      choice: {
+        read: async () => ({ speech: null, summary: null }),
+        save: async () => {},
+      },
       onChange: () => {},
     });
+  }
+
+  function summaries(
+    options: {
+      read?: Promise<ChosenModels>;
+      saving?: Promise<void>;
+      memoryBytes?: number;
+      catalog?: ModelDefinition[];
+    } = {},
+  ) {
+    const saves: ChosenModels[] = [];
+    const models = createModelManager({
+      catalog: options.catalog ?? [small, usual, large],
+      directory: dir(),
+      fetch: serve,
+      memoryBytes: options.memoryBytes ?? 64 * gigabyte,
+      choice: {
+        read: () => options.read ?? Promise.resolve(nothingChosen),
+        save: async (chosen) => {
+          await options.saving;
+          saves.push(chosen);
+        },
+      },
+      onChange: () => {},
+    });
+    return { models, saves };
+  }
+
+  async function inUse(models: ReturnType<typeof manager>) {
+    return (await models.list())
+      .filter((info) => info.inUse)
+      .map((info) => info.id);
   }
 
   async function only(models: ReturnType<typeof manager>) {
@@ -124,6 +193,144 @@ describe('createModelManager', () => {
     assert.equal(installed?.model.id, 'tiny');
     assert.equal(installed?.path('a.bin'), join(dir(), 'tiny', 'a.bin'));
     assert.equal(await models.installed('summary'), null);
+  });
+
+  it('uses the recommended model of those downloaded, or else the first', async () => {
+    const { models } = summaries();
+    await models.download('large');
+    await models.download('small');
+    assert.equal((await models.installed('summary'))?.model.id, 'small');
+    assert.deepEqual(await inUse(models), ['small']);
+    await models.download('usual');
+    assert.equal((await models.installed('summary'))?.model.id, 'usual');
+    assert.deepEqual(await inUse(models), ['usual']);
+  });
+
+  it('uses the chosen model and saves the choice', async () => {
+    const { models, saves } = summaries();
+    await models.download('usual');
+    await models.download('large');
+    await models.use('large');
+    assert.equal((await models.installed('summary'))?.model.id, 'large');
+    assert.deepEqual(await inUse(models), ['large']);
+    assert.deepEqual(saves, [{ speech: null, summary: 'large' }]);
+  });
+
+  it('starts with the choice saved earlier, waiting for it to be read', async () => {
+    let read = (_chosen: ChosenModels) => {};
+    const { models } = summaries({
+      read: new Promise((resolve) => {
+        read = resolve;
+      }),
+    });
+    await mkdir(join(dir(), 'usual'));
+    await writeFile(join(dir(), 'usual', 'w.gguf'), a);
+    await mkdir(join(dir(), 'large'));
+    await writeFile(join(dir(), 'large', 'w.gguf'), a);
+    const installed = models.installed('summary');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    read({ speech: null, summary: 'large' });
+    assert.equal((await installed)?.model.id, 'large');
+  });
+
+  it('saves choices one after another, so neither undoes the other', async () => {
+    let saved = () => {};
+    const { models, saves } = summaries({
+      catalog: [model, usual],
+      saving: new Promise((resolve) => {
+        saved = resolve;
+      }),
+    });
+    await models.download('tiny');
+    await models.download('usual');
+    const first = models.use('tiny');
+    const second = models.use('usual');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    saved();
+    await Promise.all([first, second]);
+    assert.deepEqual(saves, [
+      { speech: 'tiny', summary: null },
+      { speech: 'tiny', summary: 'usual' },
+    ]);
+  });
+
+  it('falls back to another model once the chosen one is deleted', async () => {
+    const { models } = summaries({
+      read: Promise.resolve({ speech: null, summary: 'large' }),
+    });
+    await models.download('usual');
+    await models.download('large');
+    await models.remove('large');
+    assert.equal((await models.installed('summary'))?.model.id, 'usual');
+  });
+
+  it('forgets a deleted choice, so the model is not used again unasked', async () => {
+    const { models, saves } = summaries();
+    await models.download('usual');
+    await models.download('large');
+    await models.use('large');
+    await models.remove('large');
+    await models.download('large');
+    assert.equal((await models.installed('summary'))?.model.id, 'usual');
+    assert.deepEqual(saves, [
+      { speech: null, summary: 'large' },
+      { speech: null, summary: null },
+    ]);
+  });
+
+  it('uses a model short of memory only once it is chosen', async () => {
+    const { models } = summaries({ memoryBytes: 8 * gigabyte });
+    await models.download('large');
+    assert.equal(await models.installed('summary'), null);
+    assert.deepEqual(await inUse(models), []);
+    await models.use('large');
+    assert.equal((await models.installed('summary'))?.model.id, 'large');
+  });
+
+  it('refuses to use a model that is not downloaded', async () => {
+    const { models, saves } = summaries();
+    await models.download('usual');
+    await assert.rejects(models.use('large'), /not downloaded/);
+    await assert.rejects(models.use('../outside'), /Unknown model/);
+    assert.deepEqual(saves, []);
+    assert.equal((await models.installed('summary'))?.model.id, 'usual');
+  });
+
+  it('warns about a summary model that needs more memory than the computer has', async () => {
+    const { models } = summaries({ memoryBytes: 8 * gigabyte });
+    assert.deepEqual(
+      (await models.list()).map((info) => [info.id, info.tooLarge]),
+      [
+        ['small', true],
+        ['usual', true],
+        ['large', true],
+      ],
+    );
+    const roomy = createModelManager({
+      catalog: [model, usual],
+      directory: dir(),
+      fetch: serve,
+      memoryBytes: 15 * gigabyte,
+      choice: {
+        read: async () => ({ speech: null, summary: null }),
+        save: async () => {},
+      },
+      onChange: () => {},
+    });
+    assert.deepEqual(
+      (await roomy.list()).map((info) => [info.id, info.tooLarge]),
+      [
+        ['tiny', false],
+        ['usual', false],
+      ],
+    );
+  });
+
+  it('counts a computer as having its memory when the OS reports a little less', async () => {
+    const flagged = async (memoryBytes: number) =>
+      (await summaries({ memoryBytes }).models.list())[0]?.tooLarge;
+    assert.equal(await flagged(14.5 * gigabyte), false);
+    assert.equal(await flagged(14 * gigabyte), true);
   });
 
   it('refuses ids that are not in the catalog', async () => {

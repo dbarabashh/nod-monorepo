@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { loadModel } from '@fugood/llama.node';
+import {
+  loadModel,
+  type CompletionResult,
+  type LlamaCompletionOptions,
+} from '@fugood/llama.node';
 import {
   initParakeet,
   initWhisper,
@@ -27,7 +31,6 @@ ignoreClosedOutput();
 
 const samplesPerMs = sampleRate / 1000;
 const processEveryMs = 2_000;
-const summaryContextTokens = 16_384;
 const summaryReplyTokens = 1_024;
 const summaryPromptTokens = 512;
 
@@ -145,7 +148,7 @@ async function drain(stream: Stream, final: boolean): Promise<void> {
 
 const summaryInstructions = [
   'You summarize meeting transcripts.',
-  'Write in the language most of the transcript is in.',
+  'Write the whole summary in the language most of the transcript is in, even when that is not English; only the two section headings stay as given.',
   'Start with two to four sentences that sum up the meeting, with no heading above them. Then add a "Key points" section (bullets) and an "Action items" section (bullets), each under a Markdown heading.',
   'Lines marked "Me" are the person who recorded the meeting; "Others" are everyone else. Speakers are not told apart beyond that, so a person exists only when the transcript says their name.',
   'An action item ends with "(Owner: <name>)" only when the transcript gives that person the task or they take it on, with their name as the transcript says it. It ends with "(Owner: Me)" only when a line marked "Me" takes the task on. Otherwise leave the owner out. Never guess an owner, and never give one to "Me" because "Me" recorded the meeting.',
@@ -160,18 +163,38 @@ const titleInstructions = [
 
 const titleReplyTokens = 32;
 
+// Some models reason before they answer unless told not to, which is slower
+// and could leave the reasoning in the summary.
+const answerOnly = {
+  enable_thinking: false,
+  reasoning_format: 'auto',
+} satisfies Pick<
+  LlamaCompletionOptions,
+  'enable_thinking' | 'reasoning_format'
+>;
+
+// A reply that went into reasoning has no answer; its raw text would put the
+// reasoning in the note.
+function answer(result: CompletionResult): string {
+  return (
+    result.reasoning_content
+      ? (result.content ?? '')
+      : (result.content ?? result.text)
+  ).trim();
+}
+
 async function summarize(
   modelPath: string,
+  contextTokens: number,
   transcript: string,
 ): Promise<{ summary: string; title: string }> {
   const llama = await loadModel({
     model: modelPath,
-    n_ctx: summaryContextTokens,
+    n_ctx: contextTokens,
     n_gpu_layers: 99,
   });
   try {
-    const budget =
-      summaryContextTokens - summaryReplyTokens - summaryPromptTokens;
+    const budget = contextTokens - summaryReplyTokens - summaryPromptTokens;
     const { tokens } = await llama.tokenize(transcript);
     const fitted =
       tokens.length > budget
@@ -184,8 +207,12 @@ async function summarize(
       ],
       n_predict: summaryReplyTokens,
       temperature: 0.3,
+      ...answerOnly,
     });
-    const summary = (result.content ?? result.text).trim();
+    const summary = answer(result);
+    if (!summary) {
+      throw new Error('No summary');
+    }
     // The model is already loaded and the summary is far shorter than the
     // transcript, so naming the meeting costs little; if naming fails, the
     // summary is kept and the meeting keeps its name.
@@ -197,9 +224,10 @@ async function summarize(
         ],
         n_predict: titleReplyTokens,
         temperature: 0.2,
+        ...answerOnly,
       })
       .then(
-        (named) => (named.content ?? named.text).trim(),
+        (named) => answer(named),
         () => '',
       );
     return { summary, title };
@@ -298,7 +326,7 @@ function handle(request: WorkerRequest) {
     }
     case 'summarize':
       void transcription(() =>
-        summarize(request.modelPath, request.transcript),
+        summarize(request.modelPath, request.contextTokens, request.transcript),
       ).then(
         ({ summary, title }) =>
           post({

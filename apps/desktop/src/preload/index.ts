@@ -54,6 +54,7 @@ const api: AppApi = {
   cancelModelDownload: (id) =>
     ipcRenderer.invoke(IpcChannel.cancelModelDownload, id),
   deleteModel: (id) => ipcRenderer.invoke(IpcChannel.deleteModel, id),
+  useModel: (id) => ipcRenderer.invoke(IpcChannel.useModel, id),
   onModelsChanged: (callback) => subscribe(IpcEvent.onModelsChanged, callback),
   listMeetings: () => ipcRenderer.invoke(IpcChannel.listMeetings),
   getMeeting: (id) => ipcRenderer.invoke(IpcChannel.getMeeting, id),

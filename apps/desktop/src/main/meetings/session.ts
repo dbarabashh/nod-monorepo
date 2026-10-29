@@ -205,12 +205,13 @@ export function createMeetingSession(options: {
     try {
       const summaryModel = await models.installed('summary');
       const weights = summaryModel?.model.files[0];
-      if (!summaryModel || !weights) {
+      if (!summaryModel || summaryModel.model.kind !== 'summary' || !weights) {
         recorder.setSummaryStatus(id, 'idle');
         return false;
       }
       const { summary, title } = await transcriber.summarize(
         summaryModel.path(weights.name),
+        summaryModel.model.contextTokens,
         transcriptText(meeting),
       );
       const saving =
