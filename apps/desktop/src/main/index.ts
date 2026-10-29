@@ -11,13 +11,18 @@ import {
 } from 'electron';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { modelCatalog } from '@nod/core/models';
 import { createAppStateStore } from './app-state/store.ts';
 import { ignoreClosedOutput } from './closed-output.ts';
-import { dataFolderName, moveDataFolder } from './storage/data-folder.ts';
+import {
+  dataFolderName,
+  modelsBeforeMove,
+  moveDataFolder,
+} from './storage/data-folder.ts';
 import { registerAppStateIpc } from './ipc/app-state.ts';
 import { broadcastUpdate, registerUpdatesIpc } from './ipc/updates.ts';
 import { updateBase, updateFeed } from './updates/feed.ts';
@@ -153,7 +158,7 @@ if (mcpBridge) {
   const move = moveDataFolder(
     legacyDataFolder,
     app.getPath('userData'),
-    modelCatalog.map((model) => model.id),
+    modelsBeforeMove,
   );
   if (move === 'kept') {
     app.setPath('userData', legacyDataFolder);
@@ -542,6 +547,13 @@ app.whenReady().then(async () => {
     catalog: modelCatalog,
     directory: path.join(app.getPath('userData'), 'models'),
     fetch: (url, init) => net.fetch(url, init),
+    memoryBytes: os.totalmem(),
+    choice: {
+      read: async () => (await appState.read()).chosenModels,
+      save: async (chosenModels) => {
+        await appState.update({ chosenModels });
+      },
+    },
     onChange: (installed) => {
       modelsChanged(installed);
       scanForSummaries();

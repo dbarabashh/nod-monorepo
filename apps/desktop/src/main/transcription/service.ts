@@ -21,6 +21,7 @@ export type Transcriber = {
   flush: () => Promise<void>;
   summarize: (
     modelPath: string,
+    contextTokens: number,
     transcript: string,
   ) => Promise<{ summary: string; title: string }>;
 };
@@ -155,11 +156,12 @@ export function createTranscriber(options: {
         finishing.delete(segment);
       }
     },
-    summarize: async (modelPath, transcript) => {
+    summarize: async (modelPath, contextTokens, transcript) => {
       const event = await ask((requestId) => ({
         type: 'summarize',
         requestId,
         modelPath,
+        contextTokens,
         transcript,
       }));
       if (event.type !== 'summary') {

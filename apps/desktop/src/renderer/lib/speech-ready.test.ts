@@ -21,6 +21,8 @@ function model(
     downloadedBytes: 0,
     status,
     error: null,
+    inUse: false,
+    tooLarge: false,
     ...extra,
   };
 }

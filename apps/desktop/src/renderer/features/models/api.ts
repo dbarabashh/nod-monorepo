@@ -16,6 +16,10 @@ export function deleteModel(id: string): Promise<void> {
   return window.api.deleteModel(id);
 }
 
+export function chooseModel(id: string): Promise<void> {
+  return window.api.useModel(id);
+}
+
 export function onModelsChanged(
   callback: (models: ModelInfo[]) => void,
 ): () => void {

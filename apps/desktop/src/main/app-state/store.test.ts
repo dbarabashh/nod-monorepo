@@ -20,6 +20,7 @@ describe('createAppStateStore', () => {
       quietMeetingApps: [],
       checkForUpdates: true,
       testUpdates: false,
+      chosenModels: { speech: null, summary: null },
     });
   });
 
@@ -31,10 +32,11 @@ describe('createAppStateStore', () => {
       quietMeetingApps: [],
       checkForUpdates: true,
       testUpdates: false,
+      chosenModels: { speech: null, summary: null },
     });
     assert.equal(
       await readFile(file, 'utf8'),
-      '{"onboardingCompleted":true,"suggestMeetings":true,"quietMeetingApps":[],"checkForUpdates":true,"testUpdates":false}',
+      '{"onboardingCompleted":true,"suggestMeetings":true,"quietMeetingApps":[],"checkForUpdates":true,"testUpdates":false,"chosenModels":{"speech":null,"summary":null}}',
     );
   });
 
@@ -52,6 +54,7 @@ describe('createAppStateStore', () => {
           quietMeetingApps: [],
           checkForUpdates: true,
           testUpdates: false,
+          chosenModels: { speech: null, summary: null },
         },
         {
           onboardingCompleted: true,
@@ -59,6 +62,7 @@ describe('createAppStateStore', () => {
           quietMeetingApps: [],
           checkForUpdates: true,
           testUpdates: false,
+          chosenModels: { speech: null, summary: null },
         },
       ],
     );
@@ -73,6 +77,7 @@ describe('createAppStateStore', () => {
       quietMeetingApps: [],
       checkForUpdates: true,
       testUpdates: false,
+      chosenModels: { speech: null, summary: null },
     });
   });
 

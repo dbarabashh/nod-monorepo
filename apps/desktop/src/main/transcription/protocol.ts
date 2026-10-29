@@ -19,6 +19,7 @@ export type WorkerRequest =
       type: 'summarize';
       requestId: number;
       modelPath: string;
+      contextTokens: number;
       transcript: string;
     };
 

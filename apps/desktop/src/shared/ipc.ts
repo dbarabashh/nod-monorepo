@@ -41,7 +41,11 @@ export type ModelInfo = {
   downloadedBytes: number;
   status: ModelStatus;
   error: ModelError | null;
+  inUse: boolean;
+  tooLarge: boolean;
 };
+
+export type ChosenModels = Record<ModelInfo['kind'], string | null>;
 
 export type WidgetDragPhase = 'start' | 'move';
 
@@ -271,6 +275,7 @@ export type AppState = {
   quietMeetingApps: string[];
   checkForUpdates: boolean;
   testUpdates: boolean;
+  chosenModels: ChosenModels;
 };
 
 export type UpdateStatus =
@@ -325,6 +330,7 @@ export const IpcChannel = {
   downloadModel: 'models:download',
   cancelModelDownload: 'models:cancel',
   deleteModel: 'models:delete',
+  useModel: 'models:use',
   listMeetings: 'meetings:list',
   getMeeting: 'meetings:get',
   copyMeeting: 'meetings:copy',
@@ -414,6 +420,7 @@ export type AppApi = {
   downloadModel: (id: string) => Promise<void>;
   cancelModelDownload: (id: string) => Promise<void>;
   deleteModel: (id: string) => Promise<void>;
+  useModel: (id: string) => Promise<void>;
   onModelsChanged: (callback: (models: ModelInfo[]) => void) => () => void;
   listMeetings: () => Promise<MeetingSummary[]>;
   getMeeting: (id: string) => Promise<MeetingDetail>;

@@ -8,6 +8,7 @@ const fresh = {
   quietMeetingApps: [],
   checkForUpdates: true,
   testUpdates: false,
+  chosenModels: { speech: null, summary: null },
 };
 
 describe('parseAppState', () => {
@@ -65,6 +66,24 @@ describe('parseAppState', () => {
     assert.equal(parseAppState({}).testUpdates, false);
     assert.equal(parseAppState({ testUpdates: 'yes' }).testUpdates, false);
     assert.equal(parseAppState({ testUpdates: true }).testUpdates, true);
+  });
+
+  it('keeps chosen models only when they look like model ids', () => {
+    assert.deepEqual(
+      parseAppState({
+        chosenModels: { speech: 'whisper-small', summary: 'qwen3.5-4b' },
+      }).chosenModels,
+      { speech: 'whisper-small', summary: 'qwen3.5-4b' },
+    );
+    assert.deepEqual(
+      parseAppState({ chosenModels: { speech: '../x', summary: 4 } })
+        .chosenModels,
+      { speech: null, summary: null },
+    );
+    assert.deepEqual(parseAppState({ chosenModels: 'qwen' }).chosenModels, {
+      speech: null,
+      summary: null,
+    });
   });
 
   it('keeps only well-formed quiet apps, once each', () => {

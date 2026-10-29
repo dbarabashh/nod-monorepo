@@ -42,7 +42,7 @@ export function App() {
       SyncPlace={SyncStep}
       audio={<AudioAccessPanel />}
       speechModels={<ModelsPanel kind="speech" autoDownload />}
-      summaryModels={<ModelsPanel kind="summary" />}
+      summaryModels={<ModelsPanel kind="summary" recommendedOnly />}
       importMeetings={<ImportPanel />}
     >
       <Shell />

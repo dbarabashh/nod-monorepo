@@ -62,12 +62,15 @@ function setup(captureGraceMs = 0) {
               downloadedBytes: 40,
               status: 'downloading',
               error: null,
+              inUse: false,
+              tooLarge: false,
             },
           ]
         : [],
     download: async () => {},
     cancel: () => {},
     remove: async () => {},
+    use: async () => {},
     installed: async (kind) => {
       if (kind === 'speech' && !speechInstalled) {
         return null;

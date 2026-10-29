@@ -6,6 +6,16 @@ import path from 'node:path';
 // of its own.
 export const dataFolderName = 'Nod Desktop';
 
+// Only releases before the move kept files in the shared folder, so only the
+// models they offered are this app's; a later model's folder there isn't.
+export const modelsBeforeMove = [
+  'parakeet-tdt-0.6b-v3',
+  'whisper-large-v3-turbo',
+  'whisper-small',
+  'whisper-base',
+  'qwen3-4b-instruct',
+];
+
 // The data key moves last: while it is still in the old folder, a move that
 // stopped part way is finished on the next start.
 function ownEntries(modelIds: readonly string[]): string[] {

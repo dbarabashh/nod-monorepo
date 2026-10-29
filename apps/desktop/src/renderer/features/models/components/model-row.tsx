@@ -20,6 +20,7 @@ type ModelRowProps = {
   onDownload: () => void;
   onCancel: () => void;
   onDelete: () => void;
+  onUse: () => void;
 };
 
 const errorText: Record<ModelError, string> = {
@@ -34,6 +35,7 @@ export function ModelRow({
   onDownload,
   onCancel,
   onDelete,
+  onUse,
 }: ModelRowProps) {
   const titleId = useId();
   const progress = `${formatBytes(model.downloadedBytes)} of ${formatBytes(model.sizeBytes)}`;
@@ -49,7 +51,7 @@ export function ModelRow({
     case 'available':
       actions = (
         <Button
-          variant={model.recommended ? 'primary' : 'default'}
+          variant={model.recommended && !model.tooLarge ? 'primary' : 'default'}
           onClick={onDownload}
         >
           {model.error ? 'Try again' : 'Download'}
@@ -86,7 +88,14 @@ export function ModelRow({
       break;
     case 'downloaded':
       status = <CardMeta>Downloaded</CardMeta>;
-      actions = deleteButton;
+      actions = model.inUse ? (
+        deleteButton
+      ) : (
+        <>
+          <Button onClick={onUse}>Use</Button>
+          {deleteButton}
+        </>
+      );
       break;
   }
 
@@ -96,11 +105,18 @@ export function ModelRow({
         <CardHeading>
           <CardTitle id={titleId}>{model.name}</CardTitle>
           {model.recommended && <Badge variant="accent">Recommended</Badge>}
+          {model.inUse && <Badge variant="success">In use</Badge>}
         </CardHeading>
         <CardText>{model.description}</CardText>
         <CardMeta>
           {formatBytes(model.sizeBytes)} · {model.languages} · {model.license}
         </CardMeta>
+        {model.tooLarge && (
+          <CardMeta variant="strong">
+            This computer has less memory than this model needs, so it may not
+            run.
+          </CardMeta>
+        )}
         {status}
         {model.error && (
           <CardMeta variant="danger" role="alert">
