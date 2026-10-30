@@ -121,9 +121,10 @@ function NoteDetail({
               <MarkdownEditor
                 label="Summary"
                 markdown={note.summary}
+                version={note.version}
                 readOnly={readOnly}
-                onSave={(markdown) =>
-                  editSharedNote(note.target, note.id, markdown)
+                onSave={(markdown, version) =>
+                  editSharedNote(note.target, note.id, markdown, version)
                 }
               />
             )

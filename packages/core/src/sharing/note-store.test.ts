@@ -109,4 +109,62 @@ describe('note store', () => {
     await store.save({ ...note, title: 'Fixed' });
     assert.equal(store.note('n-1')?.title, 'Fixed');
   });
+
+  it('keeps another member’s line through two saves from an editor that never showed it', async () => {
+    const store = createNoteStore({ files: memoryFiles(), cipher });
+    await store.load();
+    await store.save({ ...note, summary: 'one\ntwo' });
+    const opened = store.version('n-1');
+    const held = store.document('n-1');
+    assert.ok(opened && held);
+    const merged = store.merge(
+      'n-1',
+      updateNoteDocument(
+        Automerge.clone(held),
+        { ...note, summary: 'one\ntwo' },
+        { ...note, summary: 'one\nA line\ntwo' },
+      ),
+    );
+    await merged.written;
+
+    const first = await store.saveFrom('n-1', opened, (seen) => ({
+      ...seen,
+      summary: 'one\ntwo\nB1',
+    }));
+    assert.equal(store.note('n-1')?.summary, 'one\nA line\ntwo\nB1');
+    await store.saveFrom('n-1', first, (seen) => ({
+      ...seen,
+      summary: 'one\ntwo\nB1 more',
+    }));
+    assert.equal(store.note('n-1')?.summary, 'one\nA line\ntwo\nB1 more');
+  });
+
+  it('takes an edit back when its write fails, so trying again makes it once', async () => {
+    const memory = memoryFiles();
+    let failNext = false;
+    const store = createNoteStore({
+      files: {
+        ...memory,
+        write: async (id, data) => {
+          if (failNext) {
+            failNext = false;
+            throw new Error('The disk is full');
+          }
+          await memory.write(id, data);
+        },
+      },
+      cipher,
+    });
+    await store.load();
+    await store.save({ ...note, summary: 'one' });
+    const opened = store.version('n-1');
+    assert.ok(opened);
+    const edit = (seen: SharedNote) => ({ ...seen, summary: 'one\ntwo' });
+
+    failNext = true;
+    await assert.rejects(store.saveFrom('n-1', opened, edit), /disk is full/);
+    assert.equal(store.note('n-1')?.summary, 'one');
+    await store.saveFrom('n-1', opened, edit);
+    assert.equal(store.note('n-1')?.summary, 'one\ntwo');
+  });
 });

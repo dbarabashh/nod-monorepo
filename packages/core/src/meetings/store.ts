@@ -1,5 +1,6 @@
 import {
   createDocument,
+  headsOf,
   importedDocument,
   loadDocumentState,
   mergeDocuments,
@@ -8,6 +9,7 @@ import {
   saveDocument,
   tombstone,
   updateDocument,
+  updateDocumentFrom,
   type DocumentState,
   type MeetingDocument,
 } from './document.ts';
@@ -38,6 +40,12 @@ export type MeetingStore = {
   load: () => Promise<Meeting[]>;
   startOver: () => Promise<void>;
   save: (meeting: Meeting) => Promise<void>;
+  saveFrom: (
+    id: string,
+    version: string,
+    edit: (seen: Meeting) => Meeting,
+  ) => Promise<string>;
+  version: (id: string) => string | null;
   importMeeting: (meeting: Meeting) => Promise<void>;
   remove: (id: string, deletedAt: number) => Promise<void>;
   flush: () => Promise<void>;
@@ -61,6 +69,8 @@ const meetingKind: DocumentKind<MeetingDocument, DocumentState, Meeting> = {
   context: (id) => `nod:meeting:${id}`,
   create: createDocument,
   update: updateDocument,
+  updateFrom: updateDocumentFrom,
+  version: headsOf,
   tombstone,
   read: readDocument,
   valueOf: (state) => (state.kind === 'meeting' ? state.meeting : null),
@@ -98,6 +108,8 @@ export function createMeetingStore(options: {
       store.reset(next);
     },
     save: store.save,
+    saveFrom: store.saveFrom,
+    version: store.version,
     importMeeting: (meeting) => store.importValue(meeting, importedDocument),
     remove: store.remove,
     flush: store.flush,

@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
+import type { Meeting } from '@nod/core/meetings';
 import { modelCatalog } from '@nod/core/models';
 import type { ModelManager } from '../models/manager.ts';
 import type { Transcriber } from '../transcription/service.ts';
@@ -16,10 +17,23 @@ function setup(captureGraceMs = 0) {
   let speechInstalled = true;
   let speechDownloading = false;
   let startFailure: Error | null = null;
+  const stored = new Map<string, Meeting>();
   const recorder = createRecorder({
     store: {
       load: async () => [],
-      save: async () => {},
+      save: async (meeting) => {
+        stored.set(meeting.id, meeting);
+      },
+      saveFrom: async (id, _version, edit) => {
+        const meeting = stored.get(id);
+        if (!meeting) {
+          throw new Error('Unknown meeting');
+        }
+        stored.set(id, edit(meeting));
+        return 'v';
+      },
+      version: () => 'v',
+      meeting: (id) => stored.get(id),
       remove: async () => {},
       isDeleted: () => false,
       importMeeting: async () => {},
@@ -482,7 +496,7 @@ describe('createMeetingSession', () => {
     ]);
     await session.finish('m1');
     await settle();
-    await recorder.editSummary('m1', 'We agreed with Ann.');
+    await recorder.editSummary('m1', 'We agreed with Ann.', 'v');
     calls.length = 0;
 
     await session.summarize('m1');

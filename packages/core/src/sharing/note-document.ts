@@ -1,5 +1,6 @@
 import * as Automerge from '@automerge/automerge';
 import {
+  changeFrom,
   field,
   fixedActor,
   headsOf,
@@ -69,19 +70,43 @@ export function sameNoteDocument(a: NoteDocument, b: NoteDocument): boolean {
 // Writes only what changed between the note the caller last saw and the one
 // it saves now, so edits made by other people in between are kept and text
 // edits merge character by character with theirs.
+function reconcileNote(
+  fields: NoteFields,
+  previous: SharedNote,
+  next: SharedNote,
+) {
+  if (previous.title !== next.title) {
+    fields.title = new Automerge.ImmutableString(next.title);
+  }
+  if (previous.summary !== next.summary) {
+    Automerge.updateText(fields, ['summary'], next.summary);
+  }
+}
+
 export function updateNoteDocument(
   document: NoteDocument,
   previous: SharedNote,
   next: SharedNote,
 ): NoteDocument {
-  return Automerge.change(document, (fields) => {
-    if (previous.title !== next.title) {
-      fields.title = new Automerge.ImmutableString(next.title);
-    }
-    if (previous.summary !== next.summary) {
-      Automerge.updateText(fields, ['summary'], next.summary);
-    }
-  });
+  return Automerge.change(document, (fields) =>
+    reconcileNote(fields, previous, next),
+  );
+}
+
+export function updateNoteDocumentFrom(
+  document: NoteDocument,
+  version: string,
+  edit: (seen: SharedNote) => SharedNote,
+): { document: NoteDocument; version: string } | null {
+  return changeFrom(
+    document,
+    version,
+    (seen) => {
+      const state = readNoteDocument(seen);
+      return state?.kind === 'note' ? state.note : null;
+    },
+    (fields, seen) => reconcileNote(fields, seen, edit(seen)),
+  );
 }
 
 // Documents arrive from other people, so their shape is checked like any

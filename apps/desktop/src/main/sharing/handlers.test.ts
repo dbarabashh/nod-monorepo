@@ -145,7 +145,12 @@ describe('sharing handlers', () => {
       /Unknown note/,
     );
     await assert.rejects(
-      handlers.editSharedNote('a'.repeat(64), 'note-1', 'x'.repeat(200_001)),
+      handlers.editSharedNote(
+        'a'.repeat(64),
+        'note-1',
+        'x'.repeat(200_001),
+        'b'.repeat(64),
+      ),
       /too long/,
     );
   });

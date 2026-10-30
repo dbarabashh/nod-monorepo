@@ -238,6 +238,7 @@ describe('teams on a relay', () => {
       vaultId,
       shared.id,
       'We plan to ship teams, then polish.',
+      (await sam.session.note(vaultId, shared.id)).version,
     );
     await sam.session.round(null);
     await owner.session.round(null);
@@ -305,7 +306,12 @@ describe('teams on a relay', () => {
     assert.equal(Object.keys(after?.members ?? {}).length, 1);
     // Removing retires the no-approval invite with the key.
     assert.deepEqual(teamsOf(owner.session)[0]?.invites, []);
-    await owner.session.editNote(vaultId, shared.id, 'Edited after removal.');
+    await owner.session.editNote(
+      vaultId,
+      shared.id,
+      'Edited after removal.',
+      (await owner.session.note(vaultId, shared.id)).version,
+    );
     await owner.session.round(null);
     assert.equal(
       (await owner.session.note(vaultId, shared.id)).summary,

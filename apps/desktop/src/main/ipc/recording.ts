@@ -9,6 +9,7 @@ import {
   type WidgetDragPhase,
 } from '../../shared/ipc.ts';
 import { createAudioBudget } from '../meetings/audio-budget.ts';
+import { documentVersionOf } from '../meetings/document-version.ts';
 import type { Recorder } from '../meetings/recorder.ts';
 import type { CapturePage } from '../meetings/capture-page.ts';
 import type { MeetingSession } from '../meetings/session.ts';
@@ -166,10 +167,11 @@ export function registerRecordingIpc(options: {
   handleFromApp(appUrl, IpcChannel.deleteMeetings, (ids) =>
     recorder.removeMany(meetingIds(ids)),
   );
-  handleFromApp(appUrl, IpcChannel.editSummary, (id, markdown) =>
+  handleFromApp(appUrl, IpcChannel.editSummary, (id, markdown, version) =>
     recorder.editSummary(
       meetingId(id),
       boundedString(markdown, maxSummaryChars, tooLong),
+      documentVersionOf(version, 'meeting'),
     ),
   );
   handleFromApp(appUrl, IpcChannel.editTranscriptLine, (id, lineId, text) =>

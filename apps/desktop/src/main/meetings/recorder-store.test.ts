@@ -95,6 +95,65 @@ describe('recorder and store together', () => {
     );
   });
 
+  it('keeps a summary line from the phone through two saves from an editor that never showed it', async () => {
+    const directory = join(dir(), 'meetings');
+    const store = createMeetingStore({ directory, cipher: async () => plain });
+    const recorder = createRecorder({
+      store,
+      now: () => 1_000,
+      newId: () => 'm1',
+      every: () => () => {},
+      onChange: () => {},
+    });
+    await recorder.load();
+    await recorder.start('Planning');
+    await recorder.finish('m1');
+    await recorder.saveSummary('m1', 'Ship sharing first.\nTeams next.', '');
+    const opened = recorder.detail('m1').version;
+    assert.ok(opened);
+
+    const base = recorder.transcriptOf('m1');
+    const shared = store.document('m1');
+    assert.ok(base && shared);
+    const merged = store.merge(
+      'm1',
+      updateDocument(Automerge.clone(shared), base, {
+        ...base,
+        summary: 'Ship sharing first.\nTest on two machines.\nTeams next.',
+      }),
+    );
+    if (merged.state) {
+      recorder.applyRemote(merged.state);
+    }
+    await merged.written;
+
+    const first = await recorder.editSummary(
+      'm1',
+      'Ship sharing first.\nTeams next.\nCheck the clock.',
+      opened,
+    );
+    assert.equal(
+      recorder.detail('m1').summary,
+      'Ship sharing first.\nTest on two machines.\nTeams next.\nCheck the clock.',
+    );
+    await recorder.editSummary(
+      'm1',
+      'Ship sharing first.\nTeams next.\nCheck the clock twice.',
+      first,
+    );
+    await store.flush();
+
+    const expected =
+      'Ship sharing first.\nTest on two machines.\nTeams next.\nCheck the clock twice.';
+    assert.equal(recorder.detail('m1').summary, expected);
+    const [saved] = await createMeetingStore({
+      directory,
+      cipher: async () => plain,
+    }).load();
+    assert.equal(saved?.summary, expected);
+    assert.equal(saved?.summaryEdited, true);
+  });
+
   it('refuses remote copies until saved meetings were read', () => {
     const store = createMeetingStore({
       directory: join(dir(), 'never-loaded'),
@@ -291,7 +350,9 @@ describe('importing meetings', () => {
     await store.flush();
 
     const reopened = await open(directory);
-    assert.deepEqual(reopened.recorder.detail('imported-cloud-1'), {
+    const { version, ...detail } = reopened.recorder.detail('imported-cloud-1');
+    assert.match(version ?? '', /^[0-9a-f]{64}$/);
+    assert.deepEqual(detail, {
       id: 'imported-cloud-1',
       transcript: [
         {

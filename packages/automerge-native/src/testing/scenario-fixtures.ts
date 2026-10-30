@@ -13,4 +13,5 @@ export const scenarioFixtures: Record<string, string> = {
   'numbers the raw API casts to indexes': 'ad6399f80c5cf399',
   'extreme counts and times': '7e44406803954496',
   'reads inside a change': '5c4d6b2281234bd3',
+  'a text edit made at older heads': '2b5e40d38b051408',
 };
