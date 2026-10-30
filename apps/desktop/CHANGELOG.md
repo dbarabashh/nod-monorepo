@@ -15,6 +15,12 @@ publishes that section as the release notes.
 - More summary models to choose from, from Qwen3.5 2B for older computers
   to Gemma 4 26B for those with 24 GB of memory. With several downloaded, pick
   the one Nod uses with Use.
+- A summary or a shared note edited on two devices at once keeps both
+  changes. Before, a line added on one device could disappear when the other
+  saved.
+- When the relay refuses this computer, Nod says the relay may be older than
+  the app, not only that the clock may be off.
+- Built on a newer Electron, with its security fixes.
 
 ## 0.1.1 — 2026-10-28
 
