@@ -32,15 +32,14 @@ function currentVersion(manifest: string): string {
   return version;
 }
 
-async function prepare(version: string | undefined) {
+function releaseVersion(version: string | undefined, usage: string): string {
   if (version === undefined || !isVersion(version) || isPrerelease(version)) {
-    throw new Error('Usage: pnpm release <major.minor.patch>, e.g. 1.2.0');
+    throw new Error(`Usage: ${usage} <major.minor.patch>, e.g. 1.2.0`);
   }
-  const manifest = await readFile(manifestPath, 'utf8');
-  const current = currentVersion(manifest);
-  if (!isNewer(version, current)) {
-    throw new Error(`${version} is not newer than ${current}.`);
-  }
+  return version;
+}
+
+async function onMainAsPushed() {
   if ((await git('branch', '--show-current')) !== 'main') {
     throw new Error('Release from main.');
   }
@@ -51,12 +50,36 @@ async function prepare(version: string | undefined) {
   if (
     (await git('rev-parse', 'HEAD')) !== (await git('rev-parse', 'origin/main'))
   ) {
-    throw new Error('main differs from origin/main; pull or push first.');
+    throw new Error('main differs from origin/main; pull first.');
   }
+}
+
+async function tagExists(tag: string): Promise<boolean> {
+  return (
+    (await git('tag', '--list', tag)) !== '' ||
+    (await git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`)) !== ''
+  );
+}
+
+// main takes changes only through pull requests, so the version and the
+// release notes go to a branch of their own; the tag follows the merge.
+async function prepare(input: string | undefined) {
+  const version = releaseVersion(input, 'pnpm release');
+  const manifest = await readFile(manifestPath, 'utf8');
+  const current = currentVersion(manifest);
+  if (!isNewer(version, current)) {
+    throw new Error(`${version} is not newer than ${current}.`);
+  }
+  await onMainAsPushed();
   const tag = releaseTag(version);
-  if ((await git('tag', '--list', tag)) !== '') {
+  if (await tagExists(tag)) {
     throw new Error(`Tag ${tag} already exists.`);
   }
+  const branch = `release/desktop-${version}`;
+  if ((await git('branch', '--list', branch)) !== '') {
+    throw new Error(`Branch ${branch} already exists.`);
+  }
+  await git('switch', '--create', branch);
 
   const changelog = releaseChangelog(
     await readFile(changelogPath, 'utf8'),
@@ -81,18 +104,42 @@ async function prepare(version: string | undefined) {
     );
   } catch (error) {
     await git('restore', '--staged', '--worktree', manifestPath, changelogPath);
+    await git('switch', 'main');
+    await git('branch', '--delete', branch);
     throw error;
   }
   await git('verify-commit', 'HEAD');
-  await git('tag', '--sign', tag, '--message', `Nod ${version}`);
-  await git('verify-tag', tag);
 
   console.log(
-    `Tagged ${tag}. Check it, then push it to start the release:\n\n  git push --atomic origin main ${tag}\n`,
+    `Committed release desktop ${version} on ${branch}. Push it and open a pull request:\n\n  git push --set-upstream origin ${branch}\n  gh pr create --base main --title "Release desktop ${version}"\n\nOnce it is merged, tag the merge on main:\n\n  pnpm --filter nod-desktop release:tag ${version}\n`,
   );
 }
 
-prepare(process.argv[2]).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+// The merged release commit gets the signed tag that starts the workflow.
+async function tagRelease(input: string | undefined) {
+  const version = releaseVersion(input, 'pnpm release:tag');
+  await onMainAsPushed();
+  const current = currentVersion(await readFile(manifestPath, 'utf8'));
+  if (current !== version) {
+    throw new Error(
+      `main is at ${current}; merge the release pull request for ${version} first.`,
+    );
+  }
+  const tag = releaseTag(version);
+  if (await tagExists(tag)) {
+    throw new Error(`Tag ${tag} already exists.`);
+  }
+  await git('tag', '--sign', tag, '--message', `Nod ${version}`);
+  await git('verify-tag', tag);
+  console.log(
+    `Tagged ${tag}. Check it, then push it to start the release:\n\n  git push origin ${tag}\n`,
+  );
+}
+
+const [command, version] = process.argv.slice(2);
+(command === 'tag' ? tagRelease(version) : prepare(command)).catch(
+  (error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  },
+);
