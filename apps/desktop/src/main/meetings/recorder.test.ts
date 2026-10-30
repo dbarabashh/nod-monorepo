@@ -1,12 +1,30 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { finishMeeting, startMeeting, type Meeting } from '@nod/core/meetings';
-import { createRecorder, type RecorderStore } from './recorder.ts';
+import {
+  createRecorder,
+  type Recorder,
+  type RecorderStore,
+} from './recorder.ts';
 
-const noImports: Pick<RecorderStore, 'isDeleted' | 'importMeeting'> = {
+const untouched: Pick<
+  RecorderStore,
+  'isDeleted' | 'importMeeting' | 'saveFrom' | 'version' | 'meeting'
+> = {
   isDeleted: () => false,
   importMeeting: async () => {},
+  saveFrom: async () => {
+    throw new Error('not edited in this test');
+  },
+  version: () => null,
+  meeting: () => undefined,
 };
+
+function versionOf(recorder: Recorder, id: string): string {
+  const { version } = recorder.detail(id);
+  assert.ok(version);
+  return version;
+}
 
 function setup(initial: Meeting[] = []) {
   let time = 1_000;
@@ -15,11 +33,23 @@ function setup(initial: Meeting[] = []) {
   let tick = () => {};
   let ticking = false;
   let ids = 0;
+  let edits = 0;
   const store: RecorderStore = {
     load: async () => [...saved.values()],
     save: async (meeting) => {
       saved.set(meeting.id, meeting);
     },
+    saveFrom: async (id, version, edit) => {
+      const meeting = saved.get(id);
+      if (!meeting || version !== `v${edits}`) {
+        throw new Error('That meeting has changed');
+      }
+      saved.set(id, edit(meeting));
+      edits += 1;
+      return `v${edits}`;
+    },
+    version: (id) => (saved.has(id) ? `v${edits}` : null),
+    meeting: (id) => saved.get(id),
     remove: async (id) => {
       saved.delete(id);
       deleted.add(id);
@@ -163,7 +193,7 @@ describe('createRecorder', () => {
           throw new Error('ENOSPC');
         },
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'x',
@@ -190,7 +220,7 @@ describe('createRecorder', () => {
             saves.push(resolve);
           }),
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'x',
@@ -236,7 +266,7 @@ describe('createRecorder', () => {
             : Promise.resolve();
         },
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 100,
       newId: () => 'b',
@@ -267,7 +297,7 @@ describe('createRecorder', () => {
           }
         },
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'x',
@@ -307,7 +337,7 @@ describe('createRecorder', () => {
     await recorder.saveSummary(id, 'Met Jon.', '');
     const before = recorder.summaries()[0]?.contentVersion;
 
-    await recorder.editSummary(id, 'Met Ann.');
+    await recorder.editSummary(id, 'Met Ann.', versionOf(recorder, id));
     const afterSummary = recorder.summaries()[0]?.contentVersion;
     await recorder.editLine(id, 'others-500', 'Ann here.');
 
@@ -324,7 +354,7 @@ describe('createRecorder', () => {
     const id = await recorder.start('A');
     await recorder.finish(id);
     await recorder.saveSummary(id, 'Met Jon.', '');
-    await recorder.editSummary(id, 'Met John.');
+    await recorder.editSummary(id, 'Met John.', versionOf(recorder, id));
 
     await recorder.saveSummary(id, 'A newer summary from the model.', '');
 
@@ -436,7 +466,7 @@ describe('createRecorder', () => {
           throw new Error('should not save');
         },
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'x',
@@ -553,7 +583,7 @@ describe('createRecorder', () => {
           disk.set(meeting.id, meeting);
         },
         remove: async () => {},
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'new',
@@ -630,7 +660,7 @@ describe('createRecorder', () => {
           }
           removed.push(id);
         },
-        ...noImports,
+        ...untouched,
       },
       now: () => 0,
       newId: () => 'new',
@@ -656,8 +686,8 @@ describe('createRecorder', () => {
         load: async () => [],
         save: async () => {},
         remove: async () => {},
+        ...untouched,
         isDeleted: () => true,
-        importMeeting: async () => {},
       },
       now: () => 0,
       newId: () => 'new',

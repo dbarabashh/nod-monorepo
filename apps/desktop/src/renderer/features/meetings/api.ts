@@ -42,8 +42,12 @@ export function summarizeMeeting(id: string): Promise<void> {
   return window.api.summarizeMeeting(id);
 }
 
-export function editSummary(id: string, markdown: string): Promise<void> {
-  return window.api.editSummary(id, markdown);
+export function editSummary(
+  id: string,
+  markdown: string,
+  version: string,
+): Promise<string> {
+  return window.api.editSummary(id, markdown, version);
 }
 
 export function editTranscriptLine(

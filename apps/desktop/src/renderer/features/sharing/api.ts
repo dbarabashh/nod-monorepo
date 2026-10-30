@@ -60,8 +60,9 @@ export function editSharedNote(
   target: string,
   id: string,
   summary: string,
-): Promise<void> {
-  return window.api.editSharedNote(target, id, summary);
+  version: string,
+): Promise<string> {
+  return window.api.editSharedNote(target, id, summary, version);
 }
 
 export function deleteSharedNote(target: string, id: string): Promise<void> {

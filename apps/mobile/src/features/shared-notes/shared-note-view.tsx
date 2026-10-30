@@ -37,7 +37,9 @@ export function SharedNoteView({ target, id }: { target: string; id: string }) {
   const sync = useSync();
   const [note, setNote] = useState<SharedNoteDetail | null>(null);
   const [missing, setMissing] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useState<{ text: string; from: string } | null>(
+    null,
+  );
   const [failed, setFailed] = useState<string | null>(null);
   const sharing = sync.status === 'ready' ? sync.sharing : null;
   const listed =
@@ -81,13 +83,19 @@ export function SharedNoteView({ target, id }: { target: string; id: string }) {
   }
 
   const save = () => {
-    if (draft === null || !note || draft === note.summary) {
+    if (draft === null || !note || draft.text === note.summary) {
       setDraft(null);
       return;
     }
     setFailed(null);
-    editSharedNote(target, id, draft).then(
-      () => setDraft(null),
+    const sent = draft.text;
+    editSharedNote(target, id, sent, draft.from).then(
+      (saved) =>
+        setDraft((current) =>
+          current === null || current.text === sent
+            ? null
+            : { text: current.text, from: saved },
+        ),
       (failure: unknown) => setFailed(messageOf(failure)),
     );
   };
@@ -139,9 +147,17 @@ export function SharedNoteView({ target, id }: { target: string; id: string }) {
         >
           <Input
             multiline
-            value={draft ?? note?.summary ?? ''}
+            value={draft?.text ?? note?.summary ?? ''}
             editable={note !== null && !readOnly}
-            onChangeText={setDraft}
+            onChangeText={(text) =>
+              setDraft((current) =>
+                current
+                  ? { ...current, text }
+                  : note
+                    ? { text, from: note.version }
+                    : null,
+              )
+            }
             onBlur={save}
           />
         </Field>

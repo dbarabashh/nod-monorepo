@@ -123,7 +123,12 @@ describe('sharing session', () => {
     );
     await alice.session.round(place);
     await bob.session.round(place);
-    await bob.session.editNote(aliceId, shared.id, 'First draft, reviewed.');
+    await bob.session.editNote(
+      aliceId,
+      shared.id,
+      'First draft, reviewed.',
+      (await bob.session.note(aliceId, shared.id)).version,
+    );
     await bob.session.round(place);
     await alice.session.round(place);
     assert.equal(
@@ -147,6 +152,55 @@ describe('sharing session', () => {
 });
 
 describe('sharing session, the edges', () => {
+  it('keeps an edit that arrived while the other side was still editing an older version', async () => {
+    const { place } = relay();
+    const alice = person(randomKey(), 'laptop');
+    const bob = person(randomKey(), 'phone');
+    await alice.session.load({ key: alice.rootKey, deviceId: 'laptop' });
+    await bob.session.load({ key: bob.rootKey, deviceId: 'phone' });
+    await alice.session.addPeer(bob.card);
+    await bob.session.addPeer(alice.card);
+    const bobId = alice.session.previewPeer(bob.card).identity;
+    const aliceId = bob.session.previewPeer(alice.card).identity;
+    const shared = await alice.session.shareMeeting(
+      setSummary(
+        startMeeting('m-1', 'Planning', 1_000),
+        'Ship sharing first.\nTeams next.',
+      ),
+      'Planning',
+      bobId,
+    );
+    await alice.session.round(place);
+    await bob.session.round(place);
+    const opened = (await bob.session.note(aliceId, shared.id)).version;
+    await alice.session.editNote(
+      bobId,
+      shared.id,
+      'Ship sharing first.\nTest on two machines.\nTeams next.',
+      (await alice.session.note(bobId, shared.id)).version,
+    );
+    await alice.session.round(place);
+    await bob.session.round(place);
+    const first = await bob.session.editNote(
+      aliceId,
+      shared.id,
+      'Ship sharing first.\nTeams next.\nCheck the clock.',
+      opened,
+    );
+    await bob.session.editNote(
+      aliceId,
+      shared.id,
+      'Ship sharing first.\nTeams next.\nCheck the clock twice.',
+      first,
+    );
+    await bob.session.round(place);
+    await alice.session.round(place);
+    const merged =
+      'Ship sharing first.\nTest on two machines.\nTeams next.\nCheck the clock twice.';
+    assert.equal((await bob.session.note(aliceId, shared.id)).summary, merged);
+    assert.equal((await alice.session.note(bobId, shared.id)).summary, merged);
+  });
+
   it('never puts its own card, or one it can’t share with, into the list', async () => {
     const alice = person(randomKey(), 'laptop');
     await alice.session.load({ key: alice.rootKey, deviceId: 'laptop' });
@@ -175,7 +229,7 @@ describe('sharing session, the edges', () => {
       /was stopped/,
     );
     await assert.rejects(
-      alice.session.editNote(bobId, 'n', 'x'),
+      alice.session.editNote(bobId, 'n', 'x', ''),
       /was stopped/,
     );
   });

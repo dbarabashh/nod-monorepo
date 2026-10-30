@@ -102,7 +102,11 @@ export function MeetingTranscript({
                     <MarkdownEditor
                       label="Summary"
                       markdown={detail.summary}
-                      onSave={(markdown) => editSummary(meetingId, markdown)}
+                      version={detail.version ?? ''}
+                      readOnly={detail.version === null}
+                      onSave={(markdown, version) =>
+                        editSummary(meetingId, markdown, version)
+                      }
                     />
                   </>
                 ) : status === 'finished' && detail.transcript.length > 0 ? (
