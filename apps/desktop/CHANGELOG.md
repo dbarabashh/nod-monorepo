@@ -6,6 +6,8 @@ publishes that section as the release notes.
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-30
+
 - Nod keeps its data in a folder of its own, apart from the earlier Nod app
   for Mac, and moves what it already saved there on its first start.
 - On a Mac, test copies of 0.1.1 don't update to this version: install it
