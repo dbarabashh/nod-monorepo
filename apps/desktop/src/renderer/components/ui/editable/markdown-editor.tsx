@@ -67,20 +67,29 @@ function applyShortcut(root: HTMLElement) {
 
 // Markdown shown as rich text and edited in place, saved a moment after
 // typing stops and when focus leaves. Read-only shows the same text, for
-// someone who may read but not change it.
+// someone who may read but not change it. Saves run one at a time, each from
+// the version the one before returned, and text from elsewhere waits until
+// none is pending, so a save's version always matches the text it sends.
 export function MarkdownEditor({
   markdown,
+  version,
   label,
   readOnly = false,
   onSave,
 }: {
   markdown: string;
+  version: string;
   label: string;
   readOnly?: boolean;
-  onSave: (markdown: string) => Promise<void>;
+  onSave: (markdown: string, version: string) => Promise<string>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const saved = useRef(markdown);
+  const savedVersion = useRef(version);
+  const saving = useRef<Promise<void>>(Promise.resolve());
+  const waiting = useRef(0);
+  const latest = useRef({ markdown, version });
+  const arrivedWhileWaiting = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const dirty = useRef(false);
   const [failed, setFailed] = useState(false);
@@ -100,27 +109,53 @@ export function MarkdownEditor({
       return;
     }
     saved.current = next;
-    onSave(next).then(
-      () => setFailed(false),
-      () => setFailed(true),
+    waiting.current += 1;
+    let stored = false;
+    saving.current = saving.current
+      .then(() => onSave(next, savedVersion.current))
+      .then(
+        (made) => {
+          savedVersion.current = made;
+          stored = true;
+          setFailed(false);
+        },
+        () => setFailed(true),
+      )
+      .finally(() => {
+        waiting.current -= 1;
+        // A failed save leaves its text on screen to be tried again.
+        if (waiting.current === 0 && arrivedWhileWaiting.current && stored) {
+          arrivedWhileWaiting.current = false;
+          showLatest();
+        }
+      });
+  }
+
+  function showLatest() {
+    const element = root.current;
+    if (
+      !element ||
+      (element.hasChildNodes() &&
+        (latest.current.markdown === saved.current ||
+          element.contains(document.activeElement)))
+    ) {
+      return;
+    }
+    saved.current = latest.current.markdown;
+    savedVersion.current = latest.current.version;
+    element.replaceChildren(
+      ...blocksToDom(parseMarkdown(latest.current.markdown), domNodes),
     );
   }
 
   useEffect(() => {
-    const element = root.current;
-    if (!element) {
+    latest.current = { markdown, version };
+    if (waiting.current > 0) {
+      arrivedWhileWaiting.current = true;
       return;
     }
-    const userIsEditing = element.contains(document.activeElement);
-    if (
-      element.hasChildNodes() &&
-      (markdown === saved.current || userIsEditing)
-    ) {
-      return;
-    }
-    saved.current = markdown;
-    element.replaceChildren(...blocksToDom(parseMarkdown(markdown), domNodes));
-  }, [markdown]);
+    showLatest();
+  }, [markdown, version]);
 
   useEffect(() => {
     const element = root.current;

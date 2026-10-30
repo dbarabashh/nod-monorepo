@@ -45,6 +45,7 @@ import {
   Conflict,
   createRelayHandler,
   defaultLimits,
+  sentUrl,
   networkOf,
   networksOf,
   versionOf,
@@ -1047,6 +1048,40 @@ describe('vercel relay', () => {
   });
 });
 
+describe('sentUrl', () => {
+  it('takes off only the path Vercel’s rewrite adds, keeping the query as sent', () => {
+    const vault = 'a'.repeat(32);
+    assert.equal(
+      sentUrl(
+        `https://sync.example.com/v1/vaults/${vault}/acl?path=vaults%2F${vault}%2Facl`,
+      ),
+      `https://sync.example.com/v1/vaults/${vault}/acl`,
+    );
+    assert.equal(
+      sentUrl(
+        `https://sync.example.com/v1/vaults/${vault}/files?prefix=devices%2Fd0%2F&path=vaults%2F${vault}%2Ffiles`,
+      ),
+      `https://sync.example.com/v1/vaults/${vault}/files?prefix=devices%2Fd0%2F`,
+    );
+    assert.equal(
+      sentUrl(
+        `https://sync.example.com/v1/vaults/${vault}/files/notes%20%C3%A9.bin?path=vaults%2F${vault}%2Ffiles%2Fnotes%20%C3%A9.bin`,
+      ),
+      `https://sync.example.com/v1/vaults/${vault}/files/notes%20%C3%A9.bin`,
+    );
+    assert.equal(
+      sentUrl(
+        `https://sync.example.com/v1/vaults/${vault}/files/notes%20%C3%A9.bin?path=vaults%2F${vault}%2Ffiles%2Fnotes%2520%25C3%25A9.bin`,
+      ),
+      `https://sync.example.com/v1/vaults/${vault}/files/notes%20%C3%A9.bin`,
+    );
+    assert.equal(
+      sentUrl(`https://sync.example.com/v1/vaults/${vault}/acl?path=other`),
+      `https://sync.example.com/v1/vaults/${vault}/acl?path=other`,
+    );
+  });
+});
+
 describe('vercel relay team vaults', () => {
   const host = 'https://sync.example.com/';
   const { owner, admin, writer, reader, stranger, another, hex } =
@@ -1168,6 +1203,27 @@ describe('vercel relay team vaults', () => {
       now: () => clock,
     };
   }
+
+  it('checks a signature against the address sent, not the one Vercel’s rewrite adds a path to', async () => {
+    const { handle } = setUp();
+    const root = rootRecord(owner, start);
+    const vaultId = teamVaultIdOf(root.record);
+    const rewritten: Fetch = async (url, init) => {
+      const parsed = new URL(url);
+      const matched = parsed.pathname.replace(/^\/v1\//, '');
+      parsed.search = `${parsed.search ? `${parsed.search}&` : '?'}path=${encodeURIComponent(matched)}`;
+      return handle(new Request(parsed.href, init));
+    };
+    const at = createTeamRelay({
+      url: host,
+      vaultId,
+      identity: owner,
+      fetch: rewritten,
+      now: () => start,
+    });
+    await at.list.append(root.record);
+    assert.deepEqual(await at.list.read(), [root.record]);
+  });
 
   it('registers a team by its root record and refuses any other root', async () => {
     const { place, startTeam, handle, objects } = setUp();

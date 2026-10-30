@@ -38,6 +38,14 @@ export type DocumentKind<
   context: (id: string) => string;
   create: (value: V) => D;
   update: (document: D, previous: V, next: V) => D;
+  // An edit made from an earlier version and the version it made, or null
+  // when the document doesn't hold that version as a value.
+  updateFrom: (
+    document: D,
+    version: string,
+    edit: (seen: V) => V,
+  ) => { document: D; version: string } | null;
+  version: (document: D) => string;
   tombstone: (id: string, deletedAt: number) => D;
   read: (document: D) => S | null;
   // The value a state holds, or null for a deleted document.
@@ -59,6 +67,14 @@ export type DocumentStore<
   // Forgets everything held, for a caller that set the files aside.
   reset: (cipher: Cipher) => void;
   save: (value: V) => Promise<void>;
+  // An edit to the version a person saw while making it, merged with what
+  // arrived since; resolves to the version it made.
+  saveFrom: (
+    id: string,
+    version: string,
+    edit: (seen: V) => V,
+  ) => Promise<string>;
+  version: (id: string) => string | null;
   // A copy already here, from an earlier try whose write failed or from
   // another device, is kept rather than replaced.
   importValue: (value: V, document: (value: V) => D) => Promise<void>;
@@ -218,6 +234,41 @@ export function createDocumentStore<
       );
       bases.set(value.id, value);
       await persist(value.id);
+    },
+    saveFrom: async (id, version, edit) => {
+      assertSavable(id);
+      const current = documents.get(id);
+      const edited = current ? kind.updateFrom(current, version, edit) : null;
+      const state = edited ? kind.read(edited.document) : null;
+      const value = state ? kind.valueOf(state) : null;
+      if (!current || !edited || !value) {
+        throw new Error(
+          `That ${kind.name} has changed; open it again to edit it`,
+        );
+      }
+      const base = bases.get(id);
+      documents.set(id, edited.document);
+      bases.set(id, value);
+      try {
+        await persist(id);
+      } catch (failure) {
+        // Taken back, so trying again from the same version doesn't make the
+        // edit twice. Once something else changed the document during the
+        // write, the edit stays for the next write instead.
+        if (documents.get(id) !== edited.document) {
+          return edited.version;
+        }
+        documents.set(id, current);
+        if (base) {
+          bases.set(id, base);
+        }
+        throw failure;
+      }
+      return edited.version;
+    },
+    version: (id) => {
+      const document = documents.get(id);
+      return document && !deleted.has(id) ? kind.version(document) : null;
     },
     importValue: async (value, document) => {
       assertSavable(value.id);

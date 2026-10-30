@@ -24,6 +24,7 @@ import type {
   TeamRole,
 } from '../../shared/ipc.ts';
 import type { Meeting, SharedCopy } from '@nod/core/meetings';
+import { documentVersionOf } from '../meetings/document-version.ts';
 import type { JoinPreview } from '@nod/core/sharing';
 import type { DialogGate, Question } from '../sync/dialog-gate.ts';
 import type { SharedPlace, SharingController } from './controller.ts';
@@ -330,12 +331,23 @@ export function createSharingHandlers(options: {
       id: unknown,
     ): Promise<SharedNoteDetail> =>
       controller.note(targetOf(target), noteIdOf(id)),
-    editSharedNote: async (target: unknown, id: unknown, summary: unknown) => {
+    editSharedNote: async (
+      target: unknown,
+      id: unknown,
+      summary: unknown,
+      version: unknown,
+    ) => {
       if (typeof summary !== 'string' || summary.length > maxSummaryLength) {
         throw new Error('That note is too long');
       }
-      await controller.editNote(targetOf(target), noteIdOf(id), summary);
+      const saved = await controller.editNote(
+        targetOf(target),
+        noteIdOf(id),
+        summary,
+        documentVersionOf(version, 'note'),
+      );
       syncSoon();
+      return saved;
     },
     deleteSharedNote: async (target: unknown, id: unknown) => {
       await controller.deleteNote(targetOf(target), noteIdOf(id));

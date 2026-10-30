@@ -197,6 +197,8 @@ export type EndedIdentity = { handed: HandedTeam[]; unfinished: string[] };
 export type SharedNoteDetail = SharedNote & {
   target: string;
   kind: ShareTargetKind;
+  // The version shown, which an edit made from it names when it is saved.
+  version: string;
 };
 
 export type SharingSnapshot =
@@ -1603,21 +1605,25 @@ export function createSharingSession(options: {
     note: (target: string, id: string) =>
       withLock(async (): Promise<SharedNoteDetail> => {
         const home = targetOf(target);
-        const note = (await readableStore(home)).note(id);
-        if (!note) {
+        const store = await readableStore(home);
+        const note = store.note(id);
+        const version = store.version(id);
+        if (!note || version === null) {
           throw new Error('That note is gone');
         }
-        return { ...note, target, kind: home.kind };
+        return { ...note, target, kind: home.kind, version };
       }),
-    editNote: (target: string, id: string, summary: string) =>
+    editNote: (target: string, id: string, summary: string, version: string) =>
       withLock(async () => {
         const { store } = await writableStore(targetOf(target));
-        const note = store.note(id);
-        if (!note) {
+        if (!store.note(id)) {
           throw new Error('That note is gone');
         }
-        await store.save(editNoteSummary(note, summary));
+        const saved = await store.saveFrom(id, version, (seen) =>
+          editNoteSummary(seen, summary),
+        );
         onChange();
+        return saved;
       }),
     deleteNote: (target: string, id: string) =>
       withLock(async () => {

@@ -27,12 +27,14 @@ export {
   type TranscriptLine,
 } from './meeting.ts';
 export {
+  changeFrom,
   createDocument,
   documentHeads,
   field,
   fixedActor,
   headsOf,
   importedDocument,
+  isDocumentVersion,
   loadDocument,
   loadDocumentState,
   mergeChanges,

@@ -51,10 +51,14 @@ import { field } from './field.ts';
 
 export { field };
 
+function versionOfHeads(heads: readonly string[]): string {
+  return [...heads].sort().join();
+}
+
 // Names a version of a document: equal for two documents that hold the same
 // changes, on every device.
 export function headsOf<T>(document: Automerge.Doc<T>): string {
-  return [...Automerge.getHeads(document)].sort().join();
+  return versionOfHeads(Automerge.getHeads(document));
 }
 
 export function sameHeads<T>(
@@ -62,6 +66,68 @@ export function sameHeads<T>(
   b: Automerge.Doc<T>,
 ): boolean {
   return headsOf(a) === headsOf(b);
+}
+
+const changeHash = /^[0-9a-f]{64}$/;
+// A document edited on many devices at once has a head for each; more than
+// this is no version a person saw.
+const maxHeads = 64;
+
+function headsOfVersion(version: string): string[] | null {
+  const heads = version.split(',');
+  return heads.length <= maxHeads &&
+    heads.every((head) => changeHash.test(head))
+    ? heads
+    : null;
+}
+
+export function isDocumentVersion(version: string): boolean {
+  return headsOfVersion(version) !== null;
+}
+
+function seenAt<T, V>(
+  document: Automerge.Doc<T>,
+  heads: string[],
+  read: (seen: Automerge.Doc<T>) => V | null,
+): V | null {
+  try {
+    return read(Automerge.view(document, heads));
+  } catch {
+    return null;
+  }
+}
+
+// A change made from the version an editor showed rather than against the
+// document as it is now: Automerge merges it with whatever arrived since, so
+// text another device added meanwhile is kept, not taken as deleted. Null for
+// a version this document doesn't hold, or doesn't read as a value at.
+//
+// The version returned is the editor's own: what it showed plus this change,
+// without what arrived meanwhile, which the editor hasn't shown. Its next
+// save starts from there, so it can't take that text as deleted either.
+export function changeFrom<T, V>(
+  document: Automerge.Doc<T>,
+  version: string,
+  read: (seen: Automerge.Doc<T>) => V | null,
+  apply: (fields: T, seen: V) => void,
+): { document: Automerge.Doc<T>; version: string } | null {
+  const heads = headsOfVersion(version);
+  const seen = heads ? seenAt(document, heads, read) : null;
+  if (!heads || seen === null) {
+    return null;
+  }
+  // changeAt marks the document it is given as outdated, and the caller's
+  // copy may still be held elsewhere. The copy keeps the device's actor, so
+  // edits don't add a new one to the document each time.
+  const changed = Automerge.changeAt(
+    Automerge.clone(document, { actor: Automerge.getActorId(document) }),
+    heads,
+    (fields) => apply(fields, seen),
+  );
+  return {
+    document: changed.newDoc,
+    version: changed.newHeads ? versionOfHeads(changed.newHeads) : version,
+  };
 }
 
 // Merging mutates its first argument, so the local document is cloned to
@@ -322,6 +388,22 @@ export function updateDocument(
 ): MeetingDocument {
   return Automerge.change(document, (fields) =>
     reconcile(fields, previous, next),
+  );
+}
+
+export function updateDocumentFrom(
+  document: MeetingDocument,
+  version: string,
+  edit: (seen: Meeting) => Meeting,
+): { document: MeetingDocument; version: string } | null {
+  return changeFrom(
+    document,
+    version,
+    (seen) => {
+      const state = readDocument(seen);
+      return state?.kind === 'meeting' ? state.meeting : null;
+    },
+    (fields, seen) => reconcile(fields, seen, edit(seen)),
   );
 }
 

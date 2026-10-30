@@ -13,7 +13,9 @@ import {
   readNoteDocument,
   sameNoteDocument,
   saveNoteDocument,
+  noteHeads,
   updateNoteDocument,
+  updateNoteDocumentFrom,
   type NoteDocument,
   type NoteState,
 } from './note-document.ts';
@@ -24,6 +26,12 @@ export type NoteFiles = MeetingFiles;
 export type NoteStore = {
   load: () => Promise<SharedNote[]>;
   save: (note: SharedNote) => Promise<void>;
+  saveFrom: (
+    id: string,
+    version: string,
+    edit: (seen: SharedNote) => SharedNote,
+  ) => Promise<string>;
+  version: (id: string) => string | null;
   remove: (id: string, deletedAt: number) => Promise<void>;
   flush: () => Promise<void>;
   notes: () => SharedNote[];
@@ -40,6 +48,8 @@ const noteKind: DocumentKind<NoteDocument, NoteState, SharedNote> = {
   context: (id) => `nod:note:${id}`,
   create: createNoteDocument,
   update: updateNoteDocument,
+  updateFrom: updateNoteDocumentFrom,
+  version: noteHeads,
   tombstone: noteTombstone,
   read: readNoteDocument,
   valueOf: (state) => (state.kind === 'note' ? state.note : null),
@@ -64,6 +74,8 @@ export function createNoteStore(options: {
   return {
     load: () => store.load(async () => options.cipher),
     save: store.save,
+    saveFrom: store.saveFrom,
+    version: store.version,
     remove: store.remove,
     flush: store.flush,
     notes: store.values,

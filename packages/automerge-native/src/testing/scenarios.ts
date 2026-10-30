@@ -286,6 +286,24 @@ export const scenarios: Record<string, () => Outcome> = {
     });
     return outcome(doc, missing);
   },
+  // A text edit saved from an editor that opened an older version: core
+  // applies it where the editor saw the text, and Automerge merges it with
+  // what arrived since.
+  'a text edit made at older heads': () => {
+    let doc = Automerge.from({ summary: 'one\ntwo\nthree' }, { actor: alice });
+    const seen = Automerge.getHeads(doc);
+    doc = Automerge.change(doc, { time: 1 }, (d) => {
+      Automerge.updateText(d, ['summary'], 'one\nmiddle\ntwo\nthree');
+    });
+    const copy = Automerge.clone(doc, { actor: Automerge.getActorId(doc) });
+    const edited = Automerge.changeAt(copy, seen, { time: 2 }, (d) => {
+      Automerge.updateText(d, ['summary'], 'one\ntwo\nthree\nend');
+    });
+    return outcome(edited.newDoc, {
+      newHeads: edited.newHeads,
+      seen: Automerge.toJS(Automerge.view(edited.newDoc, seen)),
+    });
+  },
 };
 
 // FNV-1a over the JSON, so a fixture can hold a long meeting in a few bytes.

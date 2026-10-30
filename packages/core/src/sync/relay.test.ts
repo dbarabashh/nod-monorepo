@@ -145,6 +145,13 @@ describe('relay refusals', () => {
     );
   });
 
+  it('names an outdated relay as well as the clock when it refuses the device', async () => {
+    await assert.rejects(at(401).read(path, 10), {
+      message:
+        'The relay answered 401: it didn’t accept this device; the relay may be older than this version of Nod, or this device’s clock may be off',
+    });
+  });
+
   it('keeps other failures, and a full vault on a read, as plain errors', async () => {
     for (const refused of [
       at(409).write(path, new Uint8Array(1)),

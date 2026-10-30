@@ -47,7 +47,11 @@ export type Recorder = {
   setSummaryStatus: (id: string, status: SummaryStatus) => void;
   setProblem: (id: string, problem: string | null) => void;
   saveSummary: (id: string, summary: string, title: string) => Promise<void>;
-  editSummary: (id: string, markdown: string) => Promise<void>;
+  editSummary: (
+    id: string,
+    markdown: string,
+    version: string,
+  ) => Promise<string>;
   editLine: (id: string, lineId: string, text: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   removeMany: (ids: readonly string[]) => Promise<MeetingsDeleteResult>;
@@ -64,7 +68,14 @@ export type Recorder = {
 
 export type RecorderStore = Pick<
   MeetingStore,
-  'load' | 'save' | 'remove' | 'isDeleted' | 'importMeeting'
+  | 'load'
+  | 'save'
+  | 'saveFrom'
+  | 'version'
+  | 'meeting'
+  | 'remove'
+  | 'isDeleted'
+  | 'importMeeting'
 >;
 
 type Active = { id: string; previousMs: number; segmentStartedAt: number };
@@ -119,9 +130,10 @@ export function createRecorder(options: {
     );
   }
 
-  async function save(id: string): Promise<void> {
+  async function tracked<T>(write: () => Promise<T>): Promise<T> {
+    let result: T;
     try {
-      await store.save(find(id));
+      result = await write();
     } catch (error) {
       if (!saveFailed) {
         saveFailed = true;
@@ -133,6 +145,11 @@ export function createRecorder(options: {
       saveFailed = false;
       onChange();
     }
+    return result;
+  }
+
+  function save(id: string): Promise<void> {
+    return tracked(() => store.save(find(id)));
   }
 
   function problemOf(id: string): string | null {
@@ -304,6 +321,7 @@ export function createRecorder(options: {
         summaryStatus: summaryStatus.get(id) ?? 'idle',
         problem: problemOf(id),
         sharedAs: meeting.sharedAs,
+        version: store.version(id),
       };
     },
     transcriptOf: lookup,
@@ -350,8 +368,21 @@ export function createRecorder(options: {
       return name;
     },
     removeFolder: (name) => refile(name, null),
-    editSummary: (id, markdown) =>
-      update(id, (meeting) => editSummary(meeting, markdown)),
+    // Applied to the version the person saw, so lines another device added
+    // while they typed are kept rather than taken as deleted.
+    editSummary: async (id, markdown, version) => {
+      find(id);
+      const saved = await tracked(() =>
+        store.saveFrom(id, version, (seen) => editSummary(seen, markdown)),
+      );
+      const stored = store.meeting(id);
+      if (stored) {
+        replace(stored);
+      }
+      touch(id);
+      onChange();
+      return saved;
+    },
     editLine: (id, lineId, text) =>
       update(id, (meeting) => editTranscriptLine(meeting, lineId, text)),
     list: async () => {

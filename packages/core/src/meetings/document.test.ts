@@ -11,6 +11,8 @@ import {
   saveDocument,
   tombstone,
   updateDocument,
+  updateDocumentFrom,
+  headsOf,
   type MeetingDocument,
 } from './document.ts';
 import {
@@ -238,6 +240,44 @@ describe('meeting documents', () => {
       meetingOf(mergeDocuments(cleared, extended)).summary,
       ' Plus a note.',
     );
+  });
+
+  it('keeps a line another device added while this one edited an older version', () => {
+    const lines = { ...base, summary: 'Ship sharing first.\nTeams next.' };
+    const shown = createDocument(lines);
+    const opened = headsOf(shown);
+    const fromPhone = updateDocument(
+      Automerge.clone(shown),
+      lines,
+      editSummary(
+        lines,
+        'Ship sharing first.\nTest on two machines.\nTeams next.',
+      ),
+    );
+    const here = mergeDocuments(shown, fromPhone);
+    const saved = updateDocumentFrom(here, opened, (seen) =>
+      editSummary(seen, 'Ship sharing first.\nTeams next.\nCheck the clock.'),
+    );
+    assert.equal(
+      saved && Automerge.getActorId(saved.document),
+      Automerge.getActorId(here),
+    );
+    assert.equal(
+      saved && meetingOf(saved.document).summary,
+      'Ship sharing first.\nTest on two machines.\nTeams next.\nCheck the clock.',
+    );
+  });
+
+  it('refuses an edit from a version the document doesn’t hold', () => {
+    const shown = createDocument(base);
+    const other = headsOf(createDocument({ ...base, id: 'm2' }));
+    for (const version of [other, '', 'not-a-version']) {
+      assert.equal(
+        updateDocumentFrom(shown, version, (seen) => editSummary(seen, 'x')),
+        null,
+        version,
+      );
+    }
   });
 
   it('keeps a rename and a generated name through saving and syncing', () => {

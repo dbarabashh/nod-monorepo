@@ -73,6 +73,9 @@ export type MeetingDetail = {
   summaryStatus: SummaryStatus;
   problem: string | null;
   sharedAs: SharedCopyInfo[];
+  // The version shown, which an edit made from it names when it is saved;
+  // null for a meeting not saved yet, which can't be edited.
+  version: string | null;
 };
 
 // Where the meeting's notes went: a note in a one-to-one vault or a team.
@@ -146,6 +149,7 @@ export type SharedNoteDetail = {
   sharedAt: number;
   target: string;
   kind: ShareTargetKind;
+  version: string;
 };
 
 export type TeamRole = 'owner' | 'admin' | 'writer' | 'reader';
@@ -433,7 +437,11 @@ export type AppApi = {
   removeFolder: (name: string) => Promise<void>;
   importMeetings: () => Promise<MeetingImportResult>;
   summarizeMeeting: (id: string) => Promise<void>;
-  editSummary: (id: string, markdown: string) => Promise<void>;
+  editSummary: (
+    id: string,
+    markdown: string,
+    version: string,
+  ) => Promise<string>;
   editTranscriptLine: (
     id: string,
     lineId: string,
@@ -477,7 +485,8 @@ export type AppApi = {
     target: string,
     id: string,
     summary: string,
-  ) => Promise<void>;
+    version: string,
+  ) => Promise<string>;
   deleteSharedNote: (target: string, id: string) => Promise<void>;
   createTeam: (
     name: string,

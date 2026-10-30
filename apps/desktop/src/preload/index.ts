@@ -60,8 +60,8 @@ const api: AppApi = {
   getMeeting: (id) => ipcRenderer.invoke(IpcChannel.getMeeting, id),
   importMeetings: () =>
     clicked(() => ipcRenderer.invoke(IpcChannel.importMeetings)),
-  editSummary: (id, markdown) =>
-    ipcRenderer.invoke(IpcChannel.editSummary, id, markdown),
+  editSummary: (id, markdown, version) =>
+    ipcRenderer.invoke(IpcChannel.editSummary, id, markdown, version),
   editTranscriptLine: (id, lineId, text) =>
     ipcRenderer.invoke(IpcChannel.editTranscriptLine, id, lineId, text),
   summarizeMeeting: (id) => ipcRenderer.invoke(IpcChannel.summarizeMeeting, id),
@@ -132,8 +132,8 @@ const api: AppApi = {
     ),
   getSharedNote: (target, id) =>
     ipcRenderer.invoke(IpcChannel.getSharedNote, target, id),
-  editSharedNote: (target, id, summary) =>
-    ipcRenderer.invoke(IpcChannel.editSharedNote, target, id, summary),
+  editSharedNote: (target, id, summary, version) =>
+    ipcRenderer.invoke(IpcChannel.editSharedNote, target, id, summary, version),
   deleteSharedNote: (target, id) =>
     clicked(() => ipcRenderer.invoke(IpcChannel.deleteSharedNote, target, id)),
   createTeam: (name, myName, relay) =>

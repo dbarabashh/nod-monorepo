@@ -219,9 +219,11 @@ export async function editSharedNote(
   target: string,
   id: string,
   summary: string,
-): Promise<void> {
-  await sharing.editNote(target, id, summary);
+  version: string,
+): Promise<string> {
+  const saved = await sharing.editNote(target, id, summary, version);
   syncSoon();
+  return saved;
 }
 
 export async function deleteSharedNote(
