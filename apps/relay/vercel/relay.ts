@@ -381,6 +381,36 @@ function expandIpv6(address: string): string[] | null {
     : null;
 }
 
+// Vercel's rewrite of /v1/:path* to the function adds what it matched as a
+// `path` query parameter. Team requests are signed over the address the
+// device sent, so that one parameter comes off again and the rest of the
+// query stays exactly as it was sent.
+export function sentUrl(received: string): string {
+  const url = new URL(received);
+  const matched = url.pathname.replace(/^\/v1\//, '');
+  const decoded = (text: string) => {
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return null;
+    }
+  };
+  const routed = decoded(matched);
+  const parts = url.search.slice(1).split('&').filter(Boolean);
+  const kept = parts.filter((part) => {
+    if (!part.startsWith('path=')) {
+      return true;
+    }
+    const value = decoded(part.slice('path='.length));
+    return value === null || (value !== matched && value !== routed);
+  });
+  if (kept.length === parts.length) {
+    return received;
+  }
+  url.search = kept.length > 0 ? `?${kept.join('&')}` : '';
+  return url.href;
+}
+
 // Vercel replaces x-forwarded-for with the connecting address, so a client
 // can't choose it. Addresses are grouped by network (IPv4 /24, IPv6 /48),
 // since one holder of a network can use every address in it, and by the
@@ -1442,7 +1472,7 @@ export function createRelayHandler(options: {
   }
 
   return async (request: Request): Promise<Response> => {
-    const url = new URL(request.url);
+    const url = new URL(sentUrl(request.url));
     if (
       url.pathname === sourcePath &&
       (request.method === 'GET' || request.method === 'HEAD')

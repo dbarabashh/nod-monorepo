@@ -53,7 +53,9 @@ export function retryAfterOf(header: string | null, now = Date.now()): number {
 }
 
 const refusals: Record<number, string> = {
-  401: 'it didn’t accept this device’s signature; check that the computer’s clock is right',
+  // A relay older than the app refuses requests it doesn't know with a 401
+  // too, so the clock is only one of the causes.
+  401: 'it didn’t accept this device; the relay may be older than this version of Nod, or this device’s clock may be off',
   409: 'another change to this meeting is still finishing, sync will try again',
   413: 'this meeting is too large to sync through it',
   507: 'the space for your devices on it is full',
