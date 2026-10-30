@@ -5,7 +5,7 @@ import {
   type ModelFile,
   type SpeechModel,
 } from '@nod/core/models';
-import { FileDigest } from '../../../modules/file-digest/index.ts';
+import { downloadVerified } from '../download.ts';
 import { messageOf } from '../message-of.ts';
 import { ensureDirectory, modelsDirectory } from '../storage.ts';
 
@@ -29,8 +29,6 @@ function installed(model: SpeechModel): boolean {
   });
 }
 
-// Moved into place only after its size and sha256 match the pinned catalog,
-// so a model that wasn't verified is never loaded.
 async function fetchFile(
   file: ModelFile,
   onBytes: (bytes: number) => void,
@@ -43,19 +41,12 @@ async function fetchFile(
     return;
   }
   await ensureDirectory(directory);
-  const partial = new File(directory, `${file.name}.partial`);
-  await File.downloadFileAsync(file.url, partial, {
-    idempotent: true,
-    signal,
-    onProgress: ({ bytesWritten }) => onBytes(bytesWritten),
-  });
-  onChecking();
-  const whole = partial.size === file.sizeBytes;
-  if (!whole || (await FileDigest.sha256(partial.uri)) !== file.sha256) {
-    partial.delete();
-    throw new Error(`${file.name} didn’t match what was expected. Try again.`);
-  }
-  await partial.move(target, { overwrite: true });
+  await downloadVerified(
+    file.url,
+    target,
+    { size: file.sizeBytes, sha256: file.sha256 },
+    { signal, onBytes, onChecking },
+  );
 }
 
 const listeners = new Set<() => void>();

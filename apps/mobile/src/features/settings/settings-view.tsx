@@ -3,13 +3,23 @@ import { Alert, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   Button,
+  Checkbox,
   Icon,
   List,
   ListRow,
+  Progress,
   Text,
 } from '../../components/ui/index.ts';
 import { messageOf } from '../../lib/message-of.ts';
 import { stopSyncing, useSync } from '../../lib/sync/sync.ts';
+import { isBusy, knownUpdate } from '../../lib/updates/schedule.ts';
+import {
+  checkForUpdate,
+  installUpdate,
+  setAutomaticChecks,
+  useUpdates,
+  type UpdatesView,
+} from '../../lib/updates/updates.ts';
 import { radius, space, themed, useScheme } from '../../theme/index.ts';
 
 const sheets = themed((colors) => ({
@@ -42,6 +52,87 @@ function confirmStop() {
         },
       },
     ],
+  );
+}
+
+function updateStatus({ automatic, state }: UpdatesView): string {
+  switch (state.status) {
+    case 'checking':
+      return 'Checking for a new version…';
+    case 'installing':
+      return 'Android’s installer is open.';
+    case 'current':
+      return 'This is the newest version.';
+    case 'available':
+      return `Nod ${state.update.version} is available.`;
+    case 'downloading':
+      return `Downloading Nod ${state.update.version}…`;
+    case 'failed':
+      return state.message;
+    default:
+      return automatic
+        ? 'Nod looks for a new version on GitHub every six hours.'
+        : 'Nod doesn’t look for new versions on its own.';
+  }
+}
+
+function UpdatesSection() {
+  const styles = sheets[useScheme()];
+  const updates = useUpdates();
+  const { state } = updates;
+  if (state.status === 'unavailable') {
+    return null;
+  }
+  const pending = knownUpdate(state);
+  const working = isBusy(state);
+  return (
+    <Section title="Updates">
+      <View style={styles.vault}>
+        <Text selectable>{`Nod ${updates.version}`}</Text>
+        <Text variant="sm" tone="muted" accessibilityLiveRegion="polite">
+          {updateStatus(updates)}
+        </Text>
+        {state.status === 'downloading' && (
+          <Progress
+            value={state.progress}
+            label={`Downloading Nod ${state.update.version}`}
+          />
+        )}
+      </View>
+      {pending === null ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          style={styles.stop}
+          disabled={working}
+          onPress={() => void checkForUpdate()}
+        >
+          Check now
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          style={styles.stop}
+          disabled={working}
+          onPress={() => void installUpdate(pending)}
+        >
+          {`Install Nod ${pending.version}`}
+        </Button>
+      )}
+      <List>
+        <ListRow
+          title="Check for updates automatically"
+          trailing={
+            <Checkbox
+              label="Check for updates automatically"
+              checked={updates.automatic}
+              onChange={(automatic) => void setAutomaticChecks(automatic)}
+            />
+          }
+          onPress={() => void setAutomaticChecks(!updates.automatic)}
+        />
+      </List>
+    </Section>
   );
 }
 
@@ -104,6 +195,7 @@ export function SettingsView() {
           </Button>
         </Section>
       )}
+      <UpdatesSection />
       <Section title="About">
         <List>
           <ListRow

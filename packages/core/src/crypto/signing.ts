@@ -60,3 +60,24 @@ export function verify(
     return false;
   }
 }
+
+// Release manifests are signed by the release workflow as they are, with no
+// purpose framing, because Node's crypto writes them and every installed
+// desktop copy already checks them that way.
+export function verifyUnframed(
+  publicKey: Uint8Array,
+  signature: Uint8Array,
+  message: Uint8Array,
+): boolean {
+  if (
+    publicKey.length !== publicKeyLength ||
+    signature.length !== signatureLength
+  ) {
+    return false;
+  }
+  try {
+    return ed25519.verify(signature, message, publicKey, { zip215: false });
+  } catch {
+    return false;
+  }
+}

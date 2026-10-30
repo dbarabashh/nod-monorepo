@@ -2,7 +2,6 @@
   "expo": {
     "name": "Nod",
     "slug": "nod-mobile",
-    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nodmobile",
@@ -28,7 +27,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "allowBackup": false,
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": ["android.permission.CAMERA"],
+      "package": "com.anonymous.nodmobile"
     },
     "plugins": [
       "expo-router",

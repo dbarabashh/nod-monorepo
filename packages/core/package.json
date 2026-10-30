@@ -18,7 +18,8 @@
     "./sharing/testing": "./src/sharing/testing/index.ts",
     "./sync": "./src/sync/index.ts",
     "./sync/testing": "./src/sync/testing/index.ts",
-    "./transcription": "./src/transcription/index.ts"
+    "./transcription": "./src/transcription/index.ts",
+    "./updates": "./src/updates/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",

@@ -1,28 +1,28 @@
-import { createHash, createPrivateKey, sign } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import { releaseNotes } from '../../../../scripts/release/changelog.ts';
 import {
+  checksums,
   manifestFile,
-  releaseTag,
+  releaseManifest,
   signatureFile,
+  type ReleaseFile,
+} from '../../../../scripts/release/manifest.ts';
+import {
+  digest,
+  sha256File,
+  signer,
+} from '../../../../scripts/release/sign.ts';
+import {
+  isPrerelease,
+  isVersion,
+} from '../../../../scripts/release/version.ts';
+import {
+  releaseTag,
   testReleaseTag,
   updateBase,
 } from '../../src/main/updates/feed.ts';
-import {
-  verifyManifest,
-  type ReleaseFile,
-} from '../../src/main/updates/manifest.ts';
-import { isPrerelease, isVersion } from '../../src/main/updates/version.ts';
-import { releaseNotes } from './changelog.ts';
-import {
-  checksums,
-  macFeeds,
-  compareAssets,
-  releaseAssets,
-  releaseManifest,
-} from './assets.ts';
+import { macFeeds, compareAssets, releaseAssets } from './assets.ts';
 
 const appDir = path.resolve(import.meta.dirname, '../..');
 
@@ -70,43 +70,12 @@ async function check(
   return { ...manifest, notes };
 }
 
-function digest(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
-async function sha256(file: string): Promise<string> {
-  const hash = createHash('sha256');
-  await pipeline(createReadStream(file), hash);
-  return hash.digest('hex');
-}
-
 type Assets = {
   tag: string | undefined;
   dir: string | undefined;
   url: string | undefined;
   notesFile: string | undefined;
 };
-
-// The release key comes from the environment of the one job that signs, as
-// a PKCS #8 PEM; the public key is checked too, so a key that installed
-// copies would reject never signs a release.
-function signer(): (bytes: Uint8Array) => string {
-  const privateKey = process.env.UPDATE_SIGNING_KEY;
-  const publicKey = process.env.NOD_UPDATE_PUBLIC_KEY;
-  if (!privateKey || !publicKey) {
-    throw new Error('Set UPDATE_SIGNING_KEY and NOD_UPDATE_PUBLIC_KEY.');
-  }
-  const key = createPrivateKey(privateKey);
-  return (bytes) => {
-    const signature = sign(null, bytes, key).toString('base64');
-    if (!verifyManifest(bytes, signature, publicKey)) {
-      throw new Error(
-        'UPDATE_SIGNING_KEY doesn’t match NOD_UPDATE_PUBLIC_KEY, which installed copies use.',
-      );
-    }
-    return signature;
-  };
-}
 
 async function assemble({ tag, dir, url, notesFile }: Assets) {
   const manifest = await readManifest();
@@ -157,7 +126,7 @@ async function assemble({ tag, dir, url, notesFile }: Assets) {
     const file = path.join(dir, name);
     released.set(name, {
       size: (await stat(file)).size,
-      sha256: await sha256(file),
+      sha256: await sha256File(file),
     });
   }
   const written = new Map<string, Uint8Array>();
