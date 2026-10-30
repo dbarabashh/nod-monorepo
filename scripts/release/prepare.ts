@@ -21,32 +21,37 @@ export function versionIn(manifest: string): string {
 
 export type ReleaseOptions = {
   appDir: string;
-  version: string | undefined;
+  // Names the app in the release branch and commit: desktop, mobile.
+  app: string;
+  // The pnpm package, for the commands the scripts print.
+  filter: string;
+  versionRule: string;
   isReleaseVersion: (version: string) => boolean;
-  usage: string;
   tag: (version: string) => string;
-  commitMessage: string;
-  tagMessage: string;
+  tagMessage: (version: string) => string;
 };
 
-// Bumps the app's package.json, moves the Unreleased changes under the
-// version, and makes a signed commit and tag. It pushes nothing.
-export async function prepareRelease(options: ReleaseOptions): Promise<void> {
-  const { appDir, version } = options;
-  const manifestPath = path.join(appDir, 'package.json');
-  const changelogPath = path.join(appDir, 'CHANGELOG.md');
-  const git = async (...args: string[]) => {
-    const { stdout } = await run('git', args, { cwd: appDir });
+function gitIn(directory: string) {
+  return async (...args: string[]) => {
+    const { stdout } = await run('git', args, { cwd: directory });
     return stdout.trim();
   };
+}
+
+function checkedVersion(
+  options: ReleaseOptions,
+  version: string | undefined,
+  command: string,
+): string {
   if (version === undefined || !options.isReleaseVersion(version)) {
-    throw new Error(options.usage);
+    throw new Error(
+      `Usage: pnpm --filter ${options.filter} ${command} <${options.versionRule}>, e.g. 1.2.0`,
+    );
   }
-  const manifest = await readFile(manifestPath, 'utf8');
-  const current = versionIn(manifest);
-  if (!isNewer(version, current)) {
-    throw new Error(`${version} is not newer than ${current}.`);
-  }
+  return version;
+}
+
+async function onPushedMain(git: ReturnType<typeof gitIn>) {
   if ((await git('branch', '--show-current')) !== 'main') {
     throw new Error('Release from main.');
   }
@@ -57,11 +62,40 @@ export async function prepareRelease(options: ReleaseOptions): Promise<void> {
   if (
     (await git('rev-parse', 'HEAD')) !== (await git('rev-parse', 'origin/main'))
   ) {
-    throw new Error('main differs from origin/main; pull or push first.');
+    throw new Error('main differs from origin/main; pull first.');
   }
+}
+
+async function tagExists(git: ReturnType<typeof gitIn>, tag: string) {
+  return (
+    (await git('tag', '--list', tag)) !== '' ||
+    (await git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`)) !== ''
+  );
+}
+
+// main takes changes only through pull requests, so the version and the
+// release notes go to a branch of their own; the tag follows the merge.
+async function prepareRelease(
+  options: ReleaseOptions,
+  input: string | undefined,
+) {
+  const version = checkedVersion(options, input, 'release');
+  const git = gitIn(options.appDir);
+  const manifestPath = path.join(options.appDir, 'package.json');
+  const changelogPath = path.join(options.appDir, 'CHANGELOG.md');
+  const manifest = await readFile(manifestPath, 'utf8');
+  const current = versionIn(manifest);
+  if (!isNewer(version, current)) {
+    throw new Error(`${version} is not newer than ${current}.`);
+  }
+  await onPushedMain(git);
   const tag = options.tag(version);
-  if ((await git('tag', '--list', tag)) !== '') {
+  if (await tagExists(git, tag)) {
     throw new Error(`Tag ${tag} already exists.`);
+  }
+  const branch = `release/${options.app}-${version}`;
+  if ((await git('branch', '--list', branch)) !== '') {
+    throw new Error(`Branch ${branch} already exists.`);
   }
 
   const changelog = releaseChangelog(
@@ -69,6 +103,7 @@ export async function prepareRelease(options: ReleaseOptions): Promise<void> {
     version,
     new Date().toISOString().slice(0, 10),
   );
+  await git('switch', '--create', branch);
   try {
     await writeFile(changelogPath, changelog);
     await writeFile(
@@ -79,16 +114,58 @@ export async function prepareRelease(options: ReleaseOptions): Promise<void> {
       throw new Error('Could not set the version in package.json.');
     }
     await git('add', manifestPath, changelogPath);
-    await git('commit', '--gpg-sign', '--message', options.commitMessage);
+    await git(
+      'commit',
+      '--gpg-sign',
+      '--message',
+      `release ${options.app} ${version}`,
+    );
   } catch (error) {
     await git('restore', '--staged', '--worktree', manifestPath, changelogPath);
+    await git('switch', 'main');
+    await git('branch', '--delete', branch);
     throw error;
   }
   await git('verify-commit', 'HEAD');
-  await git('tag', '--sign', tag, '--message', options.tagMessage);
-  await git('verify-tag', tag);
 
   console.log(
-    `Tagged ${tag}. Check it, then push it to start the release:\n\n  git push --atomic origin main ${tag}\n`,
+    `Committed release ${options.app} ${version} on ${branch}. Push it and open a pull request:\n\n  git push --set-upstream origin ${branch}\n  gh pr create --base main --title "Release ${options.app} ${version}"\n\nOnce it is merged, tag the merge on main:\n\n  pnpm --filter ${options.filter} release:tag ${version}\n`,
   );
+}
+
+// The merged release commit gets the signed tag that starts the workflow.
+async function tagRelease(options: ReleaseOptions, input: string | undefined) {
+  const version = checkedVersion(options, input, 'release:tag');
+  const git = gitIn(options.appDir);
+  await onPushedMain(git);
+  const current = versionIn(
+    await readFile(path.join(options.appDir, 'package.json'), 'utf8'),
+  );
+  if (current !== version) {
+    throw new Error(
+      `main is at ${current}; merge the release pull request for ${version} first.`,
+    );
+  }
+  const tag = options.tag(version);
+  if (await tagExists(git, tag)) {
+    throw new Error(`Tag ${tag} already exists.`);
+  }
+  await git('tag', '--sign', tag, '--message', options.tagMessage(version));
+  await git('verify-tag', tag);
+  console.log(
+    `Tagged ${tag}. Check it, then push it to start the release:\n\n  git push origin ${tag}\n`,
+  );
+}
+
+// `release <version>` prepares the pull request, `tag <version>` tags its
+// merge.
+export function runRelease(options: ReleaseOptions, args: string[]): void {
+  const [command, version] = args;
+  (command === 'tag'
+    ? tagRelease(options, version)
+    : prepareRelease(options, command)
+  ).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }

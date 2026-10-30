@@ -49,6 +49,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "test": "node --test \"src/**/*.test.ts\" \"scripts/**/*.test.mts\"",
     "release": "node scripts/release/prepare.mts",
+    "release:tag": "node scripts/release/prepare.mts tag",
     "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts",
     "lint:fix": "oxlint --fix && oxfmt --write"
   },

@@ -46,19 +46,27 @@ became it, for example a release published from the web form.
 
 ## Release
 
-1. On `main`, with a clean tree, list the changes under `## Unreleased` in
-   `apps/mobile/CHANGELOG.md`, in words a user understands.
-2. Run `pnpm --filter nod-mobile release <major.minor.patch>` (each part below
-   1000). It bumps `apps/mobile/package.json`, moves the Unreleased list under
-   the version, commits `release mobile <version>` and makes a signed tag. It
-   pushes nothing.
-3. Check the commit and tag (`git show`, `git verify-tag mobile-v<version>`),
-   then `git push --atomic origin main mobile-v<version>`.
-4. Approve the `release` environment when the workflow asks.
-5. When the draft appears, install its APK on an Android phone that runs the
+`main` takes changes only through pull requests, so a release is a pull
+request first and a tag on its merge after, as for desktop.
+
+1. List the changes under `## Unreleased` in `apps/mobile/CHANGELOG.md`, in
+   words a user understands, and merge that into `main`.
+2. On an up-to-date `main` with a clean tree, run
+   `pnpm --filter nod-mobile release <major.minor.patch>` (each part below
+   1000). It creates `release/mobile-<version>`, bumps
+   `apps/mobile/package.json`, moves the Unreleased list under the version and
+   commits `release mobile <version>` there. It pushes nothing.
+3. Push the branch and open a pull request (the script prints both commands),
+   and merge it once its checks pass.
+4. On `main`, pulled to the merge, run
+   `pnpm --filter nod-mobile release:tag <version>`, check the tag
+   (`git verify-tag mobile-v<version>`), then
+   `git push origin mobile-v<version>`.
+5. Approve the `release` environment when the workflow asks.
+6. When the draft appears, install its APK on an Android phone that runs the
    previous release, from Settings → Updates or by opening the APK, and on
    one without Nod. Check it opens, records and syncs.
-6. Check the draft's files are the ones the workflow made:
+7. Check the draft's files are the ones the workflow made:
 
    ```sh
    gh release view mobile-v<version> --json assets \
@@ -67,10 +75,10 @@ became it, for example a release published from the web form.
    diff <(grep -v '  SHA256SUMS$' /tmp/listed) /tmp/sums && echo ok
    ```
 
-7. Approve the `release` environment for the run's `release` job. It
+8. Approve the `release` environment for the run's `release` job. It
    publishes the draft; installed copies find it at their next check.
 
-8. iOS: archive the same version in Xcode (`pnpm ios` generates the project
+9. iOS: archive the same version in Xcode (`pnpm ios` generates the project
    with `NOD_MOBILE_APP_ID` set), upload it to App Store Connect, and submit
    it for review. The App Store build number comes from the version.
 
@@ -97,9 +105,9 @@ patch version. Never replace a published file.
    `ANDROID_KEY_PASSWORD`. Keep the keystore offline, encrypted, in two
    places; losing it strands every installed copy.
 
-3. **Environments and tags.** Add `mobile-v*` to the deployment tag rules of
-   the `release` and `signing` environments, and protect `mobile-v*` tags with
-   the ruleset that protects `desktop-v*`.
+3. **Environments.** Add `mobile-v*` to the deployment tag rules of the
+   `release` and `signing` environments. The `protect-tags` ruleset the
+   `release-desktop` skill describes already keeps `mobile-v*` tags to admins.
 4. **Google developer verification.** Register the developer account, the app
    ID and the certificate's fingerprint with Google before verification
    applies to sideloaded apps where Nod is used.

@@ -106,7 +106,8 @@ pnpm android       # dev build on an Android emulator or device (expo run:androi
 pnpm start         # Metro for an installed dev build
 pnpm typecheck     # tsc --noEmit, strict
 pnpm test          # node:test over src/**/*.test.ts and scripts/**/*.test.mts
-pnpm release <version>  # bump, changelog, signed tag (skill release-mobile)
+pnpm release <version>  # bump and changelog on a release branch (skill release-mobile)
+pnpm release:tag <version>  # the signed tag on main once the release is merged
 pnpm lint          # oxlint + oxfmt --check + type-assertion check
 pnpm lint:fix      # oxlint --fix + oxfmt --write
 pnpm exec expo install <package>   # add a package at the SDK's version
