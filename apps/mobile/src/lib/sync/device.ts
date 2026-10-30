@@ -1,4 +1,5 @@
 import { fetch } from 'expo/fetch';
+import { abortAfter } from '../abort-after.ts';
 import { File } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import {
@@ -56,15 +57,6 @@ import type { StoredVault, VaultStorage } from './session.ts';
 
 const suffix = '.bin';
 const relayTimeoutMs = 60_000;
-
-// Not cleared when the reply arrives: it also has to stop a body that never
-// finishes, which is read after fetch returns. Aborting a finished request
-// does nothing.
-function abortAfter(ms: number): AbortSignal {
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), ms);
-  return controller.signal;
-}
 
 // A request that never ends would hold every later round behind it.
 // Relays, including ones named by a link, get no cookies from the app and

@@ -11,6 +11,11 @@ export const keySlotFile = () => new File(Paths.document, 'data-key-slot');
 export const publishedDirectory = () =>
   new Directory(Paths.document, 'published');
 export const recordingFile = () => new File(Paths.document, 'recording.json');
+export const updatesFile = () => new File(Paths.document, 'updates.json');
+// A downloaded update is a cache: it isn't the user's data, and goes once
+// it is installed.
+export const updateDownloadsDirectory = () =>
+  new Directory(Paths.cache, 'updates');
 export const sharingDirectory = () => new Directory(Paths.document, 'sharing');
 export const sharesDirectory = (vaultId: string) =>
   new Directory(sharingDirectory(), vaultId);
@@ -51,5 +56,6 @@ export async function keepStorageOutOfBackup(): Promise<void> {
     ensureDirectory(publishedDirectory()),
     keepOutOfBackup(keySlotFile()),
     keepOutOfBackup(recordingFile()),
+    keepOutOfBackup(updatesFile()),
   ]);
 }

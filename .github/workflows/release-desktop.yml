@@ -34,32 +34,11 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: node apps/desktop/scripts/release/assemble.ts check "$TAG"
-      # A ruleset can keep others from pushing desktop-v* tags, but not require
-      # them to be signed or to point at main, so the workflow checks both.
       - name: The tag is signed and on main
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: |
-          ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG")"
-          if [ "$(jq -r .object.type <<<"$ref")" != tag ]; then
-            echo "::error::$TAG is a lightweight tag; release with a signed tag"
-            exit 1
-          fi
-          tag="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$(jq -r .object.sha <<<"$ref")")"
-          if [ "$(jq -r .verification.verified <<<"$tag")" != true ]; then
-            echo "::error::GitHub could not verify the signature of $TAG"
-            exit 1
-          fi
-          if [ "$(jq -r .object.sha <<<"$tag")" != "$GITHUB_SHA" ]; then
-            echo "::error::$TAG does not point at the commit being built"
-            exit 1
-          fi
-          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
-          if [ "$status" != identical ] && [ "$status" != behind ]; then
-            echo "::error::$TAG points at a commit that is not on main"
-            exit 1
-          fi
+        run: .github/scripts/verify-release-tag.sh "$GITHUB_REPOSITORY" "$TAG" "$GITHUB_SHA"
       # This token can't see drafts; a leftover draft makes publish fail instead.
       - name: No published release exists for the tag yet
         env:

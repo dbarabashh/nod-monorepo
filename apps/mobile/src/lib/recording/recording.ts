@@ -9,6 +9,7 @@ import { AudioCapture } from '../../../modules/audio-capture/index.ts';
 import { dateTimeFormat } from '../formats.ts';
 import { keepOutOfBackup, recordingFile } from '../storage.ts';
 import { meetingStore, setRecording, whenLoaded } from '../sync/sync.ts';
+import { setRecording as setUpdatesRecording } from '../updates/updates.ts';
 import { installedModel, modelPath } from './models.ts';
 import { levelFromPcm } from './audio-level.ts';
 import { clearRecordingActivities, showRecordingActivity } from './activity.ts';
@@ -228,6 +229,7 @@ const recorder = createPhoneRecorder({
   },
   onRecording: (meetingId) => {
     setRecording(meetingId !== null);
+    setUpdatesRecording(meetingId !== null);
     void markRecording(meetingId);
   },
 });

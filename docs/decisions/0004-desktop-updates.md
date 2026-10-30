@@ -34,7 +34,7 @@ or a bucket; none of those we looked at sign their feeds.
   the version, the tag and the size and SHA-256 of every file, and
   `latest.json.sig` is its Ed25519 signature. The app ignores a manifest that
   the key didn't sign, that names another tag, or that isn't newer than the
-  running version (semantic versioning, `src/main/updates/version.ts`), since
+  running version (semantic versioning, `@nod/core/updates`), since
   Squirrel.Mac would install an older release as readily as a newer one.
 - **Windows updates are checked by Nod, not Squirrel.** Nod downloads
   `RELEASES` and the package, checks them against the signed manifest, and

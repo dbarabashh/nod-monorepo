@@ -21,9 +21,12 @@ packages/automerge-native/  Automerge on a Rust backend for mobile, where
                  Hermes has no WebAssembly (an Expo module plus a JS shim)
 docs/decisions/  numbered decision records; read 0001-sync.md before touching
                  meetings storage or sync, 0003-sharing.md before touching
-                 identity, shared vaults or shared notes, and
-                 0004-desktop-updates.md before touching desktop releases
-scripts/         repository tooling shared by every package
+                 identity, shared vaults or shared notes,
+                 0004-desktop-updates.md before touching desktop releases, and
+                 0005-mobile-releases.md before touching mobile releases or
+                 in-app updates
+scripts/         repository tooling shared by every package, including the
+                 release helpers both apps' release scripts use
 ```
 
 Dependencies point one way: `apps/* → @nod/core`. Core never imports an app,
@@ -98,6 +101,7 @@ editing it.
   - `write-tests`: write or update node:test unit tests without false positives
   - `build-macos`: build the desktop DMG and ZIP locally and verify them
   - `release-desktop`: release a desktop version through the signed-tag workflow
+  - `release-mobile`: release a phone version (Android APK, App Store) through the signed-tag workflow
 
   New skills go in `.agents/skills/<name>/` with a matching symlink.
 
@@ -132,7 +136,8 @@ One package only: `pnpm --filter <name> <script>` (`nod-desktop`,
 `nod-mobile`, `@nod/core`, `@nod/relay`). CI (`.github/workflows/ci.yml`) runs the same three
 on every push to `main` and every pull request. Desktop releases run from a
 signed `desktop-v*` tag (`.github/workflows/release-desktop.yml`, skill
-`release-desktop`). Dependabot
+`release-desktop`), and phone releases from a signed `mobile-v*` tag
+(`.github/workflows/release-mobile.yml`, skill `release-mobile`). Dependabot
 (`.github/dependabot.yml`) proposes npm and GitHub Actions updates weekly; see
 `dependencies.md`.
 

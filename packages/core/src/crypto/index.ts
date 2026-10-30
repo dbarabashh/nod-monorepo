@@ -36,7 +36,7 @@ export {
   signedFileVersion,
 } from './signed-file.ts';
 export type { OpenedSignedFile, SignedFileHeader } from './signed-file.ts';
-export { sign, verify } from './signing.ts';
+export { sign, verify, verifyUnframed } from './signing.ts';
 export type { SigningPurpose } from './signing.ts';
 export {
   deriveKey,

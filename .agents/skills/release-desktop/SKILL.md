@@ -63,6 +63,11 @@ or names another tag, is ignored. Then:
 
 **Never mark another release on this repository as latest** (a relay release,
 for example), or stable copies stop finding new versions.
+`.github/workflows/keep-desktop-latest.yml` runs on every published or edited
+release and makes the newest desktop release latest again if anything else
+became it. To withdraw a published desktop release, mark it a prerelease: that
+workflow never puts it back, and stable copies stop finding it (test copies
+still see it, so release a fix promptly).
 
 ## Release
 

@@ -68,9 +68,19 @@ everything, from the cloud and from a transfer to a new phone. Speech models run
 work from an app in the background. `buffer` is there only because whisper.rn
 imports it.
 
+Android copies update themselves from the app's releases on GitHub
+(`docs/decisions/0005-mobile-releases.md`): `src/lib/updates/find.ts` finds the
+newest `mobile-v…` release and checks its manifest against the release key
+with `@nod/core/updates`, and `updates.ts` downloads the APK, checks its size
+and SHA-256, and opens Android's installer (`expo-intent-launcher`). iOS
+updates come from the App Store and never check. `app.config.js` sets what a
+release build needs from the environment: the app ID (`NOD_MOBILE_APP_ID`),
+the update source (`NOD_UPDATE_URL`, `NOD_UPDATE_PUBLIC_KEY`) and the build
+number derived from the version in `package.json`.
+
 Rules for this app: `expo.md` and `styling-mobile.md` in `.agents/rules`, plus
 the repository-wide ones listed in the root `AGENTS.md`. Skills:
-`add-mobile-feature`, `add-mobile-ui-component`.
+`add-mobile-feature`, `add-mobile-ui-component`, `release-mobile`.
 
 ## Expo has changed — do not trust your training data
 
@@ -95,7 +105,8 @@ pnpm ios           # dev build on the iOS simulator (expo run:ios)
 pnpm android       # dev build on an Android emulator or device (expo run:android)
 pnpm start         # Metro for an installed dev build
 pnpm typecheck     # tsc --noEmit, strict
-pnpm test          # node:test over src/**/*.test.ts (Node >= 24)
+pnpm test          # node:test over src/**/*.test.ts and scripts/**/*.test.mts
+pnpm release <version>  # bump, changelog, signed tag (skill release-mobile)
 pnpm lint          # oxlint + oxfmt --check + type-assertion check
 pnpm lint:fix      # oxlint --fix + oxfmt --write
 pnpm exec expo install <package>   # add a package at the SDK's version
@@ -154,7 +165,8 @@ promote shared code to `components/ui` or `lib` first.
 - The app targets iOS and Android. Gate platform behavior on `Platform.OS`;
   never assume one of them.
 - Never create or edit `ios/` or `android/`. They are generated from
-  `app.json` and config plugins (Continuous Native Generation).
+  `app.json`, `app.config.js` and config plugins (Continuous Native
+  Generation).
 - Build UI from `components/ui`. Feature styles only lay out the feature,
   never restyle a primitive.
 - Don't call impure functions (`new Date()`, `Math.random()`) during render.

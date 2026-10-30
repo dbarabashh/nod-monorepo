@@ -1,0 +1,275 @@
+name: Release mobile
+
+on:
+  push:
+    tags: ['mobile-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+# The Android half of the phone release; the iOS app ships through the App
+# Store. As for desktop, jobs that install dependencies never see a secret,
+# and jobs that hold one (the `signing` environment) install nothing.
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - name: Tag matches the version and has release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node apps/mobile/scripts/release/assemble.mts check "$TAG"
+      - name: The tag is signed and on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: .github/scripts/verify-release-tag.sh "$GITHUB_REPOSITORY" "$TAG" "$GITHUB_SHA"
+      - name: No published release exists for the tag yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists"
+            exit 1
+          fi
+      - name: The app ID, the release key and the APK certificate are set
+        env:
+          NOD_MOBILE_APP_ID: ${{ vars.NOD_MOBILE_APP_ID }}
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          NOD_ANDROID_CERT_SHA256: ${{ vars.NOD_ANDROID_CERT_SHA256 }}
+        run: |
+          if [ -z "$NOD_MOBILE_APP_ID" ] || [ -z "$NOD_UPDATE_PUBLIC_KEY" ] || [ -z "$NOD_ANDROID_CERT_SHA256" ]; then
+            echo "::error::Set the NOD_MOBILE_APP_ID, NOD_UPDATE_PUBLIC_KEY and NOD_ANDROID_CERT_SHA256 repository variables"
+            exit 1
+          fi
+
+  # Builds alongside the checks; signing waits for both.
+  build-android:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      NOD_MOBILE_APP_ID: ${{ vars.NOD_MOBILE_APP_ID }}
+      NOD_UPDATE_URL: https://github.com/${{ github.repository }}/releases
+      NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          cache: false
+          require-lockfile: true
+      # The runner's Android SDK, JDK and rustup; the NDK React Native builds
+      # with, which the Automerge library is compiled with too.
+      - name: Android NDK and Java
+        run: |
+          ndk="$(grep -oP '^ndkVersion\s*=\s*"\K[^"]+' node_modules/react-native/gradle/libs.versions.toml)"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >>"$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >>"$GITHUB_ENV"
+      - name: Generate the Android project
+        run: pnpm --filter nod-mobile exec expo prebuild --platform android --no-install --clean
+      # Phones and Chromebooks; 32-bit x86 Android is gone from devices.
+      - name: Build the release APK, unsigned
+        working-directory: apps/mobile/android
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+          mkdir ../../../unsigned
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../../unsigned/unsigned.apk
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-android
+          path: unsigned/
+          if-no-files-found: error
+          retention-days: 3
+
+  # The keystore never meets a dependency: zipalign, apksigner and aapt2 come
+  # with the runner's Android SDK.
+  sign-android:
+    needs: [checks, build-android]
+    environment: signing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unsigned-android
+          path: unsigned
+      - name: Android build tools
+        run: |
+          version="$(ls "$ANDROID_HOME/build-tools" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          echo "BUILD_TOOLS=$ANDROID_HOME/build-tools/$version" >>"$GITHUB_ENV"
+      - name: Sign
+        env:
+          TAG: ${{ github.ref_name }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          keystore="$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$keystore"' EXIT
+          base64 --decode <<<"$ANDROID_KEYSTORE_BASE64" >"$keystore"
+          mkdir release
+          "$BUILD_TOOLS/zipalign" -P 16 -f 4 unsigned/unsigned.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$keystore" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "release/Nod-${TAG#mobile-v}.apk" \
+            aligned.apk
+      # Android installs an update only over an app signed with the same
+      # certificate, and the build must be the one the tag names.
+      - name: The APK is signed with the release certificate and is this version
+        env:
+          TAG: ${{ github.ref_name }}
+          NOD_MOBILE_APP_ID: ${{ vars.NOD_MOBILE_APP_ID }}
+          NOD_ANDROID_CERT_SHA256: ${{ vars.NOD_ANDROID_CERT_SHA256 }}
+        run: |
+          version="${TAG#mobile-v}"
+          apk="release/Nod-$version.apk"
+          # apksigner names signers differently across build-tools versions
+          # ("Signer #1", "V3.0 Signer"), so every certificate digest it
+          # prints is collected, and there must be exactly the one expected.
+          certs="$("$BUILD_TOOLS/apksigner" verify --print-certs "$apk")"
+          digests="$(grep -oP 'certificate SHA-256 digest: \K[0-9a-f]{64}' <<<"$certs" | sort -u || true)"
+          expected="$(tr -d ':' <<<"$NOD_ANDROID_CERT_SHA256" | tr 'A-F' 'a-f')"
+          if [ "$digests" != "$expected" ]; then
+            echo "::error::The APK isn't signed by the certificate NOD_ANDROID_CERT_SHA256 names"
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<<"$version"
+          code=$((major * 1000000 + minor * 1000 + patch))
+          "$BUILD_TOOLS/aapt2" dump badging "$apk" >badging.txt
+          package="$(head -1 badging.txt)"
+          echo "$package"
+          for field in "name='$NOD_MOBILE_APP_ID'" "versionCode='$code'" "versionName='$version'"; do
+            if ! grep -qF " $field " <<<"$package "; then
+              echo "::error::The APK isn't $NOD_MOBILE_APP_ID $version ($code): no $field"
+              exit 1
+            fi
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-android
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    needs: sign-android
+    environment: signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24.22.0
+          install: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-android
+          path: assembled/release
+      - name: Signed manifest and checksums
+        env:
+          TAG: ${{ github.ref_name }}
+          NOD_UPDATE_PUBLIC_KEY: ${{ vars.NOD_UPDATE_PUBLIC_KEY }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          node apps/mobile/scripts/release/assemble.mts assets \
+            "$TAG" assembled/release assembled/notes.md
+          cat assembled/release/SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: assembled
+          path: assembled/
+          if-no-files-found: error
+          retention-days: 7
+
+  # GitHub's latest release belongs to the desktop app, whose installed
+  # copies update from it, so a phone release is never marked latest. It is a
+  # draft until a person approves the release job below, which publishes it;
+  # keep-desktop-latest.yml repairs a release published any other way.
+  publish:
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: assembled
+          path: assembled
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: ${{ !github.event.repository.private }}
+        with:
+          subject-path: assembled/release/*
+      # This job's token sees drafts, so a re-run can't add a second one.
+      - name: Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          existing="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$TAG\") | .id")"
+          if [ -n "$existing" ]; then
+            echo "::error::A release or draft for $TAG already exists"
+            exit 1
+          fi
+          gh release create "$TAG" assembled/release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --latest=false \
+            --verify-tag \
+            --title "Nod ${TAG#mobile-v} for Android" \
+            --notes-file assembled/notes.md
+
+  # Waits for a person to approve the `release` environment once the draft's
+  # APK has been tried on a phone, then publishes it without making it latest.
+  release:
+    needs: publish
+    environment: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      # An edit made with this job's token starts no other workflow, so the
+      # latest release is checked, and repaired, here.
+      - name: Publish, not as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+          .github/scripts/keep-desktop-latest.sh "$GITHUB_REPOSITORY"

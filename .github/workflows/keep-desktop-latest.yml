@@ -1,0 +1,34 @@
+name: Keep desktop latest
+
+# Installed desktop copies update from GitHub's latest release, and there is
+# one per repository. Publishing any other release from the web form marks
+# it latest unless the box is cleared, so whenever a release is published or
+# edited, the newest desktop release is made latest again. To withdraw a
+# desktop release, mark it a prerelease; it is then never put back.
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-desktop-latest
+  cancel-in-progress: false
+
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: The newest desktop release is latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/keep-desktop-latest.sh "$GITHUB_REPOSITORY"

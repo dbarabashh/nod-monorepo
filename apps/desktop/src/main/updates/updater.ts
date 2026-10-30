@@ -1,13 +1,8 @@
 import type { UpdateState, UpdateStatus } from '../../shared/ipc.ts';
-import {
-  manifestFile,
-  pickTestRelease,
-  releaseTag,
-  signatureFile,
-  type UpdateFeed,
-} from './feed.ts';
+import { isNewer, manifestFile, signatureFile } from '@nod/core/updates';
+import { releaseTag, type UpdateFeed } from './feed.ts';
 import { parseManifest, verifyManifest, type Manifest } from './manifest.ts';
-import { isNewer } from './version.ts';
+import { pickTestRelease } from './test-channel.ts';
 
 export type SquirrelEvent =
   | { kind: 'downloaded' }
