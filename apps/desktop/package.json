@@ -14,6 +14,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "release": "node scripts/release/prepare.ts",
+    "release:tag": "node scripts/release/prepare.ts tag",
     "release:key": "node scripts/release/keygen.ts",
     "lint": "oxlint && oxfmt --check && node ../../scripts/check-no-type-assertions.ts src scripts forge.config.mts vite.main.config.mts vite.preload.config.mts vite.renderer.config.mts",
     "lint:fix": "oxlint --fix && oxfmt --write",

@@ -66,23 +66,32 @@ for example), or stable copies stop finding new versions.
 
 ## Release
 
-1. On `main`, with a clean tree, make sure `apps/desktop/CHANGELOG.md` lists
-   the changes under `## Unreleased`, in words a user understands.
-2. Run `pnpm --filter nod-desktop release <major.minor.patch>`. It checks the
-   version is newer, moves the Unreleased list under the version, sets
-   `apps/desktop/package.json`, commits `release desktop <version>` and makes
-   a signed tag. It pushes nothing.
-3. Check the commit and tag (`git show`, `git verify-tag desktop-v<version>`),
-   then `git push --atomic origin main desktop-v<version>`, so the tag never
-   lands without the commit.
-4. Approve the `release` environment when the workflow asks. SignPath may ask
+`main` takes changes only through pull requests, so a release is a pull
+request first and a tag on its merge after.
+
+1. Make sure `apps/desktop/CHANGELOG.md` lists the changes under
+   `## Unreleased`, in words a user understands, and that it is merged into
+   `main`.
+2. On an up-to-date `main` with a clean tree, run
+   `pnpm --filter nod-desktop release <major.minor.patch>`. It checks the
+   version is newer, creates `release/desktop-<version>`, moves the Unreleased
+   list under the version, sets `apps/desktop/package.json` and commits
+   `release desktop <version>` there. It pushes nothing.
+3. Push the branch and open a pull request (the script prints both commands).
+   Once its checks pass, merge it.
+4. On `main`, pulled to the merge, run
+   `pnpm --filter nod-desktop release:tag <version>`. It checks `main` carries
+   that version and makes the signed tag `desktop-v<version>` on the merge.
+   Check it (`git verify-tag desktop-v<version>`), then
+   `git push origin desktop-v<version>` to start the release.
+5. Approve the `release` environment when the workflow asks. SignPath may ask
    for its own approval of each signing request too.
-5. When the test release appears, on a Mac and a Windows PC that run the
+6. When the test release appears, on a Mac and a Windows PC that run the
    previous version with Settings → Updates → "Get test versions" on, choose
    Check now, wait for Restart to update, restart, and confirm the new
    version. Check it opens, records and syncs. On Linux, install the test
    release's package over the previous one.
-6. Check the draft's files are the ones the workflow made: every digest
+7. Check the draft's files are the ones the workflow made: every digest
    GitHub lists must match `SHA256SUMS` in the same release.
 
    ```sh
@@ -92,7 +101,7 @@ for example), or stable copies stop finding new versions.
    diff <(grep -v '  SHA256SUMS$' /tmp/listed) /tmp/sums && echo ok
    ```
 
-7. Publish the draft, leaving "Set as latest" on. Its files are the same as
+8. Publish the draft, leaving "Set as latest" on. Its files are the same as
    the test release's, byte for byte, except the feeds that name the tag.
    Installed copies find it within hours, and at once with Check now.
 
@@ -129,9 +138,18 @@ Linux packages each rewrite them differently. Test releases take their place.
      tag with a changed workflow (your account, or an admin who bypasses the
      ruleset) gets the secrets. Add yourself as a reviewer too if that
      matters more than approving each signing step of a release.
-3. **Tags and releases.** Protect `desktop-v*` tags with a ruleset so only
-   you can create, move or delete them. Turn on immutable releases (Settings
-   → General → Releases). Keep every other workflow at `contents: read`.
+3. **Branches, tags and releases.** Rulesets (Settings → Rules):
+   - `protect-main`: `main` takes changes only through pull requests and
+     can't be force-pushed or deleted.
+   - `protect-tags`: every tag but `desktop-test-v*` can be created, moved or
+     deleted only by an admin, so only you start a release.
+   - `protect-test-tags`: `desktop-test-v*` tags can be created (the workflow
+     creates one when it publishes the test release) but not moved or
+     deleted.
+
+   Turn on immutable releases (Settings → General → Releases). Keep every
+   other workflow at `contents: read`.
+
 4. **Repository variables:** `NOD_RELAY_URL` (as in the `build-macos` skill),
    `NOD_UPDATE_PUBLIC_KEY`, `NOD_BUNDLE_ID` (the macOS bundle ID; never
    change it after a release, or Squirrel.Mac refuses the update), and the SignPath `SIGNPATH_ORGANIZATION_ID`,
