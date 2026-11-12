@@ -23,5 +23,5 @@ export function findInTranscript(
 }
 
 function escapeRegExp(text: string): string {
-  return text.replace(/[\\^$.*+?()[\]{}|/-]/gu, '\\$&');
+  return text.replace(/[\\^$.*+?()[\]{}|/]/gu, '\\$&');
 }

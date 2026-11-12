@@ -355,7 +355,7 @@
     inline-size: var(--field-width-md);
   }
 
-  .transcript-search__count {
+  .transcript-search__count:not(:empty) {
     padding-inline: var(--space-1);
     color: var(--color-text-muted);
     font-size: var(--text-sm);
@@ -394,7 +394,7 @@
     display: grid;
     gap: var(--space-0-5);
     scroll-margin-block: calc(var(--meeting-toolbar-size) + var(--space-4))
-      var(--space-6);
+      calc(var(--space-12) * 2);
   }
 
   .meeting-detail__speaker {

@@ -44,4 +44,20 @@ describe('findInTranscript', () => {
     ]);
     assert.deepEqual(findInTranscript(lines, '.*'), []);
   });
+
+  it('finds words with hyphens and other punctuation', () => {
+    const notes = [
+      { id: 'd', text: 'A follow-up e-mail (re: Q3/Q4) at 10:30?' },
+    ];
+    assert.deepEqual(findInTranscript(notes, 'follow-up'), [
+      { lineId: 'd', start: 2, end: 11 },
+    ]);
+    assert.deepEqual(findInTranscript(notes, 'Q3/Q4) at'), [
+      { lineId: 'd', start: 24, end: 33 },
+    ]);
+    assert.deepEqual(findInTranscript(notes, '-'), [
+      { lineId: 'd', start: 8, end: 9 },
+      { lineId: 'd', start: 13, end: 14 },
+    ]);
+  });
 });

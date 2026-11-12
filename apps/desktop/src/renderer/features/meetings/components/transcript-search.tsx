@@ -30,6 +30,19 @@ export function TranscriptSearch({
   const matches = useMemo(() => findInTranscript(lines, query), [lines, query]);
   const current = matches.length === 0 ? -1 : position % matches.length;
   const painted = useRef<Painted | null>(null);
+  const [repaints, setRepaints] = useState(0);
+
+  useEffect(() => {
+    const root = list.current;
+    if (!root) {
+      return;
+    }
+    // Reverting an edit replaces a line's text node without changing its
+    // text, which leaves the highlight ranges on the detached node.
+    const observer = new MutationObserver(() => setRepaints((n) => n + 1));
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [list]);
 
   useEffect(() => {
     function focusSearch(event: globalThis.KeyboardEvent) {
@@ -37,7 +50,14 @@ export function TranscriptSearch({
         document.documentElement.dataset.platform === 'darwin'
           ? event.metaKey
           : event.ctrlKey;
-      if (mod && !event.altKey && event.key.toLowerCase() === 'f') {
+      if (
+        mod &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !event.isComposing &&
+        !event.defaultPrevented &&
+        event.code === 'KeyF'
+      ) {
         event.preventDefault();
         input.current?.focus();
         input.current?.select();
@@ -66,7 +86,7 @@ export function TranscriptSearch({
       CSS.highlights.delete(matchHighlight);
       CSS.highlights.delete(currentHighlight);
     };
-  }, [list, matches]);
+  }, [list, matches, repaints]);
 
   useEffect(() => {
     const range = painted.current?.ranges[current];
@@ -80,7 +100,7 @@ export function TranscriptSearch({
       active.delete(range);
       others.add(range);
     };
-  }, [matches, current]);
+  }, [matches, current, repaints]);
 
   const reveal = useEffectEvent((index: number) => {
     const lineId = matches[index]?.lineId;
@@ -127,13 +147,15 @@ export function TranscriptSearch({
         onKeyDown={keys}
         className="transcript-search__input"
       />
+      <span className="transcript-search__count" aria-live="polite">
+        {!searching
+          ? ''
+          : matches.length === 0
+            ? 'No matches'
+            : `${current + 1} of ${matches.length}`}
+      </span>
       {searching && (
         <>
-          <span className="transcript-search__count" aria-live="polite">
-            {matches.length === 0
-              ? 'No matches'
-              : `${current + 1} of ${matches.length}`}
-          </span>
           <Button
             variant="ghost"
             size="sm"
