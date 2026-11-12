@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { MeetingDetail, SharedCopyInfo } from '../../../../shared/ipc.ts';
 import {
   Button,
@@ -18,6 +18,7 @@ import {
 import type { MeetingStatus } from '../types.ts';
 import { CopyButton } from './copy-button.tsx';
 import { TranscriptLine } from './transcript-line.tsx';
+import { TranscriptSearch } from './transcript-search.tsx';
 
 export function MeetingTranscript({
   meetingId,
@@ -48,6 +49,7 @@ export function MeetingTranscript({
   );
   const { state } = useAsync(load, subscribe);
   const [tab, setTab] = useState<'summary' | 'transcript' | null>(null);
+  const transcriptList = useRef<HTMLOListElement>(null);
 
   if (state.status !== 'ready') {
     return null;
@@ -146,10 +148,18 @@ export function MeetingTranscript({
                   </p>
                 ) : (
                   <>
-                    <div className="meeting-detail__toolbar">
+                    <div className="meeting-detail__toolbar" data-sticky>
+                      <TranscriptSearch
+                        lines={detail.transcript}
+                        list={transcriptList}
+                      />
                       <CopyButton meetingId={meetingId} part="transcript" />
                     </div>
-                    <ol className="meeting-detail__transcript" data-selectable>
+                    <ol
+                      ref={transcriptList}
+                      className="meeting-detail__transcript"
+                      data-selectable
+                    >
                       {detail.transcript.map((line) => (
                         <TranscriptLine
                           key={line.id}
