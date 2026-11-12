@@ -15,6 +15,11 @@ describe('isAllowedPermissionRequest', () => {
     isMainFrame: true,
     mediaTypes: ['audio'],
   };
+  const screen = {
+    ...audio,
+    permission: 'display-capture',
+    mediaTypes: ['video', 'audio'],
+  };
 
   it('allows audio-only media for the app page', () => {
     assert.equal(
@@ -49,21 +54,40 @@ describe('isAllowedPermissionRequest', () => {
       return true;
     };
     isAllowedPermissionRequest(
-      { ...audio, mediaTypes: [], requestingUrl: 'https://example.com/' },
+      { ...screen, requestingUrl: 'https://example.com/' },
+      appUrl,
+      pass,
+    );
+    isAllowedPermissionRequest({ ...screen, isMainFrame: false }, appUrl, pass);
+    isAllowedPermissionRequest(audio, appUrl, pass);
+    isAllowedPermissionRequest({ ...audio, mediaTypes: [] }, appUrl, pass);
+    isAllowedPermissionRequest(
+      { ...screen, permission: 'notifications' },
       appUrl,
       pass,
     );
     isAllowedPermissionRequest(
-      { ...audio, mediaTypes: [], isMainFrame: false },
+      { ...screen, mediaTypes: ['video'] },
       appUrl,
       pass,
     );
-    isAllowedPermissionRequest(audio, appUrl, pass);
     assert.equal(calls, 0);
   });
 
-  it('allows screen capture, which names no media type, only when the app expects it', () => {
-    const screen = { ...audio, mediaTypes: [] };
+  it('refuses a screen capture without audio, which the app never asks for', () => {
+    for (const mediaTypes of [[], ['video']]) {
+      assert.equal(
+        isAllowedPermissionRequest(
+          { ...screen, mediaTypes },
+          appUrl,
+          () => true,
+        ),
+        false,
+      );
+    }
+  });
+
+  it('allows screen capture only when the app expects it', () => {
     assert.equal(
       isAllowedPermissionRequest(screen, appUrl, () => true),
       true,
@@ -85,7 +109,15 @@ describe('isAllowedPermissionRequest', () => {
     );
     assert.equal(
       isAllowedPermissionRequest(
-        { ...audio, mediaTypes: [], requestingUrl: 'https://example.com/' },
+        { ...audio, mediaTypes: [] },
+        appUrl,
+        () => true,
+      ),
+      false,
+    );
+    assert.equal(
+      isAllowedPermissionRequest(
+        { ...screen, requestingUrl: 'https://example.com/' },
         appUrl,
         () => true,
       ),
@@ -112,18 +144,17 @@ describe('isAllowedPermissionRequest', () => {
     );
   });
 
-  it('refuses every other permission', () => {
+  it('refuses every other permission, even while a screen capture is expected', () => {
     for (const permission of [
       'notifications',
       'geolocation',
-      'display-capture',
       'clipboard-read',
     ]) {
       assert.equal(
         isAllowedPermissionRequest(
-          { ...audio, permission },
+          { ...screen, permission },
           appUrl,
-          () => false,
+          () => true,
         ),
         false,
       );
