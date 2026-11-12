@@ -43,8 +43,22 @@ const gemma4 =
   'https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf/resolve/29d097773436b69ff9feafd636ab4cf873786537';
 const gemma4Moe =
   'https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/resolve/d1c082be9cf3c8a514acf63b8761f4b41935842e';
+const gemma4E2b =
+  'https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/675cff42a74c774d6cb76f76d8eacb49b48c9b93';
+const gemma4E4b =
+  'https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/4b4a2c1d584be7264f87aac328a1bc739ce81b6c';
+const gemma4Dense =
+  'https://huggingface.co/google/gemma-4-31B-it-qat-q4_0-gguf/resolve/59dde24573e7e61570dba08b18a2e1fe246955ed';
+const qwen35Medium =
+  'https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/3885219b6810b007914f3a7950a8d1b469d598a5';
+const qwen36Moe =
+  'https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/a483e9e6cbd595906af30beda3187c2663a1118c';
 
 const gigabyte = 1024 ** 3;
+
+// Qwen3.5, Qwen3.6 and Gemma 4 keep full attention in few layers, so a context
+// that holds a two-hour meeting costs less memory than Qwen3 4B's 16k.
+const longMeetingTokens = 65_536;
 
 export const vadFile: ModelFile = {
   name: 'ggml-silero-v6.2.0.bin',
@@ -72,6 +86,27 @@ export const modelCatalog: ModelDefinition[] = [
         sizeBytes: 668_757_119,
         sha256:
           '4d64e9e96c2792186d072fde0034df0ad670cf680a2f53069052ead827fd600e',
+      },
+      vadFile,
+    ],
+  },
+  {
+    id: 'parakeet-tdt-0.6b-v3-q4',
+    kind: 'speech',
+    engine: 'parakeet',
+    name: 'Parakeet TDT 0.6B v3 Small',
+    description:
+      'A smaller download of the same model, for phones and older computers. Slightly less accurate.',
+    languages: '25 European languages',
+    license: 'CC BY 4.0, NVIDIA; converted to GGUF and quantized by ggml-org',
+    recommended: false,
+    files: [
+      {
+        name: 'ggml-parakeet-tdt-0.6b-v3-q4_k.bin',
+        url: `${parakeet}/ggml-parakeet-tdt-0.6b-v3-q4_k.bin`,
+        sizeBytes: 415_611_879,
+        sha256:
+          '8b205b8b39c6535e153de6fb11c51db46125d45c4f16ba496fe41a0fe71b885e',
       },
       vadFile,
     ],
@@ -146,7 +181,7 @@ export const modelCatalog: ModelDefinition[] = [
     languages: '200+ languages',
     license: 'Apache 2.0, Qwen',
     recommended: false,
-    contextTokens: 32_768,
+    contextTokens: longMeetingTokens,
     minMemoryBytes: 8 * gigabyte,
     files: [
       {
@@ -159,15 +194,37 @@ export const modelCatalog: ModelDefinition[] = [
     ],
   },
   {
+    id: 'gemma-4-e2b',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Gemma 4 E2B',
+    description:
+      'Small, for older computers, and better than Qwen3.5 2B at meetings not in English.',
+    languages: '140+ languages',
+    license: 'Apache 2.0, Google',
+    recommended: false,
+    contextTokens: longMeetingTokens,
+    minMemoryBytes: 8 * gigabyte,
+    files: [
+      {
+        name: 'gemma-4-E2B_q4_0-it.gguf',
+        url: `${gemma4E2b}/gemma-4-E2B_q4_0-it.gguf`,
+        sizeBytes: 3_349_516_256,
+        sha256:
+          'fa401b55b07ee70a54c6dae3903c783a6e65064312529ea57175cb5f8dec6634',
+      },
+    ],
+  },
+  {
     id: 'qwen3-4b-instruct',
     kind: 'summary',
     engine: 'llama',
     name: 'Qwen3 4B Instruct',
     description:
-      'Balanced quality and speed, for computers with 8 GB of memory.',
+      'The previous default. Summarizes only the last part of a long meeting.',
     languages: '100+ languages',
     license: 'Apache 2.0, Qwen',
-    recommended: true,
+    recommended: false,
     // Every layer attends to the whole context, so its cache grows fast.
     contextTokens: 16_384,
     minMemoryBytes: 8 * gigabyte,
@@ -186,11 +243,12 @@ export const modelCatalog: ModelDefinition[] = [
     kind: 'summary',
     engine: 'llama',
     name: 'Qwen3.5 4B',
-    description: 'Newer model of the same size, reads longer meetings whole.',
+    description:
+      'Balanced quality and speed, for computers with 8 GB of memory. Reads a two-hour meeting whole.',
     languages: '200+ languages',
     license: 'Apache 2.0, Qwen',
-    recommended: false,
-    contextTokens: 32_768,
+    recommended: true,
+    contextTokens: longMeetingTokens,
     minMemoryBytes: 8 * gigabyte,
     files: [
       {
@@ -199,6 +257,50 @@ export const modelCatalog: ModelDefinition[] = [
         sizeBytes: 2_740_937_888,
         sha256:
           '00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4',
+      },
+    ],
+  },
+  {
+    id: 'gemma-4-e4b',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Gemma 4 E4B',
+    description:
+      'Strong at meetings not in English, for computers with 12 GB of memory or more.',
+    languages: '140+ languages',
+    license: 'Apache 2.0, Google',
+    recommended: false,
+    contextTokens: longMeetingTokens,
+    minMemoryBytes: 12 * gigabyte,
+    files: [
+      {
+        name: 'gemma-4-E4B_q4_0-it.gguf',
+        url: `${gemma4E4b}/gemma-4-E4B_q4_0-it.gguf`,
+        sizeBytes: 5_154_941_280,
+        sha256:
+          '676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee',
+      },
+    ],
+  },
+  {
+    id: 'qwen3.5-9b',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Qwen3.5 9B',
+    description:
+      'Better summaries of long meetings, for computers with 16 GB of memory or more.',
+    languages: '200+ languages',
+    license: 'Apache 2.0, Qwen',
+    recommended: false,
+    contextTokens: longMeetingTokens,
+    minMemoryBytes: 16 * gigabyte,
+    files: [
+      {
+        name: 'Qwen3.5-9B-Q4_K_M.gguf',
+        url: `${qwen35Medium}/Qwen3.5-9B-Q4_K_M.gguf`,
+        sizeBytes: 5_680_522_464,
+        sha256:
+          '03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8',
       },
     ],
   },
@@ -212,7 +314,7 @@ export const modelCatalog: ModelDefinition[] = [
     languages: '140+ languages',
     license: 'Apache 2.0, Google',
     recommended: false,
-    contextTokens: 32_768,
+    contextTokens: longMeetingTokens,
     minMemoryBytes: 16 * gigabyte,
     files: [
       {
@@ -233,7 +335,7 @@ export const modelCatalog: ModelDefinition[] = [
     languages: '140+ languages',
     license: 'Apache 2.0, Google',
     recommended: false,
-    contextTokens: 32_768,
+    contextTokens: longMeetingTokens,
     minMemoryBytes: 24 * gigabyte,
     files: [
       {
@@ -245,6 +347,50 @@ export const modelCatalog: ModelDefinition[] = [
       },
     ],
   },
+  {
+    id: 'qwen3.6-35b-a3b',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Qwen3.6 35B',
+    description:
+      'Top quality and still quick, for computers with 32 GB of memory or more.',
+    languages: '200+ languages',
+    license: 'Apache 2.0, Qwen',
+    recommended: false,
+    contextTokens: longMeetingTokens,
+    minMemoryBytes: 32 * gigabyte,
+    files: [
+      {
+        name: 'Qwen3.6-35B-A3B-UD-Q4_K_M.gguf',
+        url: `${qwen36Moe}/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`,
+        sizeBytes: 22_134_528_992,
+        sha256:
+          'ac0e2c1189e055faa36eff361580e79c5bd6f8e76bffb4ce547f167d53e31a61',
+      },
+    ],
+  },
+  {
+    id: 'gemma-4-31b',
+    kind: 'summary',
+    engine: 'llama',
+    name: 'Gemma 4 31B',
+    description:
+      'Top quality, best at meetings not in English. Slower; for computers with 32 GB of memory or more.',
+    languages: '140+ languages',
+    license: 'Apache 2.0, Google',
+    recommended: false,
+    contextTokens: longMeetingTokens,
+    minMemoryBytes: 32 * gigabyte,
+    files: [
+      {
+        name: 'gemma-4-31B_q4_0-it.gguf',
+        url: `${gemma4Dense}/gemma-4-31B_q4_0-it.gguf`,
+        sizeBytes: 17_651_001_568,
+        sha256:
+          '179cfb99212709597eae5929112cfca677e1bbf566178b479ae1da0c4772874b',
+      },
+    ],
+  },
 ];
 
 export function modelSize(model: Pick<ModelDefinition, 'files'>): number {
@@ -253,6 +399,7 @@ export function modelSize(model: Pick<ModelDefinition, 'files'>): number {
 
 const phoneModelIds: readonly string[] = [
   'parakeet-tdt-0.6b-v3',
+  'parakeet-tdt-0.6b-v3-q4',
   'whisper-small',
   'whisper-base',
 ];
