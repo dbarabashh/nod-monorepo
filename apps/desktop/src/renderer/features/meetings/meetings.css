@@ -222,9 +222,12 @@
     padding: var(--space-3) var(--space-4);
   }
 
+  /* The space above the column sits inside it, not the scroller, because a
+     sticky toolbar stops at the scroller's padding and lines would show
+     above it. */
   .meeting-detail__body {
     min-block-size: 0;
-    padding: var(--space-4) var(--space-4) calc(var(--space-12) * 2);
+    padding: 0 var(--space-4) calc(var(--space-12) * 2);
   }
 
   .meeting-detail__column {
@@ -232,6 +235,7 @@
     gap: var(--space-6);
     max-inline-size: var(--measure-wide);
     margin-inline: auto;
+    padding-block-start: var(--space-4);
   }
 
   .meeting-detail__heading {
@@ -303,6 +307,8 @@
   }
 
   .meeting-detail__section {
+    --meeting-toolbar-size: calc(var(--control-height-md) + var(--space-4));
+
     display: grid;
     gap: var(--space-2);
   }
@@ -327,6 +333,54 @@
     align-items: center;
     justify-content: flex-end;
     gap: var(--space-2);
+
+    &[data-sticky] {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 1;
+      min-block-size: var(--meeting-toolbar-size);
+      background-color: var(--color-surface);
+    }
+  }
+
+  .transcript-search {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-1);
+    min-inline-size: 0;
+  }
+
+  .transcript-search__input {
+    inline-size: var(--field-width-md);
+  }
+
+  .transcript-search__count:not(:empty) {
+    padding-inline: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  ::highlight(transcript-match) {
+    background-color: var(--color-match);
+  }
+
+  ::highlight(transcript-match-current) {
+    background-color: var(--color-match-current);
+  }
+
+  @media (forced-colors: active) {
+    ::highlight(transcript-match) {
+      background-color: Mark;
+      color: MarkText;
+    }
+
+    ::highlight(transcript-match-current) {
+      background-color: Highlight;
+      color: HighlightText;
+    }
   }
 
   .meeting-detail__transcript {
@@ -339,6 +393,8 @@
   .meeting-detail__line {
     display: grid;
     gap: var(--space-0-5);
+    scroll-margin-block: calc(var(--meeting-toolbar-size) + var(--space-4))
+      calc(var(--space-12) * 2);
   }
 
   .meeting-detail__speaker {

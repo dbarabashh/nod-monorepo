@@ -32,8 +32,11 @@
 
   --lime-500: oklch(69.5% 0.196 133);
 
+  --amber-100: oklch(95% 0.06 90);
+  --amber-300: oklch(87% 0.14 85);
   --amber-400: oklch(82% 0.15 80);
   --amber-700: oklch(52% 0.12 65);
+  --amber-900: oklch(34% 0.07 65);
 
   --color-bg: light-dark(var(--gray-50), var(--gray-950));
   --color-surface: light-dark(var(--gray-0), var(--gray-900));
@@ -58,6 +61,8 @@
   --color-focus-ring: light-dark(var(--blue-600), var(--blue-400));
   --color-selection: light-dark(var(--blue-100), var(--blue-900));
   --color-surface-selected: light-dark(var(--blue-100), var(--blue-900));
+  --color-match: light-dark(var(--amber-100), var(--amber-900));
+  --color-match-current: light-dark(var(--amber-300), var(--amber-700));
 
   --color-tone-accent-fg: light-dark(var(--blue-700), var(--blue-400));
   --color-tone-success-fg: light-dark(var(--green-700), var(--green-400));

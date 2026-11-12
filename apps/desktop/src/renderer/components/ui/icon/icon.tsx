@@ -21,6 +21,7 @@ export type IconName =
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-down'
+  | 'chevron-up'
   | 'folder'
   | 'folder-plus'
   | 'more'
@@ -54,6 +55,7 @@ const paths: Record<IconName, string> = {
   'chevron-left': 'M10 3.5 5.5 8l4.5 4.5',
   'chevron-right': 'M6 3.5 10.5 8 6 12.5',
   'chevron-down': 'M3.5 6 8 10.5 12.5 6',
+  'chevron-up': 'M3.5 10 8 5.5 12.5 10',
   folder:
     'M2 4.5a1 1 0 0 1 1-1h3l1.5 1.5H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4.5Z',
   'folder-plus':

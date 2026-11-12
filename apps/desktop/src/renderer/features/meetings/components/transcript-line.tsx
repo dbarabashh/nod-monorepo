@@ -53,6 +53,7 @@ function TranscriptLineView({ meetingId, line }: TranscriptLineProps) {
       <span
         key={line.text}
         className="ui-editable"
+        data-line-id={line.id}
         // An inline span keeps the line reading as text, not as a form field.
         // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
         role="textbox"
