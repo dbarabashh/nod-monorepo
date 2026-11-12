@@ -12,13 +12,19 @@ export function isAllowedPermissionRequest(
   appUrl: string,
   passScreenCapture: () => boolean,
 ): boolean {
+  if (!request.isMainFrame || !isAppUrl(request.requestingUrl, appUrl)) {
+    return false;
+  }
+  if (request.permission === 'media') {
+    return (
+      request.mediaTypes.length > 0 &&
+      request.mediaTypes.every((type) => type === 'audio')
+    );
+  }
   return (
-    request.permission === 'media' &&
-    request.isMainFrame &&
-    isAppUrl(request.requestingUrl, appUrl) &&
-    (request.mediaTypes.length === 0
-      ? passScreenCapture()
-      : request.mediaTypes.every((type) => type === 'audio'))
+    request.permission === 'display-capture' &&
+    request.mediaTypes.includes('audio') &&
+    passScreenCapture()
   );
 }
 

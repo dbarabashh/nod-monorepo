@@ -24,9 +24,9 @@ export function secureSession(
             mediaTypes,
           },
           appUrl,
-          // Screen capture arrives as `media` with no media type, the same as
-          // a legacy desktop getUserMedia call, so only a capture the app
-          // announced through the preload (which saw the click) may pass.
+          // getDisplayMedia and a legacy desktop getUserMedia call both arrive
+          // as `display-capture`, so only a capture the app announced through
+          // the preload (which saw the click) may pass.
           displayCapture.pass,
         ),
       );
