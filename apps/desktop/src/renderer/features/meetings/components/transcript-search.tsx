@@ -46,17 +46,17 @@ export function TranscriptSearch({
 
   useEffect(() => {
     function focusSearch(event: globalThis.KeyboardEvent) {
-      const mod =
-        document.documentElement.dataset.platform === 'darwin'
-          ? event.metaKey
-          : event.ctrlKey;
+      const mac = document.documentElement.dataset.platform === 'darwin';
+      const latin = /^[a-z]$/iu.test(event.key);
       if (
-        mod &&
+        (mac
+          ? event.metaKey && !event.ctrlKey
+          : event.ctrlKey && !event.metaKey) &&
         !event.altKey &&
         !event.shiftKey &&
         !event.isComposing &&
         !event.defaultPrevented &&
-        event.code === 'KeyF'
+        (latin ? event.key.toLowerCase() === 'f' : event.code === 'KeyF')
       ) {
         event.preventDefault();
         input.current?.focus();
