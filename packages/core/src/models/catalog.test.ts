@@ -85,11 +85,12 @@ describe('modelSize', () => {
 });
 
 describe('phone speech models', () => {
-  it('offers Parakeet first, then the small whisper models, each with its voice activity model', () => {
+  it('offers Parakeet first, then its smaller download and the small whisper models, each with its voice activity model', () => {
     assert.deepEqual(
       phoneSpeechModels.map((model) => [model.id, model.engine]),
       [
         ['parakeet-tdt-0.6b-v3', 'parakeet'],
+        ['parakeet-tdt-0.6b-v3-q4', 'parakeet'],
         ['whisper-small', 'whisper'],
         ['whisper-base', 'whisper'],
       ],
