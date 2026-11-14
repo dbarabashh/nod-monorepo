@@ -56,8 +56,8 @@ const qwen36Moe =
 
 const gigabyte = 1024 ** 3;
 
-// Qwen3.5, Qwen3.6 and Gemma 4 keep full attention in few layers, so a context
-// that holds a two-hour meeting costs less memory than Qwen3 4B's 16k.
+// Qwen3.5, Qwen3.6 and Gemma 4 keep full attention in few layers, so their
+// cache grows slowly enough for a context that holds a two-hour meeting.
 const longMeetingTokens = 65_536;
 
 export const vadFile: ModelFile = {
@@ -353,12 +353,12 @@ export const modelCatalog: ModelDefinition[] = [
     engine: 'llama',
     name: 'Qwen3.6 35B',
     description:
-      'Top quality and still quick, for computers with 32 GB of memory or more.',
+      'Top quality and still quick, for computers with 48 GB of memory or more.',
     languages: '200+ languages',
     license: 'Apache 2.0, Qwen',
     recommended: false,
     contextTokens: longMeetingTokens,
-    minMemoryBytes: 32 * gigabyte,
+    minMemoryBytes: 48 * gigabyte,
     files: [
       {
         name: 'Qwen3.6-35B-A3B-UD-Q4_K_M.gguf',
@@ -375,12 +375,12 @@ export const modelCatalog: ModelDefinition[] = [
     engine: 'llama',
     name: 'Gemma 4 31B',
     description:
-      'Top quality, best at meetings not in English. Slower; for computers with 32 GB of memory or more.',
+      'Top quality, best at meetings not in English. Slower; for computers with 48 GB of memory or more.',
     languages: '140+ languages',
     license: 'Apache 2.0, Google',
     recommended: false,
     contextTokens: longMeetingTokens,
-    minMemoryBytes: 32 * gigabyte,
+    minMemoryBytes: 48 * gigabyte,
     files: [
       {
         name: 'gemma-4-31B_q4_0-it.gguf',
